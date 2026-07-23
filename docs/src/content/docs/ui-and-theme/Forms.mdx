@@ -1,0 +1,369 @@
+---
+title: Forms
+description: Build type-safe forms with TanStack Form and Zod validation
+head:
+  - tag: title
+    content: Forms | React Native / Expo Starter
+---
+
+import CodeBlock from '../../../components/code.astro';
+
+# Forms with TanStack Form
+
+This template uses [TanStack Form](https://tanstack.com/form/latest) for form state management, providing a powerful and flexible solution with excellent TypeScript support.
+
+## Why TanStack Form?
+
+- **Type-safe:** Full TypeScript support with strong typing
+- **Flexible validation:** Works seamlessly with Zod schemas
+- **Performance:** Efficient re-rendering with granular subscriptions
+- **Framework agnostic:** Works with React Native
+- **Simple API:** Intuitive field and form management
+
+## Basic Form Example
+
+Here's a simple login form using TanStack Form:
+
+```tsx
+import { useForm } from '@tanstack/react-form';
+import * as z from 'zod';
+import { Button, Input, View } from '@/components/ui';
+import { getFieldError } from '@/components/ui/form-utils';
+
+const schema = z.object({
+  email: z
+    .string()
+    .min(1, 'Email is required')
+    .email('Invalid email format'),
+  password: z
+    .string()
+    .min(1, 'Password is required')
+    .min(6, 'Password must be at least 6 characters'),
+});
+
+export function LoginForm({ onSubmit }) {
+  const form = useForm({
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+    validators: {
+      onChange: schema as any,
+    },
+    onSubmit: async ({ value }) => {
+      onSubmit(value);
+    },
+  });
+
+  return (
+    <View className="p-4">
+      <form.Field
+        name="email"
+        children={(field) => (
+          <Input
+            label="Email"
+            value={field.state.value}
+            onBlur={field.handleBlur}
+            onChangeText={field.handleChange}
+            error={getFieldError(field)}
+          />
+        )}
+      />
+
+      <form.Field
+        name="password"
+        children={(field) => (
+          <Input
+            label="Password"
+            secureTextEntry
+            value={field.state.value}
+            onBlur={field.handleBlur}
+            onChangeText={field.handleChange}
+            error={getFieldError(field)}
+          />
+        )}
+      />
+
+      <form.Subscribe
+        selector={(state) => [state.isSubmitting]}
+        children={([isSubmitting]) => (
+          <Button
+            label="Login"
+            loading={isSubmitting}
+            onPress={form.handleSubmit}
+          />
+        )}
+      />
+    </View>
+  );
+}
+```
+
+## Form Validation with Zod
+
+TanStack Form integrates seamlessly with Zod for schema validation. Define your schema outside the component to prevent recreation on each render:
+
+```tsx
+const schema = z.object({
+  email: z
+    .string()
+    .min(1, 'Email is required')
+    .email('Invalid email format'),
+  password: z
+    .string()
+    .min(6, 'Must be at least 6 characters'),
+});
+
+const form = useForm({
+  validators: {
+    onChange: schema as any, // Real-time validation as user types
+  },
+  // ... other options
+});
+```
+
+The `onChange` validator runs your Zod schema on every field change, providing immediate feedback to users.
+
+## Field Error Handling
+
+The template includes a `getFieldError` utility function that extracts error messages from form fields:
+
+```tsx
+import { getFieldError } from '@/components/ui/form-utils';
+
+<form.Field
+  name="email"
+  children={(field) => (
+    <Input
+      error={getFieldError(field)}
+      // ... other props
+    />
+  )}
+/>
+```
+
+This utility:
+- Only shows errors after a field is touched
+- Handles both string errors and Zod error objects
+- Extracts the first error message for display
+
+## Form State Management
+
+Access form state using the `form.Subscribe` component with selective subscriptions to optimize re-renders:
+
+```tsx
+<form.Subscribe
+  selector={(state) => [state.isValid, state.isSubmitting]}
+  children={([isValid, isSubmitting]) => (
+    <Button
+      disabled={!isValid}
+      loading={isSubmitting}
+      onPress={form.handleSubmit}
+    />
+  )}
+/>
+```
+
+Available state properties:
+- `isValid` - Whether the form passes validation
+- `isSubmitting` - Whether form is currently submitting
+- `canSubmit` - Whether form can be submitted (touched + valid)
+- `isDirty` - Whether form values have changed from defaults
+
+## Field API
+
+Each field render prop provides access to field state and handlers:
+
+```tsx
+<form.Field
+  name="email"
+  children={(field) => {
+    // Available properties:
+    field.state.value       // Current field value
+    field.handleChange      // Update value handler
+    field.handleBlur        // Blur event handler
+    field.state.meta.isTouched  // Whether field has been interacted with
+    field.state.meta.errors     // Array of validation errors
+
+    return <Input {...props} />
+  }}
+/>
+```
+
+## Working with Select Components
+
+The same pattern applies to Select components:
+
+```tsx
+<form.Field
+  name="category"
+  children={(field) => (
+    <Select
+      label="Category"
+      value={field.state.value}
+      onSelect={(value) => field.handleChange(value)}
+      options={categories}
+      error={getFieldError(field)}
+    />
+  )}
+/>
+```
+
+Note: Use `onSelect` instead of `onChangeText` for Select components.
+
+## Real-World Example: Form with API Integration
+
+See `src/features/feed/add-post-screen.tsx` for a complete example that demonstrates:
+- Form submission with TanStack Query mutation
+- Loading states from API calls
+- Success and error notifications with react-native-flash-message
+- Multiline text input usage
+
+```tsx
+export default function AddPost() {
+  const { mutate: addPost, isPending } = useAddPost();
+
+  const form = useForm({
+    defaultValues: {
+      title: '',
+      body: '',
+    },
+    validators: {
+      onChange: schema as any,
+    },
+    onSubmit: ({ value }) => {
+      addPost(
+        { ...value, userId: 1 },
+        {
+          onSuccess: () => {
+            showMessage({
+              message: 'Post added successfully',
+              type: 'success',
+            });
+          },
+          onError: () => {
+            showErrorMessage('Error adding post');
+          },
+        },
+      );
+    },
+  });
+
+  return (
+    <View className="flex-1 p-4">
+      <form.Field
+        name="title"
+        children={(field) => (
+          <Input
+            label="Title"
+            value={field.state.value}
+            onBlur={field.handleBlur}
+            onChangeText={field.handleChange}
+            error={getFieldError(field)}
+          />
+        )}
+      />
+
+      <form.Field
+        name="body"
+        children={(field) => (
+          <Input
+            label="Content"
+            multiline
+            value={field.state.value}
+            onBlur={field.handleBlur}
+            onChangeText={field.handleChange}
+            error={getFieldError(field)}
+          />
+        )}
+      />
+
+      <form.Subscribe
+        selector={(state) => [state.isSubmitting]}
+        children={([isSubmitting]) => (
+          <Button
+            label="Add Post"
+            loading={isPending || isSubmitting}
+            onPress={form.handleSubmit}
+          />
+        )}
+      />
+    </View>
+  );
+}
+```
+
+## Best Practices
+
+1. **Define Zod schema outside component** - Prevents recreation on each render and improves performance
+2. **Use getFieldError utility** - Consistent error extraction across all forms
+3. **Subscribe to specific state** - Use selector to optimize re-renders by only subscribing to needed state
+4. **Validate on change** - Provide immediate feedback to users with `onChange` validator
+5. **Show errors after touch** - Better UX than showing errors immediately on render
+6. **Combine loading states** - When using with TanStack Query, combine `isSubmitting` and `isPending` for accurate loading state
+
+## Common Patterns
+
+### Optional Fields
+
+```tsx
+const schema = z.object({
+  name: z.string().optional(),
+  email: z.string().email(),
+});
+```
+
+### Conditional Validation
+
+```tsx
+const schema = z.object({
+  acceptTerms: z.boolean(),
+  email: z.string().email(),
+}).refine(
+  (data) => data.acceptTerms === true,
+  { message: 'You must accept the terms', path: ['acceptTerms'] }
+);
+```
+
+### Async Validation
+
+```tsx
+const form = useForm({
+  validators: {
+    onChange: schema,
+    onSubmitAsync: async ({ value }) => {
+      // Async validation logic
+      const isUnique = await checkEmailUnique(value.email);
+      if (!isUnique) {
+        return {
+          fields: {
+            email: 'Email already exists',
+          },
+        };
+      }
+    },
+  },
+});
+```
+
+## Handling Keyboard
+
+The template comes with [`react-native-keyboard-controller`](https://kirillzyusko.github.io/react-native-keyboard-controller/) pre-installed and configured to handle the keyboard. You only need to check the [documentation](https://kirillzyusko.github.io/react-native-keyboard-controller/) and use the appropriate approach for your use case. (Note that we already added the `KeyboardProvider` to the layout in the root file)
+
+Make sure to check the following video for more details on how to handle keyboard in React Native:
+
+<div class="embed-container">
+  <iframe
+    src="https://www.youtube.com/embed/Y51mDfAhd4E?si=8uPml61z0R1hsZGy&amp;start=1139"
+    frameborder="0"
+    allowfullscreen
+  ></iframe>
+</div>
+
+## Resources
+
+- [TanStack Form Documentation](https://tanstack.com/form/latest)
+- [Zod Documentation](https://zod.dev)
+- [Example: Login Form](https://github.com/obytes/react-native-template-obytes/blob/master/src/features/auth/components/login-form.tsx)
+- [Example: Add Post Form](https://github.com/obytes/react-native-template-obytes/blob/master/src/features/feed/add-post-screen.tsx)
+- [Utility: getFieldError](https://github.com/obytes/react-native-template-obytes/blob/master/src/components/ui/form-utils.ts)

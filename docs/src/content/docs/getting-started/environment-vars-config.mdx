@@ -1,0 +1,307 @@
+---
+title: Environment Variables and Configuration
+description: Environment variables and configuration with validation and type-checking using Expo's native behavior.
+head:
+  - tag: title
+    content: Environment Variables and Configuration | React Native / Expo Starter
+---
+
+import Code from '../../../components/code.astro';
+
+Managing environment variables in your project is an essential task, but it can also be challenging. That's why we have included a complete setup for environment variables in this project. This setup uses Expo's native environment variable handling with validation and type-checking using the `zod` library.
+
+All the code related to environment variables is located in the `env.ts` file at the project root. This TypeScript file reads environment variables using Expo's default behavior (via `process.env.EXPO_PUBLIC_*`), defines the `zod` schema for validation, parses the environment object, and returns the parsed object with proper type-safety.
+
+## Key Features
+
+- **Single `.env` file**: No more multiple environment files - one `.env` file for all environments
+- **Expo's native behavior**: Uses `EXPO_PUBLIC_*` prefix convention for client-accessible variables
+- **TypeScript**: Full type-safety and autocomplete for environment variables
+- **Conditional validation**: Strict validation before prebuild, warnings during development
+- **Config records**: Bundle IDs, packages, and schemes defined per environment
+
+## Environment Variable Prefixes
+
+**Critical distinction:**
+
+- **`EXPO_PUBLIC_*` prefixed variables**: Accessible in BOTH `app.config.ts` AND your `src` folder (client code)
+- **Non-prefixed variables** (like `SECRET_KEY`): ONLY accessible in `app.config.ts` at build-time, NOT in your client code
+
+This is an Expo convention that ensures secrets never leak to the client-side bundle.
+
+## Environment Switching
+
+The template supports three environments controlled by the `EXPO_PUBLIC_APP_ENV` variable:
+
+- **development**: Local development (default)
+- **preview**: Internal testing / staging
+- **production**: Production builds
+
+Each environment has its own configuration for bundle IDs, package names, and schemes defined in `env.ts`.
+
+## Adding a new environment variable to the project
+
+To add a new environment variable to the project, follow these steps:
+
+### 1. Add to the `.env` file
+
+Add the new environment variable to your `.env` file. Use the `EXPO_PUBLIC_` prefix if the variable needs to be accessible in your client code:
+
+```bash title=".env"
+# Client-accessible variable (available in src folder)
+EXPO_PUBLIC_MY_NEW_VAR=my-value
+
+# Build-time only variable (NOT available in src folder)
+MY_SECRET_KEY=my-secret
+```
+
+:::note[Important]
+Only variables with the `EXPO_PUBLIC_` prefix will be accessible in your client code (src folder). Non-prefixed variables are only available at build-time in `app.config.ts`.
+:::
+
+### 2. Add to the Zod schema in `env.ts`
+
+Update the `envSchema` in `env.ts` to include your new variable:
+
+```ts title="env.ts"
+const envSchema = z.object({
+  EXPO_PUBLIC_APP_ENV: z.enum(['development', 'preview', 'production']),
+  // ... existing vars
+
+  // Add your new client-accessible variable here
+  EXPO_PUBLIC_MY_NEW_VAR: z.string(),
+});
+```
+
+:::caution
+Do NOT add build-time secrets (non-prefixed vars) to the schema. Access them directly via `process.env.MY_SECRET_KEY` in `app.config.ts` if needed.
+:::
+
+### 3. Add to the `_env` object
+
+Add the new variable to the `_env` object in `env.ts`:
+
+```ts title="env.ts"
+const _env: z.infer<typeof envSchema> = {
+  // ... existing vars
+
+  // Add your new variable
+  EXPO_PUBLIC_MY_NEW_VAR: process.env.EXPO_PUBLIC_MY_NEW_VAR ?? '',
+};
+```
+
+### 4. Run prebuild
+
+Make sure to run `pnpm prebuild` to load the new values:
+
+```bash
+pnpm prebuild
+```
+
+### 5. Use in your code
+
+The new environment variable is now ready to use. Access it in your client code:
+
+```ts title="src/lib/client.ts"
+import Env from 'env'; // or import Env from '@env';
+
+// Access environment variables
+console.log(Env.EXPO_PUBLIC_MY_NEW_VAR);
+```
+
+:::note[Type Conversion]
+All environment variables are strings by default. Convert them to the correct type:
+```ts
+// For numbers
+EXPO_PUBLIC_VAR_NUMBER: Number(process.env.EXPO_PUBLIC_VAR_NUMBER ?? 0),
+
+// For booleans
+EXPO_PUBLIC_VAR_BOOL: process.env.EXPO_PUBLIC_VAR_BOOL === 'true',
+```
+:::
+
+## Environment Switching
+
+To switch between environments, use the `EXPO_PUBLIC_APP_ENV` variable:
+
+```bash
+# Development (default)
+pnpm start
+
+# Preview environment
+pnpm start:preview
+
+# Production environment
+pnpm start:production
+```
+
+For prebuild with strict validation:
+
+```bash
+# Development
+pnpm prebuild:development
+
+# Preview
+pnpm prebuild:preview
+
+# Production
+pnpm prebuild:production
+```
+
+## Validation
+
+The template includes conditional validation:
+
+- **Strict validation**: Enabled during prebuild (via `STRICT_ENV_VALIDATION=1`)
+  - Throws errors on invalid or missing variables
+  - Ensures production builds have correct configuration
+
+- **Warning-only validation**: Enabled during `start` and development
+  - Logs warnings but continues
+  - Allows rapid iteration during development
+
+Example error message:
+
+```bash
+❌ Invalid environment variables: { EXPO_PUBLIC_API_URL: ['Invalid url'] }
+❌ Missing variables in .env file for APP_ENV=development
+💡 Tip: If you recently updated the .env file, try restarting with -c flag to clear the cache.
+```
+
+## How it works
+
+### Expo's Native Environment Loading
+
+Expo automatically loads environment variables from the `.env` file. Variables prefixed with `EXPO_PUBLIC_` are exposed to the client-side code through the Metro bundler.
+
+### TypeScript Environment File
+
+The `env.ts` file serves as the single source of truth for environment configuration:
+
+```ts title="env.ts"
+// 1. Define Zod schema
+const envSchema = z.object({
+  EXPO_PUBLIC_APP_ENV: z.enum(['development', 'preview', 'production']),
+  EXPO_PUBLIC_API_URL: z.string().url(),
+  // ... other vars
+});
+
+// 2. Define config records per environment
+const BUNDLE_IDS = {
+  development: 'com.obytes.development',
+  preview: 'com.obytes.preview',
+  production: 'com.obytes',
+} as const;
+
+// 3. Build env object from process.env
+const _env: z.infer<typeof envSchema> = {
+  EXPO_PUBLIC_APP_ENV: process.env.EXPO_PUBLIC_APP_ENV ?? 'development',
+  EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL ?? '',
+  // ...
+};
+
+// 4. Validate conditionally
+const Env = STRICT_ENV_VALIDATION ? getValidatedEnv(_env) : _env;
+
+// 5. Export for use
+export default Env;
+```
+
+### App Configuration
+
+The `app.config.ts` file imports the environment using the `tsx` module loader:
+
+```ts title="app.config.ts"
+import 'tsx/cjs'; // Required to import TypeScript files
+import Env from './env';
+
+export default ({ config }: ConfigContext): ExpoConfig => ({
+  name: Env.EXPO_PUBLIC_NAME,
+  bundleIdentifier: Env.EXPO_PUBLIC_BUNDLE_ID,
+  // ... rest of config
+
+  extra: {
+    eas: {
+      projectId: EAS_PROJECT_ID,
+    },
+  },
+});
+```
+
+:::note[Environment Variable Access]
+Client-side environment variables with the `EXPO_PUBLIC_*` prefix are NOT passed through the `extra` field. They are automatically bundled by Metro and accessible directly in your source code via `import Env from 'env'`.
+:::
+
+:::note[TSX Dependency]
+The `tsx` package must be installed as a dev dependency to allow importing TypeScript files in `app.config.ts`:
+```bash
+pnpm add -D tsx
+```
+:::
+
+### Client-Side Access
+
+Client code accesses environment variables through the `@env` alias:
+
+```ts title="src/lib/api/client.tsx"
+import Env from 'env'; // or import Env from '@env';
+
+export const client = axios.create({
+  baseURL: Env.EXPO_PUBLIC_API_URL, // Type-safe access
+});
+```
+
+The `@env` alias is configured in `tsconfig.json` to point to `env.ts` at the project root.
+
+## Build-Time Secrets
+
+For secrets that should never be exposed to the client (like API keys for build-time operations):
+
+1. Add them to `.env` WITHOUT the `EXPO_PUBLIC_` prefix
+2. Do NOT add them to the Zod schema in `env.ts`
+3. Access them directly in `app.config.ts`:
+
+```ts title="app.config.ts"
+export default ({ config }: ConfigContext): ExpoConfig => ({
+  // ...
+  hooks: {
+    postPublish: [
+      {
+        file: 'sentry-expo/upload-sourcemaps',
+        config: {
+          authToken: process.env.SENTRY_AUTH_TOKEN, // Build-time only
+        },
+      },
+    ],
+  },
+});
+```
+
+## CI/CD Considerations
+
+When working with CI/CD pipelines:
+
+1. Set `EXPO_PUBLIC_APP_ENV` to the target environment
+2. Set `STRICT_ENV_VALIDATION=1` for prebuild/build steps
+3. Provide all required `EXPO_PUBLIC_*` variables as secrets
+
+Example GitHub Actions:
+
+```yaml
+env:
+  EXPO_PUBLIC_APP_ENV: production
+  EXPO_PUBLIC_API_URL: ${{ secrets.API_URL }}
+  STRICT_ENV_VALIDATION: 1
+```
+
+## Migration from Old Setup
+
+If you're migrating from the old dotenv-based setup:
+
+1. Rename `.env.development` to `.env`
+2. Add `EXPO_PUBLIC_` prefix to all client-accessible variables
+3. Remove `.env.staging` and `.env.production` files
+4. Update `APP_ENV` to `EXPO_PUBLIC_APP_ENV` in scripts
+5. Replace "staging" with "preview" throughout
+
+See the [migration guide](https://github.com/obytes/react-native-template-obytes) for detailed instructions.

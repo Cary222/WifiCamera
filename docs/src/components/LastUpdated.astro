@@ -1,0 +1,31 @@
+---
+import Default from '@astrojs/starlight/components/LastUpdated.astro';
+import Comments from './Comments.astro';
+
+const { lastUpdated } = Astro.locals.starlightRoute;
+
+---
+
+{
+	lastUpdated && (
+  <div class="container">
+    <div class="last-updated">
+      <Default /><slot />
+    </div>
+    <Comments />
+  </div>
+	)
+}
+
+
+<style>
+  .container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+  }
+	.last-updated {
+    width: 100%;
+    text-align: right;
+	}
+</style>
