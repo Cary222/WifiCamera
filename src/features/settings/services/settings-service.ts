@@ -1,9 +1,9 @@
-import { getAlbumBaseUrl } from '../../album/config';
+import { getAlbumBaseUrl } from '../../home/album/config';
 /**
  * Settings service — wraps camera HTTP client for WiFi/OTA/settings API.
  * All endpoints follow the camera firmware JSON contract (snake_case).
  */
-import { cameraClient } from '../../camera/client';
+import { cameraClient } from '../../home/camera/client';
 
 export const SETTINGS_ENDPOINTS = {
   changeWifiPassword: '/StartUp/ChangeWifiPassword/',

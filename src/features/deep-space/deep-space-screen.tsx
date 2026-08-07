@@ -5,8 +5,6 @@ import { Pressable, View } from 'react-native';
 
 import { useUniwind } from 'uniwind';
 import { FocusAwareStatusBar, Text } from '@/components/ui';
-import { ArrowLeft } from '@/components/ui/icons';
-import { useCameraStore } from '@/features/camera/camera-store';
 import { StellariumOverlay } from '@/features/stellarium/stellarium-overlay';
 import { translate } from '@/lib/i18n';
 
@@ -20,7 +18,7 @@ import { translate } from '@/lib/i18n';
  *
  * Bottom action bar: [🔭 Resolve] [🌐 Star Map] [📋 Plan]
  */
-export default function DeepSpaceScreen() {
+export function DeepSpaceScreen() {
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
   const router = useRouter();

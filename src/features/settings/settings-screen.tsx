@@ -16,7 +16,7 @@ import {
   Support,
   Website,
 } from '@/components/ui/icons';
-import { useCameraStore } from '@/features/camera/camera-store';
+import { useCameraStore } from '@/features/home/camera/camera-store';
 import { translate } from '@/lib/i18n';
 import { LanguageItem } from './components/language-item';
 import { SettingsContainer } from './components/settings-container';
@@ -67,11 +67,11 @@ export default function SettingsScreen() {
             <SettingsContainer>
               <SettingsItem
                 text="settings.change_wifi_password"
-                onPress={() => router.push('/settings/wifi-password')}
+                onPress={() => router.push('/wifi-password')}
               />
               <SettingsItem
                 text="settings.ota"
-                onPress={() => router.push('/settings/ota')}
+                onPress={() => router.push('/ota')}
               />
             </SettingsContainer>
 

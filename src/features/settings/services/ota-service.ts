@@ -10,8 +10,8 @@
  * from the old app.
  */
 import axios from 'axios';
-import { cameraClient } from '../../camera/client';
-import { getCameraBaseUrl } from '../../camera/config';
+import { cameraClient } from '../../home/camera/client';
+import { getCameraBaseUrl } from '../../home/camera/config';
 
 /** OTA backend base URL. Override via EXPO_PUBLIC_OTA_BACKEND_URL env var. */
 export const OTA_BACKEND_URL

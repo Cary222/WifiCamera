@@ -14,7 +14,7 @@ import * as React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui';
 import { ArrowLeft } from '@/components/ui/icons';
-import { useCameraStore } from '@/features/camera/camera-store';
+import { useCameraStore } from '@/features/home/camera/camera-store';
 import { StellariumView } from './stellarium-view';
 
 type Props = {

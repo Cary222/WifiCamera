@@ -50,6 +50,7 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
+        headerShown: false,
         tabBarStyle: {
           backgroundColor: isDark ? '#0A0B0D' : '#FFFFFF',
           borderTopWidth: 0,
@@ -60,10 +61,9 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="(home)"
         options={{
           title: translate('home.title'),
-          headerShown: false,
           tabBarIcon: ({ focused }) => <HomeFilled focused={focused} />,
           tabBarLabel: renderTabBarLabel(translate('home.title')),
           tabBarButtonTestID: 'home-tab',
@@ -71,10 +71,9 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="deep-space"
+        name="(deep-space)"
         options={{
           title: translate('deep_space.title'),
-          headerShown: false,
           tabBarIcon: ({ focused }) => <StarmapFilled focused={focused} />,
           tabBarLabel: renderTabBarLabel(translate('deep_space.title')),
           tabBarButtonTestID: 'deep-space-tab',
@@ -82,26 +81,9 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="camera"
-        options={{
-          href: null,
-          headerShown: false,
-        }}
-      />
-
-      <Tabs.Screen
-        name="album"
-        options={{
-          href: null,
-          headerShown: false,
-        }}
-      />
-
-      <Tabs.Screen
-        name="settings"
+        name="(settings)"
         options={{
           title: translate('settings.title'),
-          headerShown: false,
           tabBarIcon: ({ focused }) => <SettingsFilled focused={focused} />,
           tabBarLabel: renderTabBarLabel(translate('settings.title')),
           tabBarButtonTestID: 'settings-tab',

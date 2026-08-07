@@ -3,7 +3,7 @@ import Env from 'env';
 import { View } from 'react-native';
 import { useUniwind } from 'uniwind';
 import { FocusAwareStatusBar, ScreenHeader, Text } from '@/components/ui';
-import { useCameraStore } from '@/features/camera/camera-store';
+import { useCameraStore } from '@/features/home/camera/camera-store';
 import { translate } from '@/lib/i18n';
 
 export default function AboutScreen() {

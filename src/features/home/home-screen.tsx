@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { FocusAwareStatusBar, Text } from '@/components/ui';
-import { useCameraStore } from '@/features/camera/camera-store';
+import { useCameraStore } from '@/features/home/camera/camera-store';
 import { translate } from '@/lib/i18n';
 import { ConnectionStatusCard } from './components/connection-status-card';
 import { DeviceConnectionModal } from './components/device-connection-modal';

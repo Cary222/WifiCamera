@@ -63,7 +63,7 @@ export function ModeGrid() {
         <ModeCard
           icon={starryIcon}
           label={translate('home.mode_starry')}
-          route="/deep-space"
+          route="/(deep-space)"
           width={cardWidth}
         />
         <ModeCard
