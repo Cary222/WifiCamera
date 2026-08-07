@@ -108,6 +108,21 @@
   "download": {
     "title": "Downloading..."
   },
+  "home": {
+    "battery_level": "Battery Level",
+    "connect_device": "Connect Device",
+    "connect_hint": "Connect to camera to start shooting",
+    "device_connected": "Device Connected",
+    "device_not_connected": "Device Not Connected",
+    "mode_album": "Album",
+    "mode_landscape": "Landscape Mode",
+    "mode_planet": "Planet Video",
+    "mode_starry": "Starry Sky Mode",
+    "shooting_modes": "Shooting Modes",
+    "storage_remaining": "Storage Remaining",
+    "title": "Home",
+    "wifi_camera": "Wi-Fi Camera"
+  },
   "login": {
     "email_label": "Email / Phone",
     "password_label": "Password",
@@ -171,8 +186,8 @@
     "camera_serial": "Serial Number",
     "camera_version": "Firmware Version",
     "change_wifi_password": "Change Wi-Fi Password",
-    "connect_camera": "Connect Camera",
     "chinese": "Chinese",
+    "connect_camera": "Connect Camera",
     "english": "English",
     "generale": "General",
     "github": "Github",

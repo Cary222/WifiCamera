@@ -2,7 +2,6 @@ import type { CameraJsonMessage } from './services/websocket-protocol';
 
 import * as React from 'react';
 import { createContext, use, useEffect, useMemo } from 'react';
-import { useBoundDeviceId } from '@/features/device/use-device-store';
 import { useCameraStore } from './camera-store';
 import { getSerial, getVersion } from './services/startup-service';
 
@@ -23,18 +22,12 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
   const connectionStatus = useCameraStore.use.connectionStatus();
   const setSerial = useCameraStore.use.setSerial();
   const setVersion = useCameraStore.use.setVersion();
-  const [boundDeviceId] = useBoundDeviceId();
   const [currentRaDec, setCurrentRaDec] = React.useState<{ ra: number; dec: number } | null>(null);
 
   useEffect(() => {
-    if (boundDeviceId) {
-      connect();
-    }
-    else {
-      disconnect();
-    }
+    connect();
     return disconnect;
-  }, [boundDeviceId, connect, disconnect]);
+  }, [connect, disconnect]);
 
   useEffect(() => {
     if (connectionStatus === 'open') {

@@ -108,6 +108,21 @@
   "download": {
     "title": "下载中..."
   },
+  "home": {
+    "battery_level": "设备电量",
+    "connect_device": "连接设备",
+    "connect_hint": "连接相机后即可开始拍摄",
+    "device_connected": "设备已连接",
+    "device_not_connected": "未连接设备",
+    "mode_album": "相册",
+    "mode_landscape": "风景模式",
+    "mode_planet": "行星视频",
+    "mode_starry": "星空模式",
+    "shooting_modes": "拍摄模式",
+    "storage_remaining": "剩余空间",
+    "title": "首页",
+    "wifi_camera": "Wi-Fi 相机"
+  },
   "login": {
     "email_label": "邮箱/手机号码",
     "password_label": "密码",
@@ -171,8 +186,8 @@
     "camera_serial": "序列号",
     "camera_version": "固件版本",
     "change_wifi_password": "修改 Wi-Fi 密码",
-    "connect_camera": "连接相机",
     "chinese": "中文",
+    "connect_camera": "连接相机",
     "english": "英语",
     "generale": "通用",
     "github": "Github",

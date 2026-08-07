@@ -1,9 +1,9 @@
 import type { SvgProps } from 'react-native-svg';
 import Svg, { Path } from 'react-native-svg';
 
-interface FolderProps extends Omit<SvgProps, 'width' | 'height'> {
+type FolderProps = {
   size?: number;
-}
+} & Omit<SvgProps, 'width' | 'height'>;
 
 export function Folder({ color = '#000', size = 24, ...props }: FolderProps) {
   return (

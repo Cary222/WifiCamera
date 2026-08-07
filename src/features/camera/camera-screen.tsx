@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
-import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { FocusAwareStatusBar, Text } from '@/components/ui';
 import { useCameraStore } from './camera-store';
@@ -9,7 +8,6 @@ import { ConnectionStatus } from './components/connection-status';
 import { ExposurePresets } from './components/exposure-presets';
 
 export function CameraScreen() {
-  const router = useRouter();
   const cameraStatus = useCameraStore.use.cameraStatus();
   const connectionStatus = useCameraStore.use.connectionStatus();
   const exposureConfigs = useCameraStore.use.exposureConfigs();
@@ -30,7 +28,8 @@ export function CameraScreen() {
   }, [connected, requestCameraStatus]);
 
   const handleSelectPreset = (config: typeof currentExposureConfig) => {
-    if (!connected) return;
+    if (!connected)
+      return;
     setCurrentExposureConfig(config);
     setGain(config.gain);
   };
@@ -97,16 +96,6 @@ export function CameraScreen() {
               onRepeat={() => startRepeatExposure(3)}
               onStop={handleStop}
             />
-
-            {!connected && (
-              <Pressable
-                onPress={() => router.push('/device-setup')}
-                className="gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 active:opacity-80"
-              >
-                <Text tx="camera.not_connected" className="font-semibold text-amber-800" />
-                <Text tx="camera.not_connected_hint" className="text-sm text-amber-700" />
-              </Pressable>
-            )}
           </View>
         </ScrollView>
       </View>

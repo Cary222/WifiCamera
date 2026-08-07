@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stellarium Web Engine → React Native 集成全景</title>
+<style>
+:root{
+  --bg:#07070e; --card:#0f0f1a; --card2:#161628; --border:#252540;
+  --text:#d0d0e8; --dim:#7878a0; --muted:#484870;
+  --accent:#5b9cf5; --green:#3ecf8e; --yellow:#f0b040; --red:#f05060; --purple:#8b6cf6;
+  --code-bg:#0a0a16; --flow-bg:#0d0d1e;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.6;overflow-x:hidden}
+/* header */
+.hero{background:linear-gradient(180deg,#0d0d28 0%,var(--bg) 100%);padding:60px 20px 40px;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(91,156,245,.08),transparent 70%)}
+.hero h1{font-size:28px;font-weight:800;letter-spacing:-.5px;position:relative}
+.hero h1 span{color:var(--accent)}
+.hero p{color:var(--dim);margin-top:8px;font-size:14px;position:relative}
+.hero .badges{display:flex;gap:8px;justify-content:center;margin-top:16px;flex-wrap:wrap;position:relative}
+.badge{padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid var(--border);background:var(--card)}
+.badge.ok{border-color:var(--green);color:var(--green)}
+.badge.warn{border-color:var(--yellow);color:var(--yellow)}
+.badge.info{border-color:var(--accent);color:var(--accent)}
+
+/* container */
+.container{max-width:900px;margin:0 auto;padding:0 20px 60px}
+
+/* section */
+.sec{margin-bottom:40px}
+.sec-title{font-size:18px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.sec-title .icon{font-size:20px}
+.sec-title .num{font-size:11px;color:var(--accent);background:rgba(91,156,245,.1);padding:2px 8px;border-radius:10px}
+
+/* tabs */
+.tabs{display:flex;gap:4px;margin-bottom:20px;flex-wrap:wrap;background:var(--card);border-radius:12px;padding:4px}
+.tab-btn{padding:8px 16px;border-radius:10px;border:none;background:transparent;color:var(--dim);cursor:pointer;font-size:13px;font-weight:600;transition:.2s;white-space:nowrap}
+.tab-btn:hover{color:var(--text);background:var(--card2)}
+.tab-btn.active{background:var(--accent);color:#fff}
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* cards */
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:14px}
+.card h3{font-size:15px;font-weight:700;margin-bottom:10px;color:var(--accent)}
+.card p,.card li{font-size:13px;color:var(--dim)}
+.card ul{padding-left:18px}
+.card li{margin-bottom:4px}
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+
+/* flow diagram */
+.flow{background:var(--flow-bg);border:1px solid var(--border);border-radius:14px;padding:24px;overflow-x:auto;margin-bottom:14px}
+.flow-h{display:flex;align-items:center;gap:0;justify-content:center;flex-wrap:wrap;min-width:700px}
+.flow-node{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px;text-align:center;font-size:12px;font-weight:600;min-width:90px;white-space:nowrap}
+.flow-node.rn{border-color:var(--accent)}.flow-node.wv{border-color:var(--purple)}.flow-node.stel{border-color:var(--green)}.flow-node.cam{border-color:var(--yellow)}
+.flow-arrow{font-size:18px;color:var(--dim);padding:0 2px;flex-shrink:0}
+.flow-label{font-size:9px;color:var(--muted);text-align:center;margin-top:2px}
+
+/* architecture boxes */
+.arch{display:flex;flex-direction:column;gap:8px}
+.arch-row{display:flex;gap:8px;align-items:stretch}
+.arch-box{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;flex:1}
+.arch-box h4{font-size:12px;font-weight:700;margin-bottom:6px}
+.arch-box .item{font-size:11px;color:var(--dim);padding:2px 0}
+.arch-box .item .hl{color:var(--accent)}
+.arch-box.rn-layer{border-left:3px solid var(--accent)}
+.arch-box.wv-layer{border-left:3px solid var(--purple)}
+.arch-box.stel-layer{border-left:3px solid var(--green)}
+.arch-box.cam-layer{border-left:3px solid var(--yellow)}
+
+/* code */
+code{display:block;background:var(--code-bg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;font-size:11px;font-family:'SF Mono','Cascadia Code','Consolas',monospace;color:var(--text);overflow-x:auto;line-height:1.5;white-space:pre;margin:8px 0}
+code .kw{color:var(--purple)}code .fn{color:var(--accent)}code .str{color:var(--green)}code .cm{color:var(--muted)}
+
+/* diff */
+.diff-add{color:var(--green)}.diff-del{color:var(--red)}.diff-file{color:var(--yellow)}
+
+/* check */
+.checklist{list-style:none;padding:0}
+.checklist li{padding:6px 0;font-size:13px;display:flex;align-items:center;gap:8px}
+.checklist .box{width:18px;height:18px;border:2px solid var(--border);border-radius:4px;flex-shrink:0;cursor:pointer;transition:.2s}
+.checklist .box.done{background:var(--green);border-color:var(--green);position:relative}
+.checklist .box.done::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#000;font-weight:700}
+.checklist .box.risk{border-color:var(--yellow)}
+
+/* table */
+table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border)}
+th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase}
+td{color:var(--text)}
+
+/* legend */
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--dim);margin-bottom:12px}
+.legend span{display:flex;align-items:center;gap:4px}
+.legend .dot{width:8px;height:8px;border-radius:50%}
+.legend .dot.rn{background:var(--accent)}.legend .dot.wv{background:var(--purple)}.legend .dot.stel{background:var(--green)}.legend .dot.cam{background:var(--yellow)}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--card);border-radius:10px;padding:14px;text-align:center}
+.stat .val{font-size:24px;font-weight:800;color:var(--accent)}
+.stat .lbl{font-size:10px;color:var(--dim);margin-top:4px}
+
+/* timeline */
+.timeline{position:relative;padding-left:24px}
+.timeline::before{content:'';position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--border)}
+.timeline-item{position:relative;margin-bottom:20px}
+.timeline-item::before{content:'';position:absolute;left:-20px;top:4px;width:10px;height:10px;border-radius:50%;border:2px solid var(--accent);background:var(--bg)}
+.timeline-item h4{font-size:13px;font-weight:700;color:var(--accent)}
+.timeline-item p{font-size:12px;color:var(--dim)}
+
+/* responsive */
+@media(max-width:600px){
+  .flow-h{flex-direction:column;align-items:flex-start;gap:4px}
+  .flow-arrow{transform:rotate(90deg)}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== HERO ===== -->
+<div class="hero">
+  <h1>Stellarium Web Engine <span>→</span> React Native</h1>
+  <p>WiFi 相机 HXY Cam · 深空模式星图 · 集成全景文档</p>
+  <div class="badges">
+    <span class="badge ok">✅ 技术可行</span>
+    <span class="badge warn">⚠️ 需改 canvas.js 5行</span>
+    <span class="badge info">📦 打包体积 +20MB</span>
+    <span class="badge info">📱 iOS 15+/Android 8+</span>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ===== STATS ===== -->
+<div class="stats">
+  <div class="stat"><div class="val">0</div><div class="lbl">原生模块（不改 Java/Swift）</div></div>
+  <div class="stat"><div class="val">3</div><div class="lbl">新增 RN 组件/Service</div></div>
+  <div class="stat"><div class="val">1</div><div class="lbl">需修改的 Stellarium 源文件</div></div>
+  <div class="stat"><div class="val">5~9</div><div class="lbl">集成工时（天）</div></div>
+  <div class="stat"><div class="val">~80MB</div><div class="lbl">运行时内存占用</div></div>
+  <div class="stat"><div class="val">3条</div><div class="lbl">数据通路</div></div>
+</div>
+
+<!-- ===== TABS ===== -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('arch')">🏗 架构全景</button>
+  <button class="tab-btn" onclick="switchTab('dataflow')">🔄 数据流</button>
+  <button class="tab-btn" onclick="switchTab('touch')">👆 触控通路</button>
+  <button class="tab-btn" onclick="switchTab('components')">🧩 组件树</button>
+  <button class="tab-btn" onclick="switchTab('files')">📁 文件结构</button>
+  <button class="tab-btn" onclick="switchTab('steps')">📋 集成步骤</button>
+  <button class="tab-btn" onclick="switchTab('risks')">⚠️ 风险</button>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 1: 架构全景 -->
+<!-- ================================================================ -->
+<div class="tab-content active" id="tab-arch">
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">🏗</span> 四层架构 <span class="num">总览</span></div>
+
+  <div class="arch">
+    <!-- RN UI Layer -->
+    <div class="arch-row">
+      <div class="arch-box rn-layer" style="flex:1">
+        <h4>📱 RN UI 层</h4>
+        <div class="item">DeepSpaceScreen <span class="hl">(三种视图状态)</span></div>
+        <div class="item">├─ 拍摄视图：预览 + 曝光/增益/叠加控件</div>
+        <div class="item">├─ <span class="hl">星图视图：StellariumOverlay</span></div>
+        <div class="item">└─ 计划视图：ShootingPlanScreen</div>
+      </div>
+    </div>
+    <div style="text-align:center;color:var(--muted);font-size:18px">↕ postMessage</div>
+    <!-- WebView Layer -->
+    <div class="arch-row">
+      <div class="arch-box wv-layer" style="flex:1">
+        <h4>🌐 WebView 层 (独立进程)</h4>
+        <div class="item">react-native-webview</div>
+        <div class="item">├─ index.html (HTML 壳)</div>
+        <div class="item">└─ JS Bridge → 指令分发</div>
+      </div>
+    </div>
+    <div style="text-align:center;color:var(--muted);font-size:18px">↕ JS API 调用</div>
+    <!-- Stellarium Engine -->
+    <div class="arch-row">
+      <div class="arch-box stel-layer" style="flex:2">
+        <h4>⭐ Stellarium Web Engine (WebAssembly)</h4>
+        <div class="item">stellarium-web-engine.js <span style="color:var(--muted)">(JS胶水)</span></div>
+        <div class="item">stellarium-web-engine.wasm <span style="color:var(--muted)">(C→WASM 计算核心)</span></div>
+        <div class="item">├─ core.observer <span style="color:var(--muted)">(观测者：指向/FOV/时间)</span></div>
+        <div class="item">├─ core.stars <span style="color:var(--muted)">(恒星模块：HiPS 星表渲染)</span></div>
+        <div class="item">├─ modules/dsos <span style="color:var(--muted)">(深空天体)</span></div>
+        <div class="item">├─ modules/constellations <span style="color:var(--muted)">(星座连线+名称)</span></div>
+        <div class="item">└─ WebGL 2.0 Canvas 渲染</div>
+      </div>
+    </div>
+    <div style="text-align:center;color:var(--muted);font-size:18px">↕ asset_set_hook / HTTP</div>
+    <!-- Data -->
+    <div class="arch-row">
+      <div class="arch-box cam-layer" style="flex:1">
+        <h4>💾 数据层</h4>
+        <div class="item">星表 (HiPS tiles, ~10MB)</div>
+        <div class="item">深空天体 (NGC/IC)</div>
+        <div class="item">星座文化数据 (western)</div>
+        <div class="item">银河巡天纹理</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">🔗</span> 与相机系统的集成点 <span class="num">拓扑</span></div>
+  <div class="legend">
+    <span><span class="dot rn"></span> React Native</span>
+    <span><span class="dot wv"></span> WebView</span>
+    <span><span class="dot stel"></span> Stellarium</span>
+    <span><span class="dot cam"></span> 相机 Linux</span>
+  </div>
+  <div class="flow">
+    <div class="flow-h">
+      <div class="flow-node cam">📷 相机<br>astrometry 盲解</div>
+      <div class="flow-arrow">──TCP──→</div>
+      <div class="flow-node rn">CameraService<br>RA/Dec 接收</div>
+      <div class="flow-arrow">──state──→</div>
+      <div class="flow-node rn">CameraContext<br>currentRaDec</div>
+      <div class="flow-arrow">──useEffect──→</div>
+      <div class="flow-node rn">StellariumOverlay<br>监听变化</div>
+      <div class="flow-arrow">──ref──→</div>
+      <div class="flow-node rn">StellariumView<br>gotoRaDec()</div>
+      <div class="flow-arrow">──postMessage──→</div>
+      <div class="flow-node wv">WebView<br>onMessage</div>
+      <div class="flow-arrow">──stel.lookAt()──→</div>
+      <div class="flow-node stel">Stellarium<br>WebGL 渲染</div>
+    </div>
+    <div class="flow-label" style="margin-top:12px">通路 1：相机解析坐标 → 星图实时指向（≥1Hz，延迟 <50ms）</div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-h">
+      <div class="flow-node rn">用户输入 "M42"</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node rn">StellariumService<br>searchTarget()</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node wv">WebView<br>postMessage</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node stel">stel.pointAndLock(obj)</div>
+    </div>
+    <div class="flow-label" style="margin-top:8px">通路 2：用户搜索天体 → 星图跳转</div>
+  </div>
+
+  <div class="flow">
+    <div class="flow-h">
+      <div class="flow-node stel">星图用户交互<br>(拖拽/缩放)</div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-node stel">Stellarium 内部<br>WebGL 渲染</div>
+    </div>
+    <div class="flow-label" style="margin-top:8px">通路 3：星图内交互 — 完全在 WebView 内闭环，不经过 RN</div>
+  </div>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 2: 数据流 -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-dataflow">
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">🔄</span> 完整数据流 <span class="num">跨进程</span></div>
+
+  <div class="card">
+    <h3>RA/Dec 坐标推送链路（逐帧跟踪）</h3>
+    <table>
+      <tr><th>步骤</th><th>位置</th><th>操作</th><th>延迟</th></tr>
+      <tr><td>1</td><td>相机 Linux</td><td>astrometry.net 盲解 → RA/Dec (7-10s/次)<br>或 ICM-42688-P 陀螺仪融合 → RA/Dec (≥10Hz)</td><td>—</td></tr>
+      <tr><td>2</td><td>CameraService.ts</td><td>TCP 接收 → 解析协议 → 更新 CameraContext</td><td>&lt;1ms</td></tr>
+      <tr><td>3</td><td>StellariumOverlay.tsx</td><td>useEffect 检测 currentRaDec 变化 → stellaRef.gotoRaDec()</td><td>React render tick</td></tr>
+      <tr><td>4</td><td>StellariumView.tsx</td><td>useImperativeHandle → send({type:'goto_radec', ra, dec})</td><td>&lt;1ms</td></tr>
+      <tr><td>5</td><td>WebView Bridge</td><td>webViewRef.postMessage(JSON.stringify(msg))</td><td>~0.1ms</td></tr>
+      <tr><td>6</td><td>HTML 壳</td><td>window.addEventListener('message') → stel.lookAt(pos, 0.5)</td><td>&lt;1ms</td></tr>
+      <tr><td>7</td><td>Stellarium Engine</td><td>四元数 slerp 平滑动画 + WebGL 渲染</td><td>1 frame (16ms)</td></tr>
+      <tr><td colspan="3" style="text-align:right;font-weight:700">端到端延迟（不含解析）</td><td><strong>&lt; 20ms</strong></td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>关键数据格式</h3>
+    <code><span class="cm">// RN → WebView (postMessage via JSON)</span>
+{ <span class="str">"type"</span>: <span class="str">"goto_radec"</span>, <span class="str">"ra"</span>: 1.533, <span class="str">"dec"</span>: -0.089, <span class="str">"duration"</span>: 0.5 }
+{ <span class="str">"type"</span>: <span class="str">"zoom_to"</span>,   <span class="str">"fov"</span>: 2.5, <span class="str">"duration"</span>: 0.3 }
+{ <span class="str">"type"</span>: <span class="str">"search_target"</span>, <span class="str">"name"</span>: <span class="str">"M42"</span> }
+{ <span class="str">"type"</span>: <span class="str">"toggle_constellations"</span>, <span class="str">"visible"</span>: true }
+
+<span class="cm">// WebView → RN</span>
+{ <span class="str">"type"</span>: <span class="str">"engine_ready"</span> }
+{ <span class="str">"type"</span>: <span class="str">"view_state"</span>, <span class="str">"fov"</span>: 1.047 }
+{ <span class="str">"type"</span>: <span class="str">"context_lost"</span> }
+{ <span class="str">"type"</span>: <span class="str">"error"</span>, <span class="str">"message"</span>: <span class="str">"..."</span> }</code>
+  </div>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 3: 触控通路 -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-touch">
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">👆</span> 触控通路分析 <span class="num">无损适配</span></div>
+
+  <div class="card">
+    <h3>问题根因：canvas.js L106 — touchstart 用了 passive:true</h3>
+    <code><span class="cm">// stellarium-web-engine/src/js/canvas.js — 当前源码</span>
+canvas.addEventListener('touchstart', <span class="kw">function</span>(e) {
+    <span class="cm">// ❌ 没有 e.preventDefault()！</span>
+    <span class="kw">for</span> (<span class="kw">var</span> i = 0; i < e.changedTouches.length; i++) {
+        <span class="kw">var</span> id = e.changedTouches[i].identifier;
+        Module._core_on_mouse(id, 1, relX, relY, 1);
+    }
+}, {<span class="diff-del">passive: true</span>});  <span class="cm">// ← iOS WKWebView 下浏览器仍会滚动/缩放</span></code>
+  </div>
+
+  <div class="card">
+    <h3>需要的修改（3处，共5行）</h3>
+    <code><span class="diff-file">// 修改1: canvas.js L98-106 — touchstart</span>
+canvas.addEventListener('touchstart', <span class="kw">function</span>(e) {
+    <span class="diff-add">e.preventDefault();  // ← 新增：阻止浏览器默认手势</span>
+    <span class="kw">for</span> (...) { ... }
+}, <span class="diff-add">{passive: false}</span>);  <span class="cm">// ← 改为 false</span>
+
+<span class="diff-file">// 修改2: canvas.js L117 — touchend</span>
+canvas.addEventListener('touchend', <span class="kw">function</span>(e) {
+    <span class="diff-add">e.preventDefault();</span>
+    <span class="kw">for</span> (...) { ... }
+}, <span class="diff-add">{passive: false}</span>);  <span class="cm">// ← 显式声明</span>
+
+<span class="diff-file">// 修改3: HTML 壳 CSS</span>
+<span class="diff-add">canvas { touch-action: none; }
+html,body { overscroll-behavior: none; overflow: hidden; position: fixed; }</span></code>
+  </div>
+
+  <div class="card">
+    <h3>RN WebView 配置</h3>
+    <code><span class="kw">&lt;WebView</span>
+    <span class="fn">scrollEnabled</span>={<span class="kw">false</span>}          <span class="cm">// 禁止 WebView 滚动</span>
+    <span class="fn">bounces</span>={<span class="kw">false</span>}                <span class="cm">// iOS：禁止回弹</span>
+    <span class="fn">overScrollMode</span>=<span class="str">"never"</span>         <span class="cm">// Android：禁止过度滚动</span>
+    <span class="fn">allowsBackForwardNavigationGestures</span>={<span class="kw">false</span>}  <span class="cm">// iOS：禁止滑动返回</span>
+    <span class="fn">setBuiltInZoomControls</span>={<span class="kw">false</span>}   <span class="cm">// Android：禁止内置缩放</span>
+    <span class="fn">androidLayerType</span>=<span class="str">"hardware"</span>    <span class="cm">// 强制硬件加速</span>
+<span class="kw">/></span></code>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>触摸流转</h3>
+      <div style="font-size:12px;line-height:2">
+        <div>👆 手指触摸 WebView</div>
+        <div style="padding-left:16px">├─ RN Overlay View <span style="color:var(--accent)">onStartShouldSetResponder → true</span></div>
+        <div style="padding-left:16px">├─ 触摸传到 WebView 内</div>
+        <div style="padding-left:32px">├─ canvas touchstart <span style="color:var(--green)">{passive:false}</span></div>
+        <div style="padding-left:32px">│  └─ e.preventDefault() — 阻止 WebView 默认手势</div>
+        <div style="padding-left:32px">├─ canvas touchmove → _core_on_mouse() — 拖拽星图</div>
+        <div style="padding-left:32px">└─ canvas touchend → _core_on_mouse() — 结束拖拽</div>
+        <div style="padding-left:16px">└─ ⚠️ 不传到 RN 导航系统</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>按钮触摸（不穿透）</h3>
+      <div style="font-size:12px;line-height:2">
+        <div>👆 手指触摸 "← 返回拍摄" 按钮</div>
+        <div style="padding-left:16px">├─ RN TouchableOpacity 消费事件</div>
+        <div style="padding-left:16px">├─ 不传到 WebView</div>
+        <div style="padding-left:16px">└─ onPress → setView('shooting')</div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 4: 组件树 -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-components">
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">🧩</span> 组件树 <span class="num">新增 vs 修改</span></div>
+
+  <div class="card">
+    <h3>完整组件树（集成后）</h3>
+    <div style="font-family:monospace;font-size:12px;line-height:1.8;padding:12px;background:var(--code-bg);border-radius:10px">
+      <div>App.tsx</div>
+      <div style="padding-left:16px">├── CameraContext.Provider</div>
+      <div style="padding-left:16px">├── <span style="color:var(--accent)">StellariumView (预加载)</span> <span style="color:var(--green)">← 🆕 opacity:0, pointerEvents:none</span></div>
+      <div style="padding-left:16px">└── NavigationContainer</div>
+      <div style="padding-left:32px">└── BottomTabNavigator</div>
+      <div style="padding-left:48px">├── 📷 拍摄 Tab</div>
+      <div style="padding-left:64px">│   └── StackNavigator</div>
+      <div style="padding-left:80px">│       └── ShootingScreen</div>
+      <div style="padding-left:96px">│           ├── LandscapeControls (风光)</div>
+      <div style="padding-left:96px">│           ├── PlanetaryControls (行星)</div>
+      <div style="padding-left:96px">│           └── DeepSpaceControls (深空)</div>
+      <div style="padding-left:112px">│               ├── PreviewArea</div>
+      <div style="padding-left:112px">│               ├── DeepSpaceControls</div>
+      <div style="padding-left:112px">│               ├── BottomActionBar [🔭解析][<span style="color:var(--accent)">🌐星图</span>][📋计划] <span style="color:var(--yellow)">← 修改: 增加星图按钮</span></div>
+      <div style="padding-left:112px">│               └── <span style="color:var(--accent)">StellariumOverlay</span> <span style="color:var(--green)">← 🆕 全屏覆盖层</span></div>
+      <div style="padding-left:128px">│                   ├── <span style="color:var(--accent)">StellariumView</span> <span style="color:var(--green)">← 🆕 WebView 封装</span></div>
+      <div style="padding-left:128px">│                   ├── BackButton (← 返回拍摄)</div>
+      <div style="padding-left:128px">│                   └── StellariumToolbar (星座/搜索/全景)</div>
+      <div style="padding-left:48px">├── 🖼️ 相册 Tab (不变)</div>
+      <div style="padding-left:48px">└── ⚙️ 设置 Tab (不变)</div>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3>🆕 新增文件</h3>
+      <table>
+        <tr><th>文件</th><th>职责</th></tr>
+        <tr><td>components/stellar/StellariumView.tsx</td><td>WebView 封装，暴露 ref API</td></tr>
+        <tr><td>components/stellar/StellariumOverlay.tsx</td><td>全屏覆盖层 + 工具栏 + RA/Dec 自动跟踪</td></tr>
+        <tr><td>services/StellariumService.ts</td><td>postMessage TypeScript 类型封装</td></tr>
+        <tr><td>assets/stellar/index.html</td><td>HTML 壳 + StelWebEngine 初始化</td></tr>
+        <tr><td>assets/stellar/data/</td><td>星表 + 星座 + DSO 数据</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>✏️ 修改文件</h3>
+      <table>
+        <tr><th>文件</th><th>改动</th></tr>
+        <tr><td>screens/DeepSpaceScreen.tsx</td><td>增加 view 状态(shooting/stellarium/plan) + StellariumOverlay</td></tr>
+        <tr><td>contexts/CameraContext.tsx</td><td>增加 showStellarium 字段</td></tr>
+        <tr><td>App.tsx</td><td>增加预加载 StellariumView（可选）</td></tr>
+        <tr><td style="color:var(--yellow)">stellarium-web-engine/src/js/canvas.js</td><td>touchstart/touchend passive 修复</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 5: 文件结构 -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-files">
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">📁</span> 完整文件结构 <span class="num">集成后</span></div>
+
+  <div class="card">
+    <h3>RN 项目文件树</h3>
+    <div style="font-family:monospace;font-size:11px;line-height:1.7;padding:12px;background:var(--code-bg);border-radius:10px;overflow-x:auto">
+      <div>HXYCamApp/</div>
+      <div style="padding-left:16px">├── src/</div>
+      <div style="padding-left:32px">│   ├── components/</div>
+      <div style="padding-left:48px">│   │   ├── stellar/              <span style="color:var(--green)">← 🆕 星图组件</span></div>
+      <div style="padding-left:64px">│   │   │   ├── StellariumView.tsx</div>
+      <div style="padding-left:64px">│   │   │   └── StellariumOverlay.tsx</div>
+      <div style="padding-left:48px">│   │   ├── landscape/</div>
+      <div style="padding-left:48px">│   │   ├── planetary/</div>
+      <div style="padding-left:48px">│   │   ├── deepspace/</div>
+      <div style="padding-left:48px">│   │   └── album/</div>
+      <div style="padding-left:32px">│   ├── screens/</div>
+      <div style="padding-left:48px">│   │   └── DeepSpaceScreen.tsx    <span style="color:var(--yellow)">← 修改</span></div>
+      <div style="padding-left:32px">│   ├── services/</div>
+      <div style="padding-left:48px">│   │   ├── CameraService.ts</div>
+      <div style="padding-left:48px">│   │   ├── StreamService.ts</div>
+      <div style="padding-left:48px">│   │   ├── HeartbeatService.ts</div>
+      <div style="padding-left:48px">│   │   └── StellariumService.ts   <span style="color:var(--green)">← 🆕</span></div>
+      <div style="padding-left:32px">│   ├── contexts/</div>
+      <div style="padding-left:48px">│   │   └── CameraContext.tsx      <span style="color:var(--yellow)">← 修改</span></div>
+      <div style="padding-left:32px">│   ├── assets/</div>
+      <div style="padding-left:48px">│   │   └── stellar/              <span style="color:var(--green)">← 🆕 静态文件</span></div>
+      <div style="padding-left:64px">│   │       ├── index.html</div>
+      <div style="padding-left:64px">│   │       ├── stellarium-web-engine.js</div>
+      <div style="padding-left:64px">│   │       ├── stellarium-web-engine.wasm</div>
+      <div style="padding-left:64px">│   │       └── data/</div>
+      <div style="padding-left:80px">│   │           ├── stars/</div>
+      <div style="padding-left:80px">│   │           ├── dso/</div>
+      <div style="padding-left:80px">│   │           ├── skycultures/</div>
+      <div style="padding-left:80px">│   │           └── surveys/</div>
+      <div style="padding-left:32px">│   └── App.tsx                   <span style="color:var(--yellow)">← 修改</span></div>
+      <div style="padding-left:16px">├── android/app/src/main/assets/stellar/  <span style="color:var(--green)">← 🆕 复制</span></div>
+      <div style="padding-left:16px">├── ios/HXYCamApp/stellar/               <span style="color:var(--green)">← 🆕 复制</span></div>
+      <div style="padding-left:16px">├── package.json                <span style="color:var(--yellow)">← 增加 react-native-webview + 复制脚本</span></div>
+      <div style="padding-left:16px">└── tsconfig.json</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>编译产物体积</h3>
+    <table>
+      <tr><th>文件</th><th>体积</th><th>说明</th></tr>
+      <tr><td>stellarium-web-engine.js</td><td>2~5 MB</td><td>JS 胶水代码 + API</td></tr>
+      <tr><td>stellarium-web-engine.wasm</td><td>5~15 MB</td><td>C 引擎 → WebAssembly</td></tr>
+      <tr><td>data/stars/ (HiPS tiles)</td><td>~10 MB</td><td>Hipparcos 亮星星表</td></tr>
+      <tr><td>data/dso/</td><td>~1 MB</td><td>NGC/IC 深空天体</td></tr>
+      <tr><td>data/skycultures/</td><td>~0.5 MB</td><td>星座连线数据</td></tr>
+      <tr><td>data/surveys/</td><td>~3 MB</td><td>银河巡天纹理</td></tr>
+      <tr style="font-weight:700"><td>APK/IPA 增量</td><td>~20-30 MB</td><td>压缩后实际增量</td></tr>
+      <tr style="font-weight:700"><td>运行时内存</td><td>~60-110 MB</td><td>WASM + 星表 + WebView + WebGL</td></tr>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 6: 集成步骤 -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-steps">
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">📋</span> 集成步骤 <span class="num">4 Phase</span></div>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <h4>Phase 0 — 可行性验证（1-2天）</h4>
+      <p>
+        □ 安装 Emscripten SDK + 编译 Stellarium → make js<br>
+        □ 桌面浏览器验证 demo → apps/simple-html/<br>
+        □ 创建 RN 项目 + react-native-webview<br>
+        □ 编译产物放入 assets → WebView 加载 → 手机看到星空<br>
+        □ postMessage 双向通信测试<br>
+        <strong>通过标准：手机上 WebView 渲染出星空</strong>
+      </p>
+    </div>
+
+    <div class="timeline-item">
+      <h4>Phase 1 — JS Bridge + HTML 壳（2-3天）</h4>
+      <p>
+        □ 修改 canvas.js touchstart passive 问题（5行）→ 重编译<br>
+        □ 编写 HTML 壳 (index.html)<br>
+        &nbsp;&nbsp;├ StelWebEngine 初始化 + 模块开关配置<br>
+        &nbsp;&nbsp;├ asset_set_hook 离线数据拦截<br>
+        &nbsp;&nbsp;├ postMessage 指令处理 (goto_radec/zoom_to/search)<br>
+        &nbsp;&nbsp;└ context lost/restore 监听<br>
+        □ 编写 StellariumView.tsx (WebView 封装 + forwardRef)<br>
+        □ 编写 StellariumService.ts (postMessage 封装)<br>
+        □ 裁剪星表数据 → 只保留需要的模块<br>
+        □ 硬编码 RA/Dec 测试 → 星图正确指向
+      </p>
+    </div>
+
+    <div class="timeline-item">
+      <h4>Phase 2 — 深空页面集成（1-2天）</h4>
+      <p>
+        □ DeepSpaceScreen 增加 view 状态 (shooting/stellarium/plan)<br>
+        □ 底部按钮行增加 "🌐星图"<br>
+        □ StellariumOverlay 实现（半透明返回按钮 + 底部工具栏）<br>
+        □ CameraContext.currentRaDec → useEffect → gotoRaDec 自动跟踪<br>
+        □ WebView 预加载（进入深空模式时后台初始化）<br>
+        □ 双平台文件复制（Android assets / iOS Bundle）<br>
+        □ iOS + Android 真机基础测试
+      </p>
+    </div>
+
+    <div class="timeline-item">
+      <h4>Phase 3 — 体验优化（1-2天）</h4>
+      <p>
+        □ 天体搜索功能 (searchTarget → pointAndLock)<br>
+        □ 星座连线/名称开关<br>
+        □ FOV 视场框设置（根据传感器+焦距）<br>
+        □ 冷启动 loading 动画<br>
+        □ 前后台切换稳定性测试<br>
+        □ WebGL 2.0 检测 + 降级提示<br>
+        □ 低端设备性能测试<br>
+        □ 验收标准通过
+      </p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 7: 风险 -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-risks">
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">⚠️</span> 风险清单 <span class="num">含缓解方案</span></div>
+
+  <table>
+    <tr><th>风险</th><th>概率</th><th>影响</th><th>缓解</th></tr>
+    <tr>
+      <td>iOS WebGL Context Lost（后台切前台）</td>
+      <td style="color:var(--yellow)">中</td>
+      <td style="color:var(--yellow)">中 — 白屏/黑屏</td>
+      <td>webglcontextlost 事件 → 提示用户 + reload</td>
+    </tr>
+    <tr>
+      <td>Android 低端机 WebGL 2.0 不支持</td>
+      <td style="color:var(--green)">低</td>
+      <td style="color:var(--red)">高 — 无法运行</td>
+      <td>WebGL 2.0 检测 → 降级提示</td>
+    </tr>
+    <tr>
+      <td>WASM 编译环境搭建失败</td>
+      <td style="color:var(--green)">低</td>
+      <td style="color:var(--yellow)">中 — 阻塞</td>
+      <td>Emscripten 官方 Docker 镜像备选</td>
+    </tr>
+    <tr>
+      <td>星表离线加载走不通</td>
+      <td style="color:var(--yellow)">中</td>
+      <td style="color:var(--red)">高 — 无星图</td>
+      <td>Phase 0 必验证；备选本地 HTTP server</td>
+    </tr>
+    <tr>
+      <td>WebView 内存泄漏（反复切换）</td>
+      <td style="color:var(--green)">低</td>
+      <td style="color:var(--green)">低</td>
+      <td>预加载单例 + 退出深空模式时不卸载 WebView</td>
+    </tr>
+    <tr>
+      <td>华为/小米 WebView 内核差异</td>
+      <td style="color:var(--yellow)">中</td>
+      <td style="color:var(--yellow)">中</td>
+      <td>androidLayerType="hardware" + 多机型测试</td>
+    </tr>
+    <tr>
+      <td>AGPLv3 许可证风险</td>
+      <td style="color:var(--green)">低</td>
+      <td style="color:var(--red)">高 — 法务</td>
+      <td>法务评估；WebView 隔离 + 不改 Stellarium 源码(仅改 JS 壳)</td>
+    </tr>
+    <tr>
+      <td>冷启动 3s+ 用户可感知等待</td>
+      <td style="color:var(--red)">高</td>
+      <td style="color:var(--green)">低</td>
+      <td>预加载 + loading 动画</td>
+    </tr>
+  </table>
+</div>
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">📱</span> 需要验证的设备</div>
+  <div class="card-grid">
+    <div class="card">
+      <h3>iOS</h3>
+      <ul class="checklist">
+        <li><span class="box"></span> iPhone 14 Pro (A16) — 主力测试</li>
+        <li><span class="box"></span> iPhone XS (A12) — WebGL 2.0 最低支持</li>
+        <li><span class="box risk"></span> iPhone X (A11) — 确认降级提示</li>
+        <li><span class="box"></span> iOS 15 / 16 / 17 — 版本覆盖</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Android</h3>
+      <ul class="checklist">
+        <li><span class="box"></span> 三星 S23/S24 — 主力测试</li>
+        <li><span class="box"></span> 小米 13/14 — 国内主流</li>
+        <li><span class="box risk"></span> 华为 (HarmonyOS) — WebView 差异</li>
+        <li><span class="box risk"></span> 低端 (3GB RAM) — 内存压力</li>
+        <li><span class="box"></span> Android 12/13/14 — 版本覆盖</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sec-title"><span class="icon">✅</span> 验收标准</div>
+  <ul class="checklist">
+    <li><span class="box"></span> 点击星图 → 1s 内显示星空（预加载后瞬间）</li>
+    <li><span class="box"></span> 单指拖拽 → 丝滑跟手，无页面滚动</li>
+    <li><span class="box"></span> 双指缩放 → FOV 自适应，星点数量变化</li>
+    <li><span class="box"></span> 解析 RA/Dec → 星图中心自动跟踪（<1s）</li>
+    <li><span class="box"></span> 飞行模式 → 星图正常工作</li>
+    <li><span class="box"></span> 拍摄⇔星图切换 20 次 → 无崩溃</li>
+    <li><span class="box"></span> 后台→前台 → 正常恢复（无白屏）</li>
+    <li><span class="box"></span> iOS + Android 双平台通过</li>
+  </ul>
+</div>
+</div>
+
+</div><!-- .container -->
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`.tab-btn[onclick*="${name}"]`)?.classList.add('active');
+  document.getElementById('tab-' + name)?.classList.add('active');
+}
+
+// click checklist boxes
+document.querySelectorAll('.checklist .box').forEach(box => {
+  box.addEventListener('click', () => box.classList.toggle('done'));
+});
+</script>
+</body>
+</html>
