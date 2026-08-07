@@ -1,9 +1,9 @@
 import type { SvgProps } from 'react-native-svg';
 import Svg, { Path } from 'react-native-svg';
 
-interface XProps extends Omit<SvgProps, 'width' | 'height'> {
+type XProps = {
   size?: number;
-}
+} & Omit<SvgProps, 'width' | 'height'>;
 
 export function X({ color = '#000', size = 24, ...props }: XProps) {
   return (

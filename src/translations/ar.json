@@ -108,6 +108,21 @@
   "download": {
     "title": "جارٍ التحميل..."
   },
+  "home": {
+    "battery_level": "مستوى البطارية",
+    "connect_device": "توصيل الجهاز",
+    "connect_hint": "قم بتوصيل الكاميرا للبدء في التصوير",
+    "device_connected": "الجهاز متصل",
+    "device_not_connected": "الجهاز غير متصل",
+    "mode_album": "الألبوم",
+    "mode_landscape": "وضع المناظر الطبيعية",
+    "mode_planet": "فيديو الكوكب",
+    "mode_starry": "وضع السماء المرصعة بالنجوم",
+    "shooting_modes": "أوضاع التصوير",
+    "storage_remaining": "المساحة المتبقية",
+    "title": "الصفحة الرئيسية",
+    "wifi_camera": "كاميرا Wi-Fi"
+  },
   "login": {
     "email_label": "البريد الإلكتروني / الهاتف",
     "password_label": "كلمة المرور",
@@ -171,8 +186,8 @@
     "camera_serial": "الرقم التسلسلي",
     "camera_version": "إصدار البرنامج الثابت",
     "change_wifi_password": "تغيير كلمة مرور Wi-Fi",
-    "connect_camera": "اتصال الكاميرا",
     "chinese": "صيني",
+    "connect_camera": "اتصال الكاميرا",
     "english": "إنجليزي",
     "generale": "عام",
     "github": "جيثب",

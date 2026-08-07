@@ -1,1 +1,1 @@
-export { OtaScreen as default } from '@/features/settings/screens/ota-screen';
+export { default } from '@/features/settings/screens/ota-screen';

@@ -16,7 +16,6 @@ import {
   Support,
   Website,
 } from '@/components/ui/icons';
-import { useAuthStore as useAuth } from '@/features/auth/use-auth-store';
 import { useCameraStore } from '@/features/camera/camera-store';
 import { translate } from '@/lib/i18n';
 import { LanguageItem } from './components/language-item';
@@ -25,7 +24,6 @@ import { SettingsItem } from './components/settings-item';
 import { ThemeItem } from './components/theme-item';
 
 export default function SettingsScreen() {
-  const signOut = useAuth.use.signOut();
   const router = useRouter();
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
@@ -61,7 +59,7 @@ export default function SettingsScreen() {
               <SettingsContainer>
                 <SettingsItem
                   text="settings.connect_camera"
-                  onPress={() => router.push('/device-setup')}
+                  onPress={() => router.push('/')}
                 />
               </SettingsContainer>
             )}
@@ -125,12 +123,6 @@ export default function SettingsScreen() {
                 onPress={() => {}}
               />
             </SettingsContainer>
-
-            <View className="my-8">
-              <SettingsContainer>
-                <SettingsItem text="settings.logout" onPress={signOut} />
-              </SettingsContainer>
-            </View>
           </View>
         </ScrollView>
       </View>

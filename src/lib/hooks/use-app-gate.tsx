@@ -11,31 +11,22 @@
  *
  * Gate priority (first match wins):
  *   1. First launch              -> /onboarding
- *   2. Signed out                -> /login
- *   3. No bound device           -> /device-setup
- *   4. otherwise                 -> the tab navigator
+ *   2. otherwise                 -> the tab navigator
+ *
+ * Note: Login/auth flow has been removed. Users go directly from onboarding to main app.
+ * Note: Device connection is now handled via modal on the home screen.
  */
-import { useAuthStore } from '@/features/auth/use-auth-store';
-import { useBoundDeviceId } from '@/features/device/use-device-store';
 import { useIsFirstTime } from '@/lib/hooks/use-is-first-time';
 
 export type AppDestination
-  = | { kind: 'redirect'; href: '/onboarding' | '/login' | '/device-setup' }
+  = | { kind: 'redirect'; href: '/onboarding' }
     | { kind: 'tabs' };
 
 export function useAppGate(): AppDestination {
-  const status = useAuthStore.use.status();
   const [isFirstTime] = useIsFirstTime();
-  const [boundDeviceId] = useBoundDeviceId();
 
   if (isFirstTime) {
     return { kind: 'redirect', href: '/onboarding' };
-  }
-  if (status === 'signOut') {
-    return { kind: 'redirect', href: '/login' };
-  }
-  if (boundDeviceId === undefined) {
-    return { kind: 'redirect', href: '/device-setup' };
   }
   return { kind: 'tabs' };
 }

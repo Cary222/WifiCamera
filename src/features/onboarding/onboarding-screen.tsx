@@ -9,12 +9,14 @@ import {
   Text,
   View,
 } from '@/components/ui';
+import { useAuthStore } from '@/features/auth/use-auth-store';
 import { useIsFirstTime } from '@/lib/hooks';
 
 const WELCOME_BG = require('../../../assets/welcomebackground.png');
 
 export function OnboardingScreen() {
   const [_, setIsFirstTime] = useIsFirstTime();
+  const signIn = useAuthStore.use.signIn();
   const router = useRouter();
   return (
     <View className="relative size-full bg-black">
@@ -41,7 +43,9 @@ export function OnboardingScreen() {
           label="Let's Get Started "
           onPress={() => {
             setIsFirstTime(false);
-            router.replace('/login');
+            // 自动设置为已登录状态，无需真实 token
+            signIn({ access: 'auto-signin', refresh: 'auto-signin' });
+            router.replace('/(app)');
           }}
         />
       </SafeAreaView>

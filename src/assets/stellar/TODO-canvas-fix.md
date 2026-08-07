@@ -48,29 +48,29 @@ iOS WKWebView receives touchstart
 
 **Before:**
 ```javascript
-canvas.addEventListener('touchstart', function(e) {
-    var rect = canvas.getBoundingClientRect();
-    for (var i = 0; i < e.changedTouches.length; i++) {
-        var id = e.changedTouches[i].identifier;
-        var relX = e.changedTouches[i].pageX - rect.left;
-        var relY = e.changedTouches[i].pageY - rect.top;
-        Module._core_on_mouse(id, 1, relX, relY, 1);
-    }
-}, {passive: true});
+canvas.addEventListener('touchstart', (e) => {
+  let rect = canvas.getBoundingClientRect();
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    let id = e.changedTouches[i].identifier;
+    let relX = e.changedTouches[i].pageX - rect.left;
+    let relY = e.changedTouches[i].pageY - rect.top;
+    Module._core_on_mouse(id, 1, relX, relY, 1);
+  }
+}, { passive: true });
 ```
 
 **After:**
 ```javascript
-canvas.addEventListener('touchstart', function(e) {
-    e.preventDefault();  // ← ADD: Prevent browser default gestures
-    var rect = canvas.getBoundingClientRect();
-    for (var i = 0; i < e.changedTouches.length; i++) {
-        var id = e.changedTouches[i].identifier;
-        var relX = e.changedTouches[i].pageX - rect.left;
-        var relY = e.changedTouches[i].pageY - rect.top;
-        Module._core_on_mouse(id, 1, relX, relY, 1);
-    }
-}, {passive: false});  // ← CHANGE: false allows preventDefault()
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault(); // ← ADD: Prevent browser default gestures
+  let rect = canvas.getBoundingClientRect();
+  for (let i = 0; i < e.changedTouches.length; i++) {
+    let id = e.changedTouches[i].identifier;
+    let relX = e.changedTouches[i].pageX - rect.left;
+    let relY = e.changedTouches[i].pageY - rect.top;
+    Module._core_on_mouse(id, 1, relX, relY, 1);
+  }
+}, { passive: false }); // ← CHANGE: false allows preventDefault()
 ```
 
 ---
@@ -79,17 +79,17 @@ canvas.addEventListener('touchstart', function(e) {
 
 **Before:**
 ```javascript
-canvas.addEventListener('touchend', function(e) {
-    // ... existing logic ...
+canvas.addEventListener('touchend', (e) => {
+  // ... existing logic ...
 });
 ```
 
 **After:**
 ```javascript
-canvas.addEventListener('touchend', function(e) {
-    e.preventDefault();  // ← ADD: Prevent browser default gestures
-    // ... existing logic ...
-}, {passive: false});  // ← ADD: Explicit passive:false
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault(); // ← ADD: Prevent browser default gestures
+  // ... existing logic ...
+}, { passive: false }); // ← ADD: Explicit passive:false
 ```
 
 ---
