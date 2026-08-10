@@ -1,1 +1,3 @@
+# Change comment char so #10193 is not stripped by git
+git config --local core.commentChar '!'
 pnpm commitlint --edit $1

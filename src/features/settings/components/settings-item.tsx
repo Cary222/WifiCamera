@@ -1,7 +1,6 @@
 import type { TxKeyPath } from '@/lib/i18n';
 
 import * as React from 'react';
-import { useUniwind } from 'uniwind';
 import { Pressable, Text, View } from '@/components/ui';
 import { ArrowRight } from '@/components/ui/icons';
 
@@ -14,24 +13,21 @@ type ItemProps = {
 
 export function SettingsItem({ text, value, icon, onPress }: ItemProps) {
   const isPressable = onPress !== undefined;
-  const { theme } = useUniwind();
-  const isDark = theme === 'dark';
-  const arrowColor = isDark ? '#CCCCCC' : '#999999';
   return (
     <Pressable
       onPress={onPress}
       pointerEvents={isPressable ? 'auto' : 'none'}
-      className="flex-1 flex-row items-center justify-between px-4 py-2"
+      className="min-h-[68px] flex-row items-center justify-between px-6"
     >
       <View className="flex-row items-center">
-        {icon && <View className="pr-2">{icon}</View>}
-        <Text tx={text} />
+        {icon && <View className="mr-3">{icon}</View>}
+        <Text className="text-[15px] text-black dark:text-white" tx={text} />
       </View>
       <View className="flex-row items-center">
-        <Text className="text-neutral-600 dark:text-neutral-300">{value}</Text>
+        {value && <Text className="max-w-[150px] text-right text-[12px] text-neutral-500 dark:text-charcoal-300">{value}</Text>}
         {isPressable && (
-          <View className="pl-2">
-            <ArrowRight color={arrowColor} />
+          <View className="ml-3">
+            <ArrowRight color="#C8E733" />
           </View>
         )}
       </View>

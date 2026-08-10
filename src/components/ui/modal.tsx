@@ -38,7 +38,9 @@ import * as React from 'react';
 import { Pressable, View } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { Path, Svg } from 'react-native-svg';
+import { useUniwind } from 'uniwind';
 
+import colors from './colors';
 import { Text } from './text';
 
 type ModalProps = BottomSheetModalProps & {
@@ -63,13 +65,25 @@ export function useModal() {
   return { ref, present, dismiss };
 }
 
-export function Modal({ ref, snapPoints: _snapPoints = ['60%'] as (string | number)[], title, detached = false, ...props }: ModalProps & { ref?: ModalRef }) {
+export function Modal({ ref, snapPoints: _snapPoints = ['60%'] as (string | number)[], title, detached = false, backgroundStyle: backgroundStyleProp, ...props }: ModalProps & { ref?: ModalRef }) {
   const detachedProps = React.useMemo(
     () => getDetachedProps(detached),
     [detached],
   );
   const modal = useModal();
   const snapPoints = React.useMemo(() => _snapPoints, [_snapPoints]);
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+  const themeBackgroundStyle = React.useMemo(
+    () => ({
+      backgroundColor: isDark ? colors.charcoal[950] : colors.white,
+    }),
+    [isDark],
+  );
+  const backgroundStyle = React.useMemo(
+    () => [themeBackgroundStyle, backgroundStyleProp],
+    [themeBackgroundStyle, backgroundStyleProp],
+  );
 
   React.useImperativeHandle(
     ref,
@@ -96,6 +110,7 @@ export function Modal({ ref, snapPoints: _snapPoints = ['60%'] as (string | numb
       backdropComponent={props.backdropComponent || renderBackdrop}
       enableDynamicSizing={false}
       handleComponent={renderHandleComponent}
+      backgroundStyle={backgroundStyle}
     />
   );
 }
@@ -153,7 +168,7 @@ const ModalHeader = React.memo(({ title, dismiss }: ModalHeaderProps) => {
         <View className="flex-row px-2 py-4">
           <View className="size-6" />
           <View className="flex-1">
-            <Text className="text-center text-[16px] font-bold text-[#26313D] dark:text-white">
+            <Text className="text-center text-[16px] font-bold text-black dark:text-white">
               {title}
             </Text>
           </View>

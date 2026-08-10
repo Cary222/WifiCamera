@@ -182,6 +182,7 @@
     "about": "About",
     "app_name": "App Name",
     "arabic": "Arabic",
+    "camera_disconnected": "Device not connected",
     "camera_info": "Camera Info",
     "camera_serial": "Serial Number",
     "camera_version": "Firmware Version",
@@ -189,6 +190,7 @@
     "chinese": "Chinese",
     "connect_camera": "Connect Camera",
     "english": "English",
+    "firmware": "Device Firmware",
     "generale": "General",
     "github": "Github",
     "language": "Language",
@@ -198,6 +200,7 @@
     "ota": "Firmware Update",
     "privacy": "Privacy Policy",
     "rate": "Rate",
+    "reset_camera": "Reset Device",
     "share": "Share",
     "support": "Support",
     "support_us": "Support Us",
@@ -210,7 +213,10 @@
     },
     "title": "Settings",
     "version": "Version",
-    "website": "Website"
+    "website": "Website",
+    "wifi": "Wi-Fi Settings",
+    "wifi_band": "Device Wi-Fi Band",
+    "wifi_band_hint": "The camera will reconnect after switching"
   },
   "weather": {
     "all_metrics": "All Metrics",

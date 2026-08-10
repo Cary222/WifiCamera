@@ -182,6 +182,7 @@
     "about": "حول التطبيق ",
     "app_name": "اسم التطبيق",
     "arabic": "عربي",
+    "camera_disconnected": "الجهاز غير متصل",
     "camera_info": "معلومات الكاميرا",
     "camera_serial": "الرقم التسلسلي",
     "camera_version": "إصدار البرنامج الثابت",
@@ -189,6 +190,7 @@
     "chinese": "صيني",
     "connect_camera": "اتصال الكاميرا",
     "english": "إنجليزي",
+    "firmware": "برنامج الجهاز الثابت",
     "generale": "عام",
     "github": "جيثب",
     "language": "لغة",
@@ -198,6 +200,7 @@
     "ota": "تحديث البرنامج الثابت",
     "privacy": "سياسة الخصوصية",
     "rate": "تقييم",
+    "reset_camera": "إعادة ضبط الجهاز",
     "share": "شارك",
     "support": "الدعم",
     "support_us": "ادعمنا",
@@ -210,7 +213,10 @@
     },
     "title": "إعدادات",
     "version": "إصدار",
-    "website": "موقع الكتروني"
+    "website": "موقع الكتروني",
+    "wifi": "إعدادات Wi-Fi",
+    "wifi_band": "نطاق Wi-Fi للجهاز",
+    "wifi_band_hint": "سيعاد الاتصال بعد التبديل"
   },
   "weather": {
     "all_metrics": "جميع المقاييس",

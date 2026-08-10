@@ -182,6 +182,7 @@
     "about": "关于",
     "app_name": "应用名称",
     "arabic": "阿拉伯语",
+    "camera_disconnected": "设备未连接",
     "camera_info": "相机信息",
     "camera_serial": "序列号",
     "camera_version": "固件版本",
@@ -189,6 +190,7 @@
     "chinese": "中文",
     "connect_camera": "连接相机",
     "english": "英语",
+    "firmware": "设备固件",
     "generale": "通用",
     "github": "Github",
     "language": "语言",
@@ -198,6 +200,7 @@
     "ota": "固件更新",
     "privacy": "隐私政策",
     "rate": "评分",
+    "reset_camera": "重置设备",
     "share": "分享",
     "support": "支持",
     "support_us": "支持我们",
@@ -210,7 +213,10 @@
     },
     "title": "设置",
     "version": "版本",
-    "website": "官网"
+    "website": "官网",
+    "wifi": "Wi-Fi 设置",
+    "wifi_band": "设备Wi-Fi 频段",
+    "wifi_band_hint": "切换后将重新连接"
   },
   "weather": {
     "all_metrics": "综合指标",

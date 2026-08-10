@@ -13,11 +13,13 @@ import {
 import { useAppGate } from '@/lib/hooks/use-app-gate';
 import { translate } from '@/lib/i18n';
 
-function renderTabBarLabel(label: string) {
+function renderTabBarLabel(label: string, isDark: boolean) {
   return ({ focused }: { focused: boolean }) => (
     <Text
       style={{
-        color: '#FFFFFF',
+        color: isDark
+          ? (focused ? '#FFFFFF' : 'rgba(255, 255, 255, 0.55)')
+          : (focused ? '#0A0B0D' : 'rgba(10, 11, 13, 0.55)'),
         fontSize: 12,
         fontWeight: focused ? 'bold' : '100',
       }}
@@ -53,7 +55,8 @@ export default function TabLayout() {
         headerShown: false,
         tabBarStyle: {
           backgroundColor: isDark ? '#0A0B0D' : '#FFFFFF',
-          borderTopWidth: 0,
+          borderTopWidth: 0.5,
+          borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(10, 11, 13, 0.08)',
           paddingBottom: Math.max(insets.bottom, 8),
           paddingTop: 8,
           height: 64 + Math.max(insets.bottom, 8),
@@ -65,7 +68,7 @@ export default function TabLayout() {
         options={{
           title: translate('home.title'),
           tabBarIcon: ({ focused }) => <HomeFilled focused={focused} />,
-          tabBarLabel: renderTabBarLabel(translate('home.title')),
+          tabBarLabel: renderTabBarLabel(translate('home.title'), isDark),
           tabBarButtonTestID: 'home-tab',
         }}
       />
@@ -75,7 +78,7 @@ export default function TabLayout() {
         options={{
           title: translate('deep_space.title'),
           tabBarIcon: ({ focused }) => <StarmapFilled focused={focused} />,
-          tabBarLabel: renderTabBarLabel(translate('deep_space.title')),
+          tabBarLabel: renderTabBarLabel(translate('deep_space.title'), isDark),
           tabBarButtonTestID: 'deep-space-tab',
         }}
       />
@@ -85,7 +88,7 @@ export default function TabLayout() {
         options={{
           title: translate('settings.title'),
           tabBarIcon: ({ focused }) => <SettingsFilled focused={focused} />,
-          tabBarLabel: renderTabBarLabel(translate('settings.title')),
+          tabBarLabel: renderTabBarLabel(translate('settings.title'), isDark),
           tabBarButtonTestID: 'settings-tab',
         }}
       />

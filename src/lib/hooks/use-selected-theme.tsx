@@ -6,6 +6,17 @@ import { storage } from '../storage';
 import { STORAGE_KEYS } from '../storage-keys';
 
 export type ColorSchemeType = 'light' | 'dark' | 'system';
+
+const DEFAULT_THEME: ColorSchemeType = 'dark';
+
+function readPersistedTheme(): ColorSchemeType {
+  const raw = storage.getString(STORAGE_KEYS.SELECTED_THEME);
+  if (raw === 'light' || raw === 'dark' || raw === 'system') {
+    return raw;
+  }
+  return DEFAULT_THEME;
+}
+
 /**
  * this hooks should only be used while selecting the theme
  * This hooks will return the selected theme which is stored in MMKV
@@ -25,12 +36,12 @@ export function useSelectedTheme() {
     [_setTheme],
   );
 
-  const selectedTheme = (theme ?? 'dark') as ColorSchemeType;
+  const selectedTheme = ((theme as ColorSchemeType | undefined) ?? DEFAULT_THEME);
   return { selectedTheme, setSelectedTheme } as const;
 }
 // to be used in the root file to load the selected theme from MMKV
 export function loadSelectedTheme() {
-  // Clear old stored value and default to dark theme
-  storage.remove(STORAGE_KEYS.SELECTED_THEME);
-  Uniwind.setTheme('dark');
+  // Restore the user's previously selected theme so it survives app restarts.
+  const persisted = readPersistedTheme();
+  Uniwind.setTheme(persisted);
 }
