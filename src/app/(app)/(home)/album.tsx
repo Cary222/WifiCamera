@@ -1,13 +1,10 @@
 import { useNavigation } from '@react-navigation/native';
 import { useLayoutEffect } from 'react';
-import { Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft } from '@/components/ui/icons';
+import { View } from 'react-native';
 import { AlbumScreen } from '@/features/home/album/album-screen';
 
 export default function AlbumPage() {
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
 
   // Hide tab bar for full-screen album experience
   useLayoutEffect(() => {
@@ -25,17 +22,6 @@ export default function AlbumPage() {
   return (
     <View className="flex-1">
       <AlbumScreen />
-
-      {/* Floating back button */}
-      <Pressable
-        onPress={() => navigation.goBack()}
-        className="absolute left-4 active:opacity-70"
-        style={{ top: insets.top + 8 }}
-      >
-        <View className="size-10 items-center justify-center rounded-full bg-black/50 dark:bg-white/20">
-          <ArrowLeft size={20} color="#FFFFFF" />
-        </View>
-      </Pressable>
     </View>
   );
 }

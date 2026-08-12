@@ -16,6 +16,8 @@ export type CameraWebSocketOptions = {
   onMessage?: (message: CameraWebSocketMessage) => void;
   onParseError?: (error: unknown) => void;
   onStatusChange?: (status: CameraWebSocketStatus) => void;
+  /** Called after all reconnect attempts are exhausted (never retried again). */
+  onGiveUp?: () => void;
 };
 
 export class CameraWebSocketService {
@@ -23,6 +25,8 @@ export class CameraWebSocketService {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private manuallyClosed = false;
   private reconnectAttempts = 0;
+  /** Timeout handle for the initial connection attempt. */
+  private connectTimeout: ReturnType<typeof setTimeout> | null = null;
   private readonly options: Required<Pick<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts'>>
     & Omit<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts'>;
 
@@ -37,6 +41,7 @@ export class CameraWebSocketService {
   connect(): void {
     this.manuallyClosed = false;
     this.clearReconnectTimer();
+    this.clearConnectTimeout();
 
     if (this.socket?.readyState === WebSocket.OPEN
       || this.socket?.readyState === WebSocket.CONNECTING) {
@@ -44,12 +49,25 @@ export class CameraWebSocketService {
     }
 
     this.options.onStatusChange?.('connecting');
+
+    // Safety timeout: if the socket doesn't open within 4s, treat it as unreachable.
+    // This handles browsers that fire `onerror` immediately (no onclose) for
+    // cross-origin connection-refused errors.
+    this.connectTimeout = setTimeout(() => {
+      if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
+        this.socket.close();
+        this.handleConnectionFailed();
+      }
+      this.connectTimeout = null;
+    }, 4_000);
+
     const socket = new WebSocket(this.options.url);
     this.socket = socket;
 
     socket.onopen = () => {
       if (this.socket !== socket)
         return;
+      this.clearConnectTimeout();
       this.reconnectAttempts = 0;
       this.options.onStatusChange?.('open');
     };
@@ -82,6 +100,7 @@ export class CameraWebSocketService {
     socket.onclose = () => {
       if (this.socket !== socket)
         return;
+      this.clearConnectTimeout();
       this.socket = null;
       this.options.onStatusChange?.('closed');
       this.scheduleReconnect();
@@ -92,6 +111,7 @@ export class CameraWebSocketService {
     this.manuallyClosed = true;
     this.reconnectAttempts = 0;
     this.clearReconnectTimer();
+    this.clearConnectTimeout();
     const socket = this.socket;
     this.socket = null;
 
@@ -110,11 +130,18 @@ export class CameraWebSocketService {
     this.socket.send(serializeCameraJsonMessage(message));
   }
 
+  private handleConnectionFailed(): void {
+    if (this.manuallyClosed)
+      return;
+    this.options.onStatusChange?.('error');
+    this.options.onGiveUp?.();
+  }
+
   private scheduleReconnect(): void {
     if (this.manuallyClosed || this.reconnectTimer)
       return;
     if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
-      this.options.onStatusChange?.('error');
+      this.handleConnectionFailed();
       return;
     }
 
@@ -130,6 +157,13 @@ export class CameraWebSocketService {
       return;
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+  }
+
+  private clearConnectTimeout(): void {
+    if (!this.connectTimeout)
+      return;
+    clearTimeout(this.connectTimeout);
+    this.connectTimeout = null;
   }
 }
 

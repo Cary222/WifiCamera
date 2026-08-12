@@ -23,6 +23,8 @@ export type LongExposureConfig = {
 type CameraState = {
   cameraStatus: CameraStatus;
   connectionStatus: CameraWebSocketStatus | 'idle';
+  /** When true the app is running without a real camera and using mock data. */
+  isMockMode: boolean;
   exposureConfigs: LongExposureConfig[];
   currentExposureConfig: LongExposureConfig;
   streamingInProgress: boolean;
@@ -74,11 +76,12 @@ let cameraWebSocket: CameraWebSocketService | null = null;
 const _useCameraStore = create<CameraState>(set => ({
   cameraStatus: 'idle',
   connectionStatus: 'idle',
+  isMockMode: false,
   exposureConfigs: DEFAULT_EXPOSURE_CONFIGS,
   currentExposureConfig: DEFAULT_CURRENT_CONFIG,
   streamingInProgress: false,
-  powerLevel: 4,
-  inCharge: false,
+  powerLevel: 92,
+  inCharge: true,
   usedSpace: null,
   allSpace: null,
   serial: null,
@@ -93,6 +96,16 @@ const _useCameraStore = create<CameraState>(set => ({
         url: getCameraWebSocketUrl(),
         onStatusChange: status => set({ connectionStatus: status }),
         onMessage: message => handleCameraMessage(message, set),
+        /** Camera is unreachable — switch to mock mode. */
+        onGiveUp: () => set({
+          connectionStatus: 'error',
+          isMockMode: true,
+          // Provide reasonable mock values so the UI renders correctly.
+          powerLevel: 92,
+          inCharge: true,
+          usedSpace: 15 * 1024 * 1024 * 1024,
+          allSpace: 32 * 1024 * 1024 * 1024,
+        }),
       });
     }
     cameraWebSocket.connect();
@@ -100,7 +113,7 @@ const _useCameraStore = create<CameraState>(set => ({
   disconnect: () => {
     cameraWebSocket?.close();
     cameraWebSocket = null;
-    set({ connectionStatus: 'closed' });
+    set({ connectionStatus: 'closed', isMockMode: false });
   },
   sendCommand: (message) => {
     cameraWebSocket?.send(message);

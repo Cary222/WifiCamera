@@ -24,13 +24,21 @@
   },
   "album": {
     "empty": "未找到文件夹",
+    "folder_count": "{{count}}个项目",
     "folder_date": "日期",
     "folder_size": "大小",
     "load_error": "加载文件夹失败",
     "loading": "正在加载文件夹...",
+    "mock_mode_hint": "相机未连接，使用模拟数据",
     "open_folder": "打开",
     "refresh": "刷新",
     "retry": "重试",
+    "storage_card": {
+      "format": "格式化",
+      "name": "TF卡",
+      "subtitle": "{{used}} / {{total}}"
+    },
+    "subtitle": "照片和视频",
     "title": "相册"
   },
   "camera": {

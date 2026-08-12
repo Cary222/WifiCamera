@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { Pressable, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUniwind } from 'uniwind';
 
 import { ArrowLeft } from '@/components/ui/icons';
@@ -14,6 +15,7 @@ export type ScreenHeaderProps = {
 
 export function ScreenHeader({ title, onBack }: ScreenHeaderProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
   const arrowColor = isDark ? '#D0D0D0' : '#666';
@@ -30,7 +32,7 @@ export function ScreenHeader({ title, onBack }: ScreenHeaderProps) {
   };
 
   return (
-    <View className="flex-row items-center px-4 pt-16 pb-4">
+    <View className="flex-row items-center p-4" style={{ paddingTop: insets.top }}>
       <Pressable
         hitSlop={10}
         onPress={handleBack}

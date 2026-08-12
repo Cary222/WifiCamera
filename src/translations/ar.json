@@ -24,13 +24,21 @@
   },
   "album": {
     "empty": "لم يتم العثور على مجلدات",
+    "folder_count": "{{count}} عناصر",
     "folder_date": "التاريخ",
     "folder_size": "الحجم",
     "load_error": "فشل تحميل المجلدات",
     "loading": "جارٍ تحميل المجلدات...",
+    "mock_mode_hint": "الكاميرا غير متصلة — استخدام البيانات الوهمية",
     "open_folder": "فتح",
     "refresh": "تحديث",
     "retry": "إعادة المحاولة",
+    "storage_card": {
+      "format": "تهيئة",
+      "name": "بطاقة TF",
+      "subtitle": "{{used}} / {{total}}"
+    },
+    "subtitle": "الصور ومقاطع الفيديو",
     "title": "معرض الصور"
   },
   "camera": {

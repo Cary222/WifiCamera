@@ -24,13 +24,21 @@
   },
   "album": {
     "empty": "No folders found",
+    "folder_count": "{{count}} items",
     "folder_date": "Date",
     "folder_size": "Size",
     "load_error": "Failed to load folders",
     "loading": "Loading folders...",
+    "mock_mode_hint": "Camera not connected — using mock data",
     "open_folder": "Open",
     "refresh": "Refresh",
     "retry": "Retry",
+    "storage_card": {
+      "format": "Format",
+      "name": "TF Card",
+      "subtitle": "{{used}} / {{total}}"
+    },
+    "subtitle": "Photos & videos",
     "title": "Photo Gallery"
   },
   "camera": {

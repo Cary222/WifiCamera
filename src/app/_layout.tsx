@@ -8,6 +8,7 @@ import { StyleSheet } from 'react-native';
 import FlashMessage from 'react-native-flash-message';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useThemeConfig } from '@/components/ui/use-theme-config';
 import { hydrateAuth } from '@/features/auth/use-auth-store';
 import { CameraProvider } from '@/features/home/camera';
@@ -54,16 +55,18 @@ function Providers({ children }: { children: React.ReactNode }) {
       className={theme.dark ? 'dark' : 'light'}
     >
       <KeyboardProvider>
-        <ThemeProvider value={theme}>
-          <APIProvider>
-            <CameraProvider>
-              <BottomSheetModalProvider>
-                {children}
-                <FlashMessage position="top" />
-              </BottomSheetModalProvider>
-            </CameraProvider>
-          </APIProvider>
-        </ThemeProvider>
+        <SafeAreaProvider>
+          <ThemeProvider value={theme}>
+            <APIProvider>
+              <CameraProvider>
+                <BottomSheetModalProvider>
+                  {children}
+                  <FlashMessage position="top" />
+                </BottomSheetModalProvider>
+              </CameraProvider>
+            </APIProvider>
+          </ThemeProvider>
+        </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );

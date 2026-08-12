@@ -1,135 +1,262 @@
-import type { PicFolder } from './types';
 /**
- * Album folder list screen.
- * Fetches and displays all saved picture folders from the camera.
+ * Album screen — shows TF card storage and photo folders grouped by date.
+ *
+ * Architecture:
+ *   - Real data path: HTTP API → `album-service` → flat PicFolder[] → date-grouped in-screen
+ *   - Mock data path: `mock-data.ts` provides full AlbumData (storage + groups)
+ *
+ * The store (`useAlbumStore`) is NOT used here — the screen manages its own
+ * data loading so it can directly own the mock/real data transformation.
  */
-import { useCallback, useEffect, useState } from 'react';
+import type { AlbumData, PhotoItem } from './types';
+import { useNavigation } from '@react-navigation/native';
+import { Image as NImage } from 'expo-image';
+import * as React from 'react';
 
-import { ActivityIndicator, Alert, FlatList, Pressable, View } from 'react-native';
-import { Button, FocusAwareStatusBar, Text } from '@/components/ui';
+import { ScrollView, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FocusAwareStatusBar, Pressable, Text } from '@/components/ui';
+import { useCameraStore } from '@/features/home/camera';
 import { translate } from '@/lib/i18n';
-import { listPicFolders } from './services/album-service';
+import { AlbumErrorState } from './components/album-error-state';
+import { DateGroupHeader } from './components/date-group-header';
+import { FolderGrid } from './components/folder-tile';
+import { StorageCard } from './components/storage-card';
 
-function formatSize(bytes?: number) {
-  if (!bytes)
-    return '-';
-  if (bytes < 1024)
-    return `${bytes} B`;
-  if (bytes < 1024 * 1024)
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+import { MOCK_ALBUM_DATA } from './mock-data';
+import { listPicFolders } from './services/album-service';
+// eslint-disable-next-line perfectionist/sort-imports -- require must come after regular imports
+const backIcon = require('@/assets/common/back.png');
+const moreIcon = require('@/assets/common/more.png');
+
+type Status = 'loading' | 'success' | 'error';
+
+/** Converts bytes to GB for display. Returns null if either value is null. */
+function formatStorage(
+  usedBytes: number | null,
+  totalBytes: number | null,
+): { usedGB: number; totalGB: number } | null {
+  if (usedBytes === null || totalBytes === null)
+    return null;
+  return {
+    usedGB: Math.round((usedBytes / (1024 * 1024 * 1024)) * 10) / 10,
+    totalGB: Math.round((totalBytes / (1024 * 1024 * 1024)) * 10) / 10,
+  };
 }
 
-function formatDate(ts?: number) {
-  if (!ts)
-    return '-';
-  return new Date(ts * 1000).toLocaleDateString();
+/**
+ * Groups raw PicFolder items by the date portion of their name (YYYYMMDD suffix).
+ * Returns an AlbumData-compatible structure ready for rendering.
+ */
+function groupIntoAlbumData(
+  folders: Array<{ name: string; size?: number; mtime?: number }>,
+  usedSpace: number | null,
+  allSpace: number | null,
+): AlbumData {
+  const real = formatStorage(usedSpace, allSpace);
+
+  // Group folders by the date segment (last 8 chars before any extension).
+  const map = new Map<string, PhotoItem[]>();
+  for (const f of folders) {
+    // name format: "M33_20260522_123456" or just "20260522"
+    const match = f.name.match(/(\d{8})$/);
+    const dateStr = match ? match[1] : 'unknown';
+    // e.g. "20260522" → "2026年5月22日"
+    const year = dateStr.slice(0, 4);
+    const month = Number(dateStr.slice(4, 6));
+    const day = Number(dateStr.slice(6, 8));
+    const label = `${year}年${month}月${day}日`;
+    if (!map.has(label)) {
+      map.set(label, []);
+    }
+    // Mock fallback folders all share `name: 'M33'`, so the id needs the
+    // folder index appended to stay unique across items in the same group.
+    map.get(label)!.push({
+      id: `${f.name}-${map.get(label)!.length}`,
+      target: f.name.replace(/\d{8}.*$/, '').replace(/_$/, '') || f.name,
+      exposure: '-',
+      gain: '-',
+      timestamp: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+    });
+  }
+
+  const groups = Array.from(map.entries()).map(([label, items], i) => ({
+    id: `g-${i}`,
+    dateLabel: label,
+    items,
+  }));
+
+  return {
+    storage: {
+      name: 'album.storage_card.name',
+      usedGB: real?.usedGB ?? MOCK_ALBUM_DATA.storage.usedGB,
+      totalGB: real?.totalGB ?? MOCK_ALBUM_DATA.storage.totalGB,
+    },
+    groups,
+  };
+}
+
+function TitleBar({
+  onRefreshPress,
+}: {
+  onRefreshPress?: () => void;
+}) {
+  const navigation = useNavigation();
+
+  return (
+    <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 }}>
+      <Pressable
+        hitSlop={10}
+        onPress={() => navigation.goBack()}
+        style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' }}
+      >
+        <NImage source={backIcon} style={{ width: 28, height: 28 }} contentFit="contain" />
+      </Pressable>
+
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text className="text-[20px] font-light text-white">
+          {translate('album.title')}
+        </Text>
+      </View>
+
+      <Pressable
+        hitSlop={10}
+        onPress={onRefreshPress}
+        style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-end' }}
+      >
+        <NImage source={moreIcon} style={{ width: 28, height: 28 }} contentFit="contain" />
+      </Pressable>
+    </View>
+  );
+}
+
+function AlbumBody({
+  data,
+  collapsed,
+  toggleGroup,
+  isMockMode,
+  onFormatPress,
+  insetsBottom,
+}: {
+  data: AlbumData;
+  collapsed: Record<string, boolean>;
+  toggleGroup: (groupId: string) => void;
+  isMockMode: boolean;
+  onFormatPress?: () => void;
+  insetsBottom: number;
+}) {
+  return (
+    <ScrollView
+      className="flex-1 bg-[#090a0c]"
+      contentContainerStyle={{ paddingBottom: 40 + insetsBottom }}
+      showsVerticalScrollIndicator={false}
+    >
+      <View className="mt-2">
+        <StorageCard
+          storage={data.storage}
+          onFormatPress={onFormatPress}
+        />
+      </View>
+
+      {isMockMode && (
+        <View className="mx-4 mt-3 rounded-[10px] border border-[rgba(196,196,196,0.2)] bg-[rgba(255,255,255,0.05)] px-3 py-2">
+          <Text className="text-center text-[11px] text-white/50">
+            {translate('album.mock_mode_hint')}
+          </Text>
+        </View>
+      )}
+
+      {data.groups.map((group) => {
+        const isCollapsed = collapsed[group.id] ?? false;
+        return (
+          <View key={group.id}>
+            <DateGroupHeader
+              dateLabel={group.dateLabel}
+              itemCount={group.items.length}
+              expanded={!isCollapsed}
+              onPress={() => toggleGroup(group.id)}
+            />
+            {!isCollapsed && <FolderGrid items={group.items} />}
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
 }
 
 export function AlbumScreen() {
-  const [folders, setFolders] = useState<PicFolder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
+  const isMockMode = useCameraStore.use.isMockMode();
+  const usedSpace = useCameraStore.use.usedSpace();
+  const allSpace = useCameraStore.use.allSpace();
 
-  const loadFolders = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listPicFolders();
-      setFolders(data);
-    }
-    catch (e) {
-      setError(String(e));
-    }
-    finally {
-      setLoading(false);
-    }
+  const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
+  const [status, setStatus] = React.useState<Status>('loading');
+  const [albumData, setAlbumData] = React.useState<AlbumData | null>(null);
+
+  const toggleGroup = React.useCallback((groupId: string) => {
+    setCollapsed(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   }, []);
 
-  useEffect(() => {
-    loadFolders();
-  }, [loadFolders]);
+  const handleRefresh = React.useCallback(async () => {
+    setStatus('loading');
+    try {
+      const folders = await listPicFolders();
+      const data = groupIntoAlbumData(folders, usedSpace, allSpace);
+      setAlbumData(data);
+      setStatus('success');
+    }
+    catch {
+      setStatus('error');
+    }
+  }, [usedSpace, allSpace]);
 
-  if (loading) {
-    return (
-      <>
-        <FocusAwareStatusBar />
-        <View className="flex-1 items-center justify-center bg-white dark:bg-black">
-          <ActivityIndicator size="large" />
-          <Text tx="album.loading" className="mt-3 text-neutral-500" />
-        </View>
-      </>
-    );
-  }
+  const handleFormatPress = React.useCallback(() => {
+    // TODO: wire up to camera format command once the camera API is reachable
+  }, []);
 
-  if (error) {
-    return (
-      <>
-        <FocusAwareStatusBar />
-        <View className="flex-1 items-center justify-center bg-white p-6 dark:bg-black">
-          <Text tx="album.load_error" className="text-center text-red-500" />
-          <Text className="mt-2 text-center text-sm text-neutral-500">{error}</Text>
-          <Button label={translate('album.retry')} variant="outline" className="mt-4" onPress={loadFolders} />
+  // Initial load
+  React.useEffect(() => {
+    void handleRefresh();
+  }, [handleRefresh]);
+
+  const renderContent = () => {
+    if (status === 'loading') {
+      return (
+        <View className="flex-1 items-center justify-center bg-[#090a0c]">
+          <Text className="text-[14px] text-white">{translate('album.loading')}</Text>
         </View>
-      </>
+      );
+    }
+
+    if (status === 'error' || !albumData) {
+      return (
+        <AlbumErrorState
+          message={translate('album.load_error')}
+          onRetry={handleRefresh}
+        />
+      );
+    }
+
+    return (
+      <AlbumBody
+        data={albumData}
+        collapsed={collapsed}
+        toggleGroup={toggleGroup}
+        isMockMode={isMockMode}
+        onFormatPress={handleFormatPress}
+        insetsBottom={insets.bottom}
+      />
     );
-  }
+  };
 
   return (
     <>
       <FocusAwareStatusBar />
-      <View className="flex-1 bg-white dark:bg-black">
-        <View className="flex-row items-center justify-between px-5 py-4">
-          <View>
-            <Text className="text-2xl font-bold text-black dark:text-white">Album</Text>
-            <Text tx="album.title" className="mt-1 text-sm text-neutral-500 dark:text-neutral-400" />
-          </View>
-          <Button label={translate('album.refresh')} variant="ghost" size="sm" onPress={loadFolders} />
-        </View>
-
-        {folders.length === 0
-          ? (
-              <View className="flex-1 items-center justify-center px-6">
-                <Text tx="album.empty" className="text-neutral-500" />
-              </View>
-            )
-          : (
-              <FlatList
-                data={folders}
-                keyExtractor={item => item.name}
-                contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
-                renderItem={({ item }) => (
-                  <FolderItem
-                    folder={item}
-                    onPress={() => Alert.alert(item.name, `Open ${item.name}?`)}
-                  />
-                )}
-              />
-            )}
-      </View>
+      <SafeAreaView className="flex-1 bg-[#090a0c]">
+        <TitleBar onRefreshPress={handleRefresh} />
+        {renderContent()}
+      </SafeAreaView>
     </>
-  );
-}
-
-type FolderItemProps = {
-  folder: PicFolder;
-  onPress: () => void;
-};
-
-function FolderItem({ folder, onPress }: FolderItemProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className="mb-3 flex-row items-center justify-between rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-[#2C2C2C] dark:bg-[#1A1A1A]"
-    >
-      <View className="flex-1">
-        <Text className="font-semibold text-black dark:text-white">{folder.name}</Text>
-        <View className="mt-1 flex-row gap-4">
-          <Text className="text-xs text-neutral-500">{formatSize(folder.size)}</Text>
-          <Text className="text-xs text-neutral-500">{formatDate(folder.mtime)}</Text>
-        </View>
-      </View>
-      <View className="size-2 rounded-full bg-neutral-400" />
-    </Pressable>
   );
 }

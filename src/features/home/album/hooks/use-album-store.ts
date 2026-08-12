@@ -30,7 +30,7 @@ type AlbumState = {
   deleteSelectedFiles: () => Promise<void>;
 };
 
-const _useAlbumStore = create<AlbumState>(set => ({
+const _useAlbumStore = create<AlbumState>((set, get) => ({
   folders: [],
   files: [],
   currentFolder: '',
@@ -60,7 +60,7 @@ const _useAlbumStore = create<AlbumState>(set => ({
   },
 
   loadFiles: async (sourceDir) => {
-    const targetDir = sourceDir ?? _useAlbumStore.getState().currentFolder;
+    const targetDir = sourceDir ?? get().currentFolder;
     set({ loadingFiles: true, filesError: null });
     try {
       const files = await listPicFiles(targetDir);
@@ -88,7 +88,7 @@ const _useAlbumStore = create<AlbumState>(set => ({
   clearSelection: () => set({ selectedFiles: new Set() }),
 
   deleteSelectedFiles: async () => {
-    const { selectedFiles, currentFolder } = _useAlbumStore.getState();
+    const { selectedFiles, currentFolder } = get();
     if (selectedFiles.size === 0)
       return;
 
