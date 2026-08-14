@@ -71,9 +71,12 @@ export async function getDisks(): Promise<string[]> {
   return unwrapCamera(res.data, 'GET', '/FileCopy/get_disks/').disks;
 }
 
-/** GET /FileCopy/get_disk_usage/ — used and total storage in bytes. */
-export async function getDiskUsage(): Promise<{ used: number; total: number }> {
-  const res = await cameraClient.get<{ success: true; data: { used: number; total: number } }>(
+/**
+ * GET /FileCopy/get_disk_usage/ — current firmware reports used/total/free in GB.
+ * (Verified against the connected board: total 29.1074, used 12.3161.)
+ */
+export async function getDiskUsage(): Promise<{ used: number; total: number; free?: number }> {
+  const res = await cameraClient.get<{ success: true; data: { used: number; total: number; free?: number } }>(
     `${BASE}/FileCopy/get_disk_usage/`,
   );
   return unwrapCamera(res.data, 'GET', '/FileCopy/get_disk_usage/');

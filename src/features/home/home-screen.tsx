@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { FocusAwareStatusBar, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera/camera-store';
+import { getDiskUsage } from '@/features/home/camera/services/file-service';
 import { translate } from '@/lib/i18n';
 import { ConnectionStatusCard } from './components/connection-status-card';
 import { DeviceConnectionModal } from './components/device-connection-modal';
@@ -10,19 +11,35 @@ import { ModeGrid } from './components/mode-grid';
 
 export function HomeScreen() {
   const [modalVisible, setModalVisible] = useState(false);
+  const [storageRemaining, setStorageRemaining] = useState<string>('—');
   const connectionStatus = useCameraStore.use.connectionStatus();
   const powerLevel = useCameraStore.use.powerLevel();
-  const usedSpace = useCameraStore.use.usedSpace();
-  const allSpace = useCameraStore.use.allSpace();
 
   const isConnected = connectionStatus === 'open';
 
-  const formatStorage = (used: number | null, total: number | null) => {
-    if (used === null || total === null)
-      return '—';
-    const remainingGB = ((total - used) / (1024 * 1024 * 1024)).toFixed(1);
-    return `${remainingGB}GB`;
-  };
+  useEffect(() => {
+    let active = true;
+    if (!isConnected) {
+      setStorageRemaining('—');
+      return () => {
+        active = false;
+      };
+    }
+
+    void getDiskUsage()
+      .then(({ used, total, free }) => {
+        if (!active) return;
+        const remaining = free ?? Math.max(0, total - used);
+        setStorageRemaining(`${remaining.toFixed(1)}GB`);
+      })
+      .catch(() => {
+        if (active) setStorageRemaining('—');
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isConnected]);
 
   return (
     <>
@@ -43,7 +60,7 @@ export function HomeScreen() {
             ? (
                 <DeviceInfoCards
                   batteryLevel={powerLevel}
-                  storageRemaining={formatStorage(usedSpace, allSpace)}
+                  storageRemaining={storageRemaining}
                 />
               )
             : (
