@@ -4,6 +4,11 @@
 import Env from 'env';
 
 export const ALBUM_ENDPOINTS = {
+  listImages: '/list_images',
+  listVideos: '/list_videos',
+  getImage: '/get_image',
+  getVideo: '/get_video',
+  delete: '/delete',
   listPicFolders: '/FileCopy/list_pic_folders/',
   listPicFiles: '/FileCopy/list_pic_files/',
   delPic: '/FileCopy/del_mp4/',

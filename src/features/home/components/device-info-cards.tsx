@@ -4,11 +4,14 @@ import { Battery } from '@/components/ui/icons';
 import { translate } from '@/lib/i18n';
 
 type Props = {
-  batteryLevel: number;
+  /** Battery percentage, or null when the board has no battery gauge. */
+  batteryLevel: number | null;
+  /** True when the board reports it is charging. */
+  inCharge?: boolean;
   storageRemaining: string;
 };
 
-export function DeviceInfoCards({ batteryLevel, storageRemaining }: Props) {
+export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaining }: Props) {
   return (
     <>
       <View className="mr-2 mb-4 ml-5">
@@ -32,11 +35,16 @@ export function DeviceInfoCards({ batteryLevel, storageRemaining }: Props) {
             <Battery color="#000000" className="dark:text-white" width={30} height={30} />
             <View className="flex-1">
               <Text className="text-[22px] font-light text-black dark:text-white">
-                {batteryLevel}
-                %
+                {batteryLevel === null ? '—' : `${batteryLevel}%`}
               </Text>
-              <Text className="mt-1 text-[12px] font-light text-black/50 dark:text-white/50">
-                {translate('home.battery_level')}
+              <Text
+                className={`mt-1 text-[12px] font-light ${
+                  inCharge ? 'text-[#c5e538]' : 'text-black/50 dark:text-white/50'
+                }`}
+              >
+                {inCharge
+                  ? translate('home.battery_charging')
+                  : translate('home.battery_level')}
               </Text>
             </View>
           </View>

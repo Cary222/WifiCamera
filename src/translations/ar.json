@@ -117,6 +117,7 @@
     "title": "جارٍ التحميل..."
   },
   "home": {
+    "battery_charging": "جارٍ الشحن",
     "battery_level": "مستوى البطارية",
     "connect_device": "توصيل الجهاز",
     "connect_hint": "قم بتوصيل الكاميرا للبدء في التصوير",
@@ -130,6 +131,27 @@
     "storage_remaining": "المساحة المتبقية",
     "title": "الصفحة الرئيسية",
     "wifi_camera": "كاميرا Wi-Fi"
+  },
+  "landscape": {
+    "capturing": "جارٍ التصوير",
+    "connecting": "جارٍ الاتصال",
+    "count": "العدد",
+    "count_unit": "صورة",
+    "countdown": "العد التنازلي",
+    "ev": "EV",
+    "gain": "الكسب",
+    "interval": "الفاصل",
+    "photo": "صورة",
+    "preview_connecting": "جارٍ توصيل المعاينة",
+    "preview_failed": "فشل الاتصال بالمعاينة",
+    "repeat_progress": "التصوير المتتابع",
+    "shutter": "الغالق",
+    "timed_repeat": "التصوير المتتابع الموقوت",
+    "timed_shoot": "التصوير الموقوت",
+    "title": "وضع المناظر الطبيعية",
+    "video": "فيديو",
+    "watermark": "العلامة المائية",
+    "white_balance": "توازن اللون الأبيض"
   },
   "login": {
     "email_label": "البريد الإلكتروني / الهاتف",

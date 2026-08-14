@@ -117,6 +117,7 @@
     "title": "Downloading..."
   },
   "home": {
+    "battery_charging": "Charging",
     "battery_level": "Battery Level",
     "connect_device": "Connect Device",
     "connect_hint": "Connect to camera to start shooting",

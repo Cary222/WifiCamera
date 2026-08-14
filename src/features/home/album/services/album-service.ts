@@ -23,29 +23,80 @@ import { MOCK_ALBUM_DATA } from '../mock-data';
 
 const albumClient = cameraClient;
 
+export type BoardImageItem = {
+  name: string;
+  path: string;
+  kind?: string;
+  origin?: string;
+  size?: number;
+  mtime?: number;
+};
+
+type ListImagesResponse = {
+  ok?: boolean;
+  success?: boolean;
+  images?: BoardImageItem[];
+};
+
 /**
- * Fetch all saved picture folders.
- * On network error (camera unreachable) returns mock folder data.
+ * Fetch all saved picture files / folders.
+ * Prefers the C-stack `/list_images` endpoint, falling back to legacy
+ * `/FileCopy/list_pic_folders/` or mock data when unreachable.
  */
 export async function listPicFolders(): Promise<PicFolder[]> {
+  const baseUrl = getAlbumBaseUrl();
+
+  // 1. Try modern C-stack /list_images first
   try {
-    const url = `${getAlbumBaseUrl()}${ALBUM_ENDPOINTS.listPicFolders}`;
-    const res = await albumClient.get<ListPicFoldersResponse>(url, {
+    const listImagesUrl = `${baseUrl}${ALBUM_ENDPOINTS.listImages}`;
+    const res = await albumClient.get<ListImagesResponse>(listImagesUrl, {
       timeout: ALBUM_REQUEST_TIMEOUT_MS,
     });
-    return unwrapCamera(res.data, 'GET', url).pic_folders;
+    const images = res.data?.images;
+    if (Array.isArray(images) && images.length > 0) {
+      // Filter out raw FITS/xyls data files; keep renderable jpg/png images
+      const displayable = images.filter((img) => {
+        const isFits = img.kind === 'fits' || img.name.endsWith('.fits');
+        const isXyls = img.kind === 'xyls' || img.name.endsWith('.xyls');
+        return !isFits && !isXyls;
+      });
+
+      return displayable.map(img => ({
+        name: img.name,
+        path: img.path,
+        size: img.size ?? 0,
+        mtime: img.mtime ?? (Date.now() / 1000),
+      }));
+    }
   }
   catch {
-    // Camera unreachable — return mock folder list derived from mock data.
-    return MOCK_ALBUM_DATA.groups.flatMap(group =>
-      group.items.map(item => ({
-        name: item.target,
-        size: 0,
-        mtime: Date.now() / 1000,
-        _mock: true,
-      })),
-    );
+    // /list_images not available, try legacy
   }
+
+  // 2. Fall back to legacy /FileCopy/list_pic_folders/
+  try {
+    const legacyUrl = `${baseUrl}${ALBUM_ENDPOINTS.listPicFolders}`;
+    const res = await albumClient.get<ListPicFoldersResponse>(legacyUrl, {
+      timeout: ALBUM_REQUEST_TIMEOUT_MS,
+    });
+    const unwrapped = unwrapCamera(res.data, 'GET', legacyUrl);
+    if (Array.isArray(unwrapped.pic_folders) && unwrapped.pic_folders.length > 0) {
+      return unwrapped.pic_folders;
+    }
+  }
+  catch {
+    // Camera unreachable — return mock folder list
+  }
+
+  // 3. Mock fallback
+  return MOCK_ALBUM_DATA.groups.flatMap(group =>
+    group.items.map(item => ({
+      name: item.target,
+      size: 0,
+      mtime: Date.now() / 1000,
+      _mock: true,
+    })),
+  );
 }
 
 export async function listPicFiles(sourceDir: string): Promise<PicFile[]> {

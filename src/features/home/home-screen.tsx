@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { FocusAwareStatusBar, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera/camera-store';
-import { getDiskUsage } from '@/features/home/camera/services/file-service';
+import { getDiskUsage, getPower } from '@/features/home/camera/services/file-service';
 import { translate } from '@/lib/i18n';
 import { ConnectionStatusCard } from './components/connection-status-card';
 import { DeviceConnectionModal } from './components/device-connection-modal';
@@ -14,13 +14,14 @@ export function HomeScreen() {
   const [storageRemaining, setStorageRemaining] = useState<string>('—');
   const connectionStatus = useCameraStore.use.connectionStatus();
   const powerLevel = useCameraStore.use.powerLevel();
+  const inCharge = useCameraStore.use.inCharge();
+  const setPower = useCameraStore.use.setPower();
 
   const isConnected = connectionStatus === 'open';
 
   useEffect(() => {
     let active = true;
     if (!isConnected) {
-      setStorageRemaining('—');
       return () => {
         active = false;
       };
@@ -28,18 +29,29 @@ export function HomeScreen() {
 
     void getDiskUsage()
       .then(({ used, total, free }) => {
-        if (!active) return;
+        if (!active)
+          return;
         const remaining = free ?? Math.max(0, total - used);
         setStorageRemaining(`${remaining.toFixed(1)}GB`);
       })
       .catch(() => {
-        if (active) setStorageRemaining('—');
+        if (active)
+          setStorageRemaining('—');
+      });
+
+    void getPower()
+      .then(({ power, in_charging }) => {
+        if (active)
+          setPower(power, in_charging);
+      })
+      .catch(() => {
+        // Board without a battery gauge — the store keeps powerLevel as null.
       });
 
     return () => {
       active = false;
     };
-  }, [isConnected]);
+  }, [isConnected, setPower]);
 
   return (
     <>
@@ -60,6 +72,7 @@ export function HomeScreen() {
             ? (
                 <DeviceInfoCards
                   batteryLevel={powerLevel}
+                  inCharge={inCharge}
                   storageRemaining={storageRemaining}
                 />
               )

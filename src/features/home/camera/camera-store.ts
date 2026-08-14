@@ -68,7 +68,8 @@ type CameraState = {
   exposureConfigs: LongExposureConfig[];
   currentExposureConfig: LongExposureConfig;
   streamingInProgress: boolean;
-  powerLevel: number;
+  /** Battery percentage, or null when the board reports no battery data. */
+  powerLevel: number | null;
   inCharge: boolean;
   usedSpace: number | null;
   allSpace: number | null;
@@ -412,8 +413,8 @@ const _useCameraStore = create<CameraState>(set => ({
   exposureConfigs: DEFAULT_EXPOSURE_CONFIGS,
   currentExposureConfig: DEFAULT_CURRENT_CONFIG,
   streamingInProgress: false,
-  powerLevel: 92,
-  inCharge: true,
+  powerLevel: null,
+  inCharge: false,
   usedSpace: null,
   allSpace: null,
   serial: null,
@@ -461,8 +462,8 @@ const _useCameraStore = create<CameraState>(set => ({
           connectionStatus: 'error',
           isMockMode: true,
           // Provide reasonable mock values so the UI renders correctly.
-          powerLevel: 92,
-          inCharge: true,
+          powerLevel: null,
+          inCharge: false,
           usedSpace: 15 * 1024 * 1024 * 1024,
           allSpace: 32 * 1024 * 1024 * 1024,
         }),
@@ -674,7 +675,7 @@ const _useCameraStore = create<CameraState>(set => ({
   setCameraStatus: cameraStatus => set({ cameraStatus }),
   setConnectionStatus: connectionStatus => set({ connectionStatus }),
   setPower: (power, charging) => set({
-    powerLevel: power,
+    powerLevel: power < 0 ? null : power,
     inCharge: charging === 1,
   }),
   setDisk: (usedSpace, allSpace) => set({ usedSpace, allSpace }),
@@ -831,8 +832,9 @@ function handleCameraMessage(
       break;
     case 'battery':
       if (typeof message.power === 'number') {
+        // The board reports -1 when no battery gauge is present (USB powered).
         set({
-          powerLevel: message.power,
+          powerLevel: message.power < 0 ? null : message.power,
           inCharge: message.in_charging === 1,
         });
       }

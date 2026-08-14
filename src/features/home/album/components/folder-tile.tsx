@@ -16,6 +16,7 @@ export function computeTileWidth(screenWidth: number): number {
 type TileProps = {
   item: PhotoItem;
   width: number;
+  onPress?: (item: PhotoItem) => void;
 };
 
 /**
@@ -23,32 +24,40 @@ type TileProps = {
  *
  * Visual layers (back to front):
  *   1. Dark blue semi-transparent fill
- *   2. Photo background (cropped/zoomed)
+ *   2. Photo background (cropped/zoomed or real preview thumbnail)
  *   3. Black border for separation
  *   4. Foreground labels: badge, target name, exposure/gain, timestamp
  */
-function FolderTileInner({ item, width }: TileProps) {
+function FolderTileInner({ item, width, onPress }: TileProps) {
   const height = Math.round(width * 1.3);
-  // Target name positioned at 58% of tile height — computed in JS to avoid
-  // Uniwind calc validation errors (it rejects % mixed with other units).
   const targetTop = Math.round(height * 0.58);
+  const hasRealPreview = Boolean(item.previewUrl);
 
   return (
     <Pressable
+      onPress={() => onPress?.(item)}
       style={{ width, height }}
       className="overflow-hidden rounded-[15px] border-[0.5px] border-[#6d6d6d] bg-[rgba(30,49,66,0.7)] active:opacity-80"
     >
       {/* Background image */}
       <Image
-        source={nebulaPlaceholder}
-        style={{
-          position: 'absolute',
-          left: -width * 0.78,
-          top: 0,
-          width: width * 2.5,
-          height: height * 1.1,
-          opacity: 0.85,
-        }}
+        source={hasRealPreview ? { uri: item.previewUrl } : nebulaPlaceholder}
+        style={hasRealPreview
+          ? {
+              position: 'absolute',
+              inset: 0,
+              width,
+              height,
+              opacity: 0.9,
+            }
+          : {
+              position: 'absolute',
+              left: -width * 0.78,
+              top: 0,
+              width: width * 2.5,
+              height: height * 1.1,
+              opacity: 0.85,
+            }}
         contentFit="cover"
       />
 
@@ -68,7 +77,7 @@ function FolderTileInner({ item, width }: TileProps) {
 
       {/* Target name — positioned at 58% of tile height */}
       <View style={{ position: 'absolute', left: 8, top: targetTop }}>
-        <Text className="text-[20px] font-bold text-white" numberOfLines={1}>
+        <Text className="text-[18px] font-bold text-white" numberOfLines={1}>
           {item.target}
         </Text>
       </View>
@@ -89,7 +98,13 @@ function FolderTileInner({ item, width }: TileProps) {
   );
 }
 
-export function FolderGrid({ items }: { items: PhotoItem[] }) {
+export function FolderGrid({
+  items,
+  onItemPress,
+}: {
+  items: PhotoItem[];
+  onItemPress?: (item: PhotoItem) => void;
+}) {
   const { width: screenWidth } = useWindowDimensions();
   const tileWidth = computeTileWidth(screenWidth);
 
@@ -101,7 +116,7 @@ export function FolderGrid({ items }: { items: PhotoItem[] }) {
         const marginBottom = isLastRow ? 0 : 5;
         return (
           <View key={item.id} style={{ width: tileWidth, marginBottom }}>
-            <FolderTileInner item={item} width={tileWidth} />
+            <FolderTileInner item={item} width={tileWidth} onPress={onItemPress} />
           </View>
         );
       })}

@@ -117,6 +117,7 @@
     "title": "下载中..."
   },
   "home": {
+    "battery_charging": "充电中",
     "battery_level": "设备电量",
     "connect_device": "连接设备",
     "connect_hint": "连接相机后即可开始拍摄",

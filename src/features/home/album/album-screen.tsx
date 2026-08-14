@@ -21,8 +21,9 @@ import { translate } from '@/lib/i18n';
 import { AlbumErrorState } from './components/album-error-state';
 import { DateGroupHeader } from './components/date-group-header';
 import { FolderGrid } from './components/folder-tile';
+import { ImageViewer } from './components/image-viewer';
 import { StorageCard } from './components/storage-card';
-
+import { getAlbumBaseUrl } from './config';
 import { MOCK_ALBUM_DATA } from './mock-data';
 import { listPicFolders } from './services/album-service';
 // eslint-disable-next-line perfectionist/sort-imports -- require must come after regular imports
@@ -31,59 +32,135 @@ const moreIcon = require('@/assets/common/more.png');
 
 type Status = 'loading' | 'success' | 'error';
 
-/** Converts bytes to GB for display. Returns null if either value is null. */
+/**
+ * Normalizes storage values to GB.
+ * The board's `/FileCopy/get_disk_usage/` already reports GB, while the
+ * WebSocket `used_space`/`all_space` fields report raw bytes.
+ */
 function formatStorage(
-  usedBytes: number | null,
-  totalBytes: number | null,
+  used: number | null,
+  total: number | null,
 ): { usedGB: number; totalGB: number } | null {
-  if (usedBytes === null || totalBytes === null)
+  if (used === null || total === null)
     return null;
+  const isBytes = total > 1024;
+  const divisor = isBytes ? 1024 * 1024 * 1024 : 1;
   return {
-    usedGB: Math.round((usedBytes / (1024 * 1024 * 1024)) * 10) / 10,
-    totalGB: Math.round((totalBytes / (1024 * 1024 * 1024)) * 10) / 10,
+    usedGB: Math.round((used / divisor) * 10) / 10,
+    totalGB: Math.round((total / divisor) * 10) / 10,
   };
 }
 
+function parseDateFromFolder(f: { name: string; path?: string; mtime?: number }): { label: string; timestamp: string; sortKey: string } {
+  const text = `${f.path || ''} ${f.name}`;
+
+  // 1. Check for YYYY-MM-DD (e.g. /Pictures/2026-08-13/...)
+  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
+    const monthStr = String(month).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    return {
+      label: `${year}年${month}月${day}日`,
+      timestamp: `${year}-${monthStr}-${dayStr}`,
+      sortKey: `${year}${monthStr}${dayStr}`,
+    };
+  }
+
+  // 2. Check for compact YYYYMMDD (e.g. 20260810)
+  const compactMatch = text.match(/(\d{4})(\d{2})(\d{2})/);
+  if (compactMatch) {
+    const year = compactMatch[1];
+    const month = Number(compactMatch[2]);
+    const day = Number(compactMatch[3]);
+    const monthStr = String(month).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    return {
+      label: `${year}年${month}月${day}日`,
+      timestamp: `${year}-${monthStr}-${dayStr}`,
+      sortKey: `${year}${monthStr}${dayStr}`,
+    };
+  }
+
+  // 3. Use mtime timestamp
+  if (typeof f.mtime === 'number' && f.mtime > 1000000000) {
+    const d = new Date(f.mtime * 1000);
+    const year = d.getFullYear();
+    const month = d.getMonth() + 1;
+    const day = d.getDate();
+    const monthStr = String(month).padStart(2, '0');
+    const dayStr = String(day).padStart(2, '0');
+    return {
+      label: `${year}年${month}月${day}日`,
+      timestamp: `${year}-${monthStr}-${dayStr}`,
+      sortKey: `${year}${monthStr}${dayStr}`,
+    };
+  }
+
+  return {
+    label: '拍摄记录',
+    timestamp: '近期',
+    sortKey: '00000000',
+  };
+}
+
+function extractTargetName(name: string): string {
+  if (name.includes('nebula') || name.startsWith('S_'))
+    return '星云拍摄';
+  if (name.includes('stream_frame'))
+    return '风景照片';
+  if (name.includes('record'))
+    return '风景录像';
+  if (name.includes('solve'))
+    return '星图解算';
+  const clean = name.replace(/\.[^.]+$/, '').replace(/_\d+$/, '');
+  return clean.length > 8 ? `${clean.slice(0, 8)}…` : clean;
+}
+
 /**
- * Groups raw PicFolder items by the date portion of their name (YYYYMMDD suffix).
+ * Groups raw PicFolder items by their detected date.
  * Returns an AlbumData-compatible structure ready for rendering.
  */
 function groupIntoAlbumData(
-  folders: Array<{ name: string; size?: number; mtime?: number }>,
+  folders: Array<{ name: string; path?: string; size?: number; mtime?: number }>,
   usedSpace: number | null,
   allSpace: number | null,
 ): AlbumData {
   const real = formatStorage(usedSpace, allSpace);
+  const baseUrl = getAlbumBaseUrl();
 
-  // Group folders by the date segment (last 8 chars before any extension).
-  const map = new Map<string, PhotoItem[]>();
+  const map = new Map<string, { label: string; sortKey: string; items: PhotoItem[] }>();
+
   for (const f of folders) {
-    // name format: "M33_20260522_123456" or just "20260522"
-    const match = f.name.match(/(\d{8})$/);
-    const dateStr = match ? match[1] : 'unknown';
-    // e.g. "20260522" → "2026年5月22日"
-    const year = dateStr.slice(0, 4);
-    const month = Number(dateStr.slice(4, 6));
-    const day = Number(dateStr.slice(6, 8));
-    const label = `${year}年${month}月${day}日`;
+    const { label, timestamp, sortKey } = parseDateFromFolder(f);
     if (!map.has(label)) {
-      map.set(label, []);
+      map.set(label, { label, sortKey, items: [] });
     }
-    // Mock fallback folders all share `name: 'M33'`, so the id needs the
-    // folder index appended to stay unique across items in the same group.
-    map.get(label)!.push({
-      id: `${f.name}-${map.get(label)!.length}`,
-      target: f.name.replace(/\d{8}.*$/, '').replace(/_$/, '') || f.name,
-      exposure: '-',
-      gain: '-',
-      timestamp: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+
+    const previewUrl = f.path
+      ? `${baseUrl}/get_image?path=${encodeURIComponent(f.path)}`
+      : undefined;
+
+    map.get(label)!.items.push({
+      id: `${f.name}-${map.get(label)!.items.length}`,
+      target: extractTargetName(f.name),
+      exposure: f.name.includes('LIGHT_') ? `${f.name.split('LIGHT_')[1]?.split('_')[0] ?? '-'}s` : '-',
+      gain: f.name.includes('LIGHT_') ? `G${f.name.split('LIGHT_')[1]?.split('_')[1] ?? '-'}` : '-',
+      timestamp,
+      path: f.path,
+      previewUrl,
     });
   }
 
-  const groups = Array.from(map.entries()).map(([label, items], i) => ({
+  // Sort groups descending by date (latest first)
+  const sortedEntries = Array.from(map.values()).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+
+  const groups = sortedEntries.map((entry, i) => ({
     id: `g-${i}`,
-    dateLabel: label,
-    items,
+    dateLabel: entry.label,
+    items: entry.items,
   }));
 
   return {
@@ -136,6 +213,7 @@ function AlbumBody({
   toggleGroup,
   isMockMode,
   onFormatPress,
+  onItemPress,
   insetsBottom,
 }: {
   data: AlbumData;
@@ -143,11 +221,12 @@ function AlbumBody({
   toggleGroup: (groupId: string) => void;
   isMockMode: boolean;
   onFormatPress?: () => void;
+  onItemPress?: (item: PhotoItem) => void;
   insetsBottom: number;
 }) {
   return (
     <ScrollView
-      className="flex-1 bg-[#090a0c]"
+      style={{ flex: 1, backgroundColor: '#090a0c' }}
       contentContainerStyle={{ paddingBottom: 40 + insetsBottom }}
       showsVerticalScrollIndicator={false}
     >
@@ -176,7 +255,7 @@ function AlbumBody({
               expanded={!isCollapsed}
               onPress={() => toggleGroup(group.id)}
             />
-            {!isCollapsed && <FolderGrid items={group.items} />}
+            {!isCollapsed && <FolderGrid items={group.items} onItemPress={onItemPress} />}
           </View>
         );
       })}
@@ -193,6 +272,7 @@ export function AlbumScreen() {
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
   const [status, setStatus] = React.useState<Status>('loading');
   const [albumData, setAlbumData] = React.useState<AlbumData | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = React.useState<PhotoItem | null>(null);
 
   const toggleGroup = React.useCallback((groupId: string) => {
     setCollapsed(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -202,11 +282,14 @@ export function AlbumScreen() {
     setStatus('loading');
     try {
       const folders = await listPicFolders();
+      console.info(`[Album] folders=${folders.length}`);
       const data = groupIntoAlbumData(folders, usedSpace, allSpace);
+      console.info(`[Album] groups=${data.groups.length} items=${data.groups.reduce((n, g) => n + g.items.length, 0)}`);
       setAlbumData(data);
       setStatus('success');
     }
-    catch {
+    catch (error) {
+      console.warn('[Album] load failed', error);
       setStatus('error');
     }
   }, [usedSpace, allSpace]);
@@ -245,6 +328,7 @@ export function AlbumScreen() {
         toggleGroup={toggleGroup}
         isMockMode={isMockMode}
         onFormatPress={handleFormatPress}
+        onItemPress={item => setSelectedPhoto(item)}
         insetsBottom={insets.bottom}
       />
     );
@@ -253,10 +337,15 @@ export function AlbumScreen() {
   return (
     <>
       <FocusAwareStatusBar />
-      <SafeAreaView className="flex-1 bg-[#090a0c]">
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#090a0c' }}>
         <TitleBar onRefreshPress={handleRefresh} />
         {renderContent()}
       </SafeAreaView>
+
+      <ImageViewer
+        item={selectedPhoto}
+        onClose={() => setSelectedPhoto(null)}
+      />
     </>
   );
 }

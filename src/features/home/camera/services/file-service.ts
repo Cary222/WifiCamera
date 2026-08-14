@@ -54,9 +54,12 @@ export async function uploadFitsJpeg(file: Blob, fitsName: string): Promise<bool
   return unwrapped?.upload ?? false;
 }
 
-/** GET /FileCopy/power/ — battery level and charging state. */
-export async function getPower(): Promise<{ power: number; in_charge: boolean }> {
-  const res = await cameraClient.get<{ success: true; data: { power: number; in_charge: boolean } }>(
+/**
+ * GET /FileCopy/power/ — battery percentage and charging state.
+ * The board reports `-1` for both fields when no battery gauge is present.
+ */
+export async function getPower(): Promise<{ power: number; in_charging: number }> {
+  const res = await cameraClient.get<{ success: true; data: { power: number; in_charging: number } }>(
     `${BASE}/FileCopy/power/`,
   );
   return unwrapCamera(res.data, 'GET', '/FileCopy/power/');
