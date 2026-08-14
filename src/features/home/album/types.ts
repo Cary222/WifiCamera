@@ -17,6 +17,10 @@ export type PhotoItem = {
   badge?: string;
   /** ISO timestamp, e.g. "2026-05-22 22:35" */
   timestamp: string;
+  /** Absolute board path for real media; absent for mock entries. */
+  path?: string;
+  /** Board `/get_image?path=` URL used by tile and full-screen preview. */
+  previewUrl?: string;
 };
 
 export type DateGroup = {

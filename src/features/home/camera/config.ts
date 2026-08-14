@@ -30,3 +30,13 @@ export function getCameraBaseUrl(): string {
 export function getCameraWebSocketUrl(): string {
   return getCameraBaseUrl().replace(/^http/, 'ws') + CAMERA_WEBSOCKET_PATH;
 }
+
+/**
+ * MediaMTX serves WHEP on 8889. When the control API is tunneled over ADB,
+ * use an explicit WiFi WHEP URL because ADB forward only carries TCP signaling,
+ * not WebRTC's UDP media stream.
+ */
+export function getCameraWhepUrl(): string {
+  return Env.EXPO_PUBLIC_CAMERA_WHEP_URL
+    ?? `${getCameraBaseUrl().replace(/:\d+$/, ':8889')}/cam0/whep`;
+}

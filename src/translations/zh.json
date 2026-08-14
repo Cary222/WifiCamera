@@ -131,6 +131,27 @@
     "title": "首页",
     "wifi_camera": "Wi-Fi 相机"
   },
+  "landscape": {
+    "capturing": "拍照中",
+    "connecting": "正在连接",
+    "count": "张数",
+    "count_unit": "张",
+    "countdown": "倒计时",
+    "ev": "EV",
+    "gain": "增益",
+    "interval": "间隔",
+    "photo": "拍照",
+    "preview_connecting": "正在连接预览…",
+    "preview_failed": "预览连接失败",
+    "repeat_progress": "连拍",
+    "shutter": "快门",
+    "timed_repeat": "定时连拍",
+    "timed_shoot": "定时拍摄",
+    "title": "风景模式",
+    "video": "视频",
+    "watermark": "水印",
+    "white_balance": "白平衡"
+  },
   "login": {
     "email_label": "邮箱/手机号码",
     "password_label": "密码",

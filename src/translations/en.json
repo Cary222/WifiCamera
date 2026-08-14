@@ -131,6 +131,27 @@
     "title": "Home",
     "wifi_camera": "Wi-Fi Camera"
   },
+  "landscape": {
+    "capturing": "Capturing",
+    "connecting": "Connecting",
+    "count": "Count",
+    "count_unit": " shots",
+    "countdown": "Countdown",
+    "ev": "EV",
+    "gain": "Gain",
+    "interval": "Interval",
+    "photo": "Photo",
+    "preview_connecting": "Connecting preview…",
+    "preview_failed": "Preview connection failed",
+    "repeat_progress": "Burst",
+    "shutter": "Shutter",
+    "timed_repeat": "Timed burst",
+    "timed_shoot": "Timed shot",
+    "title": "Landscape",
+    "video": "Video",
+    "watermark": "Watermark",
+    "white_balance": "White balance"
+  },
   "login": {
     "email_label": "Email / Phone",
     "password_label": "Password",

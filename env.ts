@@ -12,6 +12,8 @@ const envSchema = z.object({
   EXPO_PUBLIC_VERSION: z.string(),
   EXPO_PUBLIC_API_URL: z.string().url().optional(),
   EXPO_PUBLIC_CAMERA_BASE_URL: z.string().url(),
+  /** Optional dedicated WHEP endpoint; useful when control is tunneled by ADB. */
+  EXPO_PUBLIC_CAMERA_WHEP_URL: z.string().url().optional(),
   EXPO_PUBLIC_OTA_BACKEND_URL: z.string().url().optional(),
   EXPO_PUBLIC_EAS_PROJECT_ID: z.string(),
   EXPO_PUBLIC_SLUG: z.string(),
@@ -66,6 +68,7 @@ const _env: z.infer<typeof envSchema> = {
   EXPO_PUBLIC_API_URL: process.env.EXPO_PUBLIC_API_URL,
   EXPO_PUBLIC_CAMERA_BASE_URL:
     process.env.EXPO_PUBLIC_CAMERA_BASE_URL ?? DEFAULT_CAMERA_BASE_URL,
+  EXPO_PUBLIC_CAMERA_WHEP_URL: process.env.EXPO_PUBLIC_CAMERA_WHEP_URL,
   EXPO_PUBLIC_OTA_BACKEND_URL:
     process.env.EXPO_PUBLIC_OTA_BACKEND_URL ?? 'http://170.106.80.91:7788',
   EXPO_PUBLIC_EAS_PROJECT_ID: process.env.EXPO_PUBLIC_EAS_PROJECT_ID ?? '13d38557-f618-4a12-812f-4505aea6929f',

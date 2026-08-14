@@ -18,13 +18,12 @@ function arrayBufferToDataUri(buffer: ArrayBuffer, mimeType = 'image/jpeg'): str
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
-/** POST /FileCopy/get_image/ — binary JPG, returned as base64 data URI. */
+/**
+ * Board firmware serves JPEGs from the root-level GET endpoint. The older
+ * POST /FileCopy/get_image/ endpoint returns 404 on the current firmware.
+ */
 export async function getImage(filePath: string): Promise<string> {
-  const response = await fetch(`${BASE}/FileCopy/get_image/`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json;charset=UTF-8' },
-    body: JSON.stringify({ pic_name: filePath }),
-  });
+  const response = await fetch(`${BASE}/get_image?path=${encodeURIComponent(filePath)}`);
 
   if (!response.ok) {
     throw new Error(`[GET IMAGE] HTTP ${response.status} for ${filePath}`);

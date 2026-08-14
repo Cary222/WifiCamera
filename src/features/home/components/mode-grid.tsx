@@ -57,13 +57,13 @@ export function ModeGrid() {
         <ModeCard
           icon={landscapeIcon}
           label={translate('home.mode_landscape')}
-          route="/camera"
+          route="/camera?mode=landscape"
           width={cardWidth}
         />
         <ModeCard
           icon={starryIcon}
           label={translate('home.mode_starry')}
-          route="/(deep-space)"
+          route="/camera?mode=nebula"
           width={cardWidth}
         />
         <ModeCard
