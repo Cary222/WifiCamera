@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable max-lines-per-function, react-hooks/set-state-in-effect */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCameraStore } from '../camera-store';
@@ -25,7 +25,6 @@ export function useNebulaCapture({ exposure, gain }: Options) {
   const stopRepeatExposure = useCameraStore.use.stopRepeatExposure();
   const abortExposure = useCameraStore.use.abortExposure();
   const cameraStatus = useCameraStore.use.cameraStatus();
-  const newestCameraJpgUrl = useCameraStore.use.newestCameraJpgUrl();
   const [captureState, setCaptureState] = useState<State>('idle');
   const [countdownRemaining, setCountdownRemaining] = useState(0);
   const [repeatTotal, setRepeatTotal] = useState(0);
@@ -33,6 +32,8 @@ export function useNebulaCapture({ exposure, gain }: Options) {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const finishPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeRef = useRef(false);
+  /** True once the board has actually entered exposing/repeating for this job. */
+  const observedBoardCaptureRef = useRef(false);
 
   const clearTimers = useCallback(() => {
     if (timeoutRef.current)
@@ -49,6 +50,7 @@ export function useNebulaCapture({ exposure, gain }: Options) {
   const finish = useCallback(() => {
     clearTimers();
     activeRef.current = false;
+    observedBoardCaptureRef.current = false;
     setRepeatTotal(0);
     setCaptureState('idle');
     requestCameraState();
@@ -65,19 +67,23 @@ export function useNebulaCapture({ exposure, gain }: Options) {
   }, [clearTimers, requestCameraState]);
 
   useEffect(() => {
-    if (activeRef.current && cameraStatus !== 'in_exposure' && cameraStatus !== 'in_repeat')
+    if (!activeRef.current)
+      return;
+    if (cameraStatus === 'in_exposure' || cameraStatus === 'in_repeat') {
+      observedBoardCaptureRef.current = true;
+      return;
+    }
+    // Board reports `stopping` before real exposure; finish only after it has
+    // exposed/repeated and returned to its steady streaming/idle state.
+    if (observedBoardCaptureRef.current && (cameraStatus === 'in_streaming' || cameraStatus === 'idle'))
       finish();
   }, [cameraStatus, finish]);
-
-  useEffect(() => {
-    if (activeRef.current && (repeatTotal > 1 || newestCameraJpgUrl))
-      finish();
-  }, [newestCameraJpgUrl, repeatTotal, finish]);
 
   useEffect(() => () => clearTimers(), [clearTimers]);
 
   const begin = useCallback((count: number, interval: number) => {
     activeRef.current = true;
+    observedBoardCaptureRef.current = false;
     setRepeatTotal(count);
     setCountdownRemaining(0);
     setCaptureState('capturing');
@@ -122,6 +128,7 @@ export function useNebulaCapture({ exposure, gain }: Options) {
     else abortExposure();
     clearTimers();
     activeRef.current = false;
+    observedBoardCaptureRef.current = false;
     setCountdownRemaining(0);
     setRepeatTotal(0);
     setCaptureState('idle');

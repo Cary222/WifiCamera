@@ -50,6 +50,17 @@ type BoardCameraState = {
 
 const DEFAULT_TIMER_PLAN: LandscapeTimerPlan = { count: 1, interval: 0 };
 
+/**
+ * Outcome of a command that waits for the board's reply. A timeout or a
+ * dropped connection resolves (never rejects) so callers handle one shape.
+ */
+export type CommandWaitResult = {
+  msg?: CameraJsonMessage;
+  timeout?: boolean;
+  error?: string;
+  elapsedMs: number;
+};
+
 /** Board accepts 0.001s–1s for landscape streaming exposure. */
 function clampExposure(value: number): number {
   return Number.isNaN(value) ? 0.001 : Math.min(1, Math.max(0.001, value));
@@ -125,6 +136,11 @@ type CameraState = {
   connect: () => void;
   disconnect: () => void;
   sendCommand: (message: CameraJsonMessage) => void;
+  sendCommandWait: (
+    instruction: string,
+    params?: unknown[],
+    timeoutMs?: number,
+  ) => Promise<CommandWaitResult>;
   requestCameraStatus: () => void;
   setGain: (gain: number) => void;
   setStretch: (enabled: boolean) => void;
@@ -196,9 +212,24 @@ let manualModeSwitchTimer: ReturnType<typeof setTimeout> | null = null;
 let manualModeSettings: { exposure: number; gain: number } | null = null;
 let repeatCancelled = false;
 
+/**
+ * Commands awaiting their matching board response, keyed by command id.
+ * The board answers asynchronously, so callers of `sendCommandWait` park a
+ * resolver here until `handleCameraMessage` matches the id or the timer fires.
+ */
+const pendingCommands = new Map<string, (result: CommandWaitResult) => void>();
+
 function nextCommandId(): string {
   commandSequence += 1;
   return `APP-${Date.now().toString(36)}-${commandSequence}`;
+}
+
+/** Release every waiter so a dropped connection cannot leak pending promises. */
+function settlePendingCommands(reason: string): void {
+  for (const resolve of pendingCommands.values()) {
+    resolve({ error: reason, elapsedMs: 0 });
+  }
+  pendingCommands.clear();
 }
 
 function clearCaptureTimer(): void {
@@ -455,6 +486,9 @@ const _useCameraStore = create<CameraState>(set => ({
             _useCameraStore.getState().requestCameraState();
             _useCameraStore.getState().requestCameraStatus();
           }
+          else {
+            settlePendingCommands('设备连接已断开');
+          }
         },
         onMessage: message => handleCameraMessage(message, set),
         /** Camera is unreachable — switch to mock mode. */
@@ -473,12 +507,31 @@ const _useCameraStore = create<CameraState>(set => ({
   },
   disconnect: () => {
     cancelManualModeSwitch();
+    settlePendingCommands('设备连接已断开');
     cameraWebSocket?.close();
     cameraWebSocket = null;
     set({ connectionStatus: 'closed', isMockMode: false });
   },
   sendCommand: (message) => {
     cameraWebSocket?.send(message);
+  },
+  sendCommandWait: (instruction, params = [], timeoutMs = 30_000) => {
+    const startedAt = Date.now();
+    if (_useCameraStore.getState().connectionStatus !== 'open') {
+      return Promise.resolve({ error: '设备未连接', elapsedMs: 0 });
+    }
+    const id = nextCommandId();
+    return new Promise<CommandWaitResult>((resolve) => {
+      const timer = setTimeout(() => {
+        pendingCommands.delete(id);
+        resolve({ timeout: true, elapsedMs: Date.now() - startedAt });
+      }, timeoutMs);
+      pendingCommands.set(id, (result) => {
+        clearTimeout(timer);
+        resolve({ ...result, elapsedMs: Date.now() - startedAt });
+      });
+      cameraWebSocket?.send({ device_name: 'main_camera', instruction, params, id });
+    });
   },
   sendInstruction: (instruction, params = []) => {
     _useCameraStore.getState().sendCommand({
@@ -728,6 +781,18 @@ function handleCameraMessage(
   if (message.device_name !== 'main_camera') {
     return;
   }
+
+  // Release `sendCommandWait` before the failure branch below returns early,
+  // otherwise a failed command would hang its caller until the timeout.
+  const commandId = message.id;
+  if (typeof commandId === 'string') {
+    const resolve = pendingCommands.get(commandId);
+    if (resolve) {
+      pendingCommands.delete(commandId);
+      resolve({ msg: message, elapsedMs: 0 });
+    }
+  }
+
   // A failed command must release whatever state machine was waiting on it,
   // otherwise the UI stays stuck in "capturing" / "recording" forever.
   if ((message as { success?: boolean }).success === false) {

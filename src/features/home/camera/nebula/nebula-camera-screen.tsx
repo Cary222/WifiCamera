@@ -19,7 +19,9 @@ import {
   WatermarkFlaskIcon,
 } from '../landscape/landscape-icons';
 import { LandscapeRuler } from '../landscape/landscape-ruler';
+import { formatDecCoordinate, formatRaCoordinate, formatSolveElapsed } from './solve-format';
 import { useNebulaCapture } from './use-nebula-capture';
+import { usePlateSolve } from './use-plate-solve';
 
 const BRAND = '#CBFF3C';
 const CARD_BG = '#1F1F1F';
@@ -44,6 +46,15 @@ function ToolCard({ label, active, onPress, icon }: { label: string; active: boo
       {icon}
       <Text className={`text-[12px] ${active ? 'text-black' : 'text-white'}`}>{label}</Text>
     </Pressable>
+  );
+}
+
+function SolveResultRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row gap-3">
+      <Text className="w-[58px] text-xs text-white/50">{label}</Text>
+      <Text className="flex-1 text-xs text-white">{value}</Text>
+    </View>
   );
 }
 
@@ -74,6 +85,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
 
   const { previewState, stream } = useLandscapeCameraPreview();
   const { captureState, countdownRemaining, repeatTotal, capture, startCountdown, cancel } = useNebulaCapture({ exposure, gain });
+  const { solveState, result: solveResult, solve, dismissResult } = usePlateSolve();
 
   const previewHeight = Math.min(height, width / 0.75);
   const spare = Math.max(0, height - previewHeight);
@@ -89,6 +101,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const isCountdown = captureState === 'countdown';
   const isRecording = recordingState === 'recording';
   const recordingBusy = recordingState === 'starting' || recordingState === 'processing';
+  const isSolving = solveState !== 'idle';
 
   const imageUrl = useMemo(() => {
     if (!newestCameraJpgUrl)
@@ -130,13 +143,15 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
 
   const status = !isConnected
     ? '设备未连接'
-    : isRecording
-      ? '录像中'
-      : recordingBusy
-        ? '生成视频中'
-        : isCountdown
-          ? `${countdownRemaining}s`
-          : isCapturing ? (repeatTotal > 1 ? `定时拍摄 ${repeatTotal} 张` : '拍摄中') : null;
+    : solveState === 'saving'
+      ? '正在保存当前帧原图至 SD 卡…'
+      : solveState === 'solving'
+        ? '正在生成 FITS 并匹配星表…'
+        : isRecording
+          ? '录像中'
+          : recordingBusy
+            ? '生成视频中'
+            : isCapturing ? (repeatTotal > 1 ? `定时拍摄 ${repeatTotal} 张` : '拍摄中') : null;
 
   return (
     <View className="flex-1 bg-black">
@@ -154,15 +169,63 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
           <Text className="text-[11px] text-white">星空模式</Text>
           {sheetTarget === 'manual' ? <ChevronDownIcon size={14} /> : <ChevronUpIcon size={14} />}
         </Pressable>
-        <View className="flex-1 items-end"><Pressable onPress={() => setNotice('解析功能暂未开放')} style={{ backgroundColor: PILL_BG }} className="h-7 min-w-[52px] items-center justify-center rounded-full px-3"><Text className="text-[11px] text-white">解析</Text></Pressable></View>
+        <View className="flex-1 items-end"><Pressable disabled={isSolving} onPress={() => solve()} style={{ backgroundColor: isSolving ? BRAND : PILL_BG }} className="h-7 min-w-[52px] items-center justify-center rounded-full px-3 active:opacity-80"><Text className={`text-[11px] ${isSolving ? 'text-black' : 'text-white'}`}>{isSolving ? '解析中…' : '解析'}</Text></Pressable></View>
       </View>
 
       <Pressable onPress={() => setFocusAssist(value => !value)} style={{ top: previewTop + 56, backgroundColor: focusAssist ? BRAND : PILL_BG }} className="absolute left-4 h-8 flex-row items-center gap-1 rounded-full px-2.5"><Text className={`text-[11px] ${focusAssist ? 'text-black' : 'text-white'}`}>对焦辅助</Text></Pressable>
 
       {(status || notice) && <View className="absolute inset-x-0 items-center" style={{ top: previewTop + 108 }}><View className="rounded-full bg-black/55 px-4 py-1.5"><Text className="text-xs text-white">{notice ?? status}</Text></View></View>}
-      {isCountdown && <View className="absolute inset-0 items-center justify-center"><Text className="text-[88px] font-light text-white">{countdownRemaining}</Text></View>}
 
-      {!sheetOpen && <View className="absolute inset-x-0 items-center" style={{ bottom: insets.bottom + 110 }}><Pressable onPress={shutter} disabled={!isConnected} className="items-center justify-center rounded-full" style={{ width: shutterSize, height: shutterSize, borderRadius: shutterSize / 2, borderColor: BRAND, borderWidth: shutterBorder }}><View className="rounded-full" style={{ width: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner, height: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner, borderRadius: captureMode === 'video' && isRecording ? 8 : shutterInner / 2, backgroundColor: captureMode === 'video' && isRecording ? '#FF3B30' : '#FFFFFF' }} /></Pressable></View>}
+      {solveResult && (
+        <View className="absolute inset-x-4 rounded-2xl p-4" style={{ top: previewTop + 144, backgroundColor: SHEET_BG }}>
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className={`text-sm font-semibold ${solveResult.success ? 'text-[#CBFF3C]' : 'text-red-300'}`}>
+              {solveResult.success ? '解析成功' : '解析失败'}
+            </Text>
+            <Pressable onPress={dismissResult} className="rounded-full bg-white/10 px-2 py-1 active:opacity-80"><Text className="text-xs text-white">关闭</Text></Pressable>
+          </View>
+          {solveResult.success
+            ? (
+                <View className="gap-1.5">
+                  <SolveResultRow label="赤经" value={formatRaCoordinate(solveResult.ra ?? Number.NaN)} />
+                  <SolveResultRow label="赤纬" value={formatDecCoordinate(solveResult.dec ?? Number.NaN)} />
+                  <SolveResultRow label="旋转角" value={solveResult.orientation === null ? '--' : `${solveResult.orientation.toFixed(4)}°（东偏北）`} />
+                  <SolveResultRow label="像素尺度" value={solveResult.pixelScale === null ? '--' : `${solveResult.pixelScale.toFixed(4)}″/px`} />
+                  <SolveResultRow label="视场" value={solveResult.fieldWidth === null || solveResult.fieldHeight === null ? '--' : `${solveResult.fieldWidth.toFixed(4)}° × ${solveResult.fieldHeight.toFixed(4)}°`} />
+                  <SolveResultRow label="用时" value={formatSolveElapsed(solveResult.elapsedMs)} />
+                </View>
+              )
+            : <Text className="text-xs/5 text-white/80">{solveResult.error}</Text>}
+        </View>
+      )}
+      {!sheetOpen && (
+        <View className="absolute inset-x-0 items-center" style={{ bottom: insets.bottom + 110 }}>
+          <Pressable
+            onPress={shutter}
+            disabled={!isConnected}
+            className="items-center justify-center rounded-full"
+            style={{
+              width: shutterSize,
+              height: shutterSize,
+              borderRadius: shutterSize / 2,
+              borderColor: BRAND,
+              borderWidth: shutterBorder,
+            }}
+          >
+            <View
+              className="items-center justify-center rounded-full"
+              style={{
+                width: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner,
+                height: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner,
+                borderRadius: captureMode === 'video' && isRecording ? 8 : shutterInner / 2,
+                backgroundColor: captureMode === 'video' && isRecording ? '#FF3B30' : '#FFFFFF',
+              }}
+            >
+              {isCountdown && <Text className="text-[32px] font-semibold text-black">{countdownRemaining}</Text>}
+            </View>
+          </Pressable>
+        </View>
+      )}
 
       {sheetOpen && (
         <View className="absolute inset-x-0 rounded-t-[26px] p-4" style={{ bottom: insets.bottom + 96, backgroundColor: SHEET_BG }}>
