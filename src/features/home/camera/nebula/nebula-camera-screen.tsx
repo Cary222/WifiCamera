@@ -106,6 +106,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const [countdownEnabled, setCountdownEnabled] = useState(false);
   const [timerPlan, setTimerPlan] = useState({ count: 3, interval: 3 });
   const [countdown, setCountdown] = useState(3);
+  const [aspectRatio, setAspectRatio] = useState<'4:3' | '16:9'>('4:3');
   const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('photo');
   const [focusAssist, setFocusAssist] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -357,6 +358,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                   <View className="flex-row gap-3">
                     <ToolCard icon={<StopwatchIcon color={timerEnabled ? '#111' : '#FFF'} />} label="定时拍摄" active={timerEnabled} onPress={() => setTimerEnabled(value => !value)} />
                     <ToolCard icon={<CountdownIcon color={countdownEnabled ? '#111' : '#FFF'} />} label="倒计时" active={countdownEnabled} onPress={() => setCountdownEnabled(value => !value)} />
+                    <ToolCard label={aspectRatio} active={false} onPress={() => setAspectRatio(value => (value === '4:3' ? '16:9' : '4:3'))} />
                     <ToolCard icon={<WatermarkFlaskIcon color={watermark ? '#111' : '#FFF'} />} label="水印" active={watermark} onPress={() => setWatermark(value => !value)} />
                   </View>
                   <Pressable onPress={() => setAutoStretch(value => !value)} style={{ backgroundColor: autoStretch ? BRAND : CARD_BG }} className="h-[70px] items-center justify-center rounded-2xl">
