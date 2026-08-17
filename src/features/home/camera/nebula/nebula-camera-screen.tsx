@@ -122,11 +122,12 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const { captureState, countdownRemaining, repeatTotal, capture, startCountdown, cancel } = useNebulaCapture({ exposure, gain });
   const { solveState, result: solveResult, solve, dismissResult } = usePlateSolve();
 
-  const previewHeight = Math.min(height, width / 0.75);
+  const previewAspectHeight = aspectRatio === '4:3' ? 0.75 : 0.5625;
+  const previewHeight = Math.min(height, width / previewAspectHeight);
   const spare = Math.max(0, height - previewHeight);
   const topShare = 0.35;
   const previewTop = Math.max(Math.min(insets.top, spare), Math.round(spare * topShare));
-  const surfaceHeight = Math.min(height, width / 0.5625);
+  const surfaceHeight = previewHeight;
   const shutterSize = Math.round(width * SHUTTER_SIZE_RATIO);
   const shutterBorder = Math.max(3, Math.round(shutterSize * SHUTTER_BORDER_RATIO));
   const shutterInner = shutterSize - shutterBorder * 2 - 2;
