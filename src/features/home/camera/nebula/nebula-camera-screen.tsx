@@ -31,12 +31,34 @@ const SHUTTER_BORDER_RATIO = 0.043478260869565216;
 
 const SHUTTER_VALUES = [0.001, 0.00125, 0.0016, 0.002, 0.0025, 0.0033, 0.004, 0.005, 0.0067, 0.008, 0.01, 0.0125, 0.0167, 0.02, 0.025, 0.033, 0.04, 0.05, 0.067, 0.08, 0.1, 0.125, 0.167, 0.2, 0.25, 0.33, 0.5, 0.67, 1];
 const GAIN_VALUES = Array.from({ length: 41 }, (_, index) => index * 3);
+const EV_VALUES = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
+const WB_VALUES = [0, 2800, 3200, 3800, 4500, 5200, 5800, 6500, 7200, 8000];
 const COUNT_VALUES = Array.from({ length: 50 }, (_, index) => index + 1);
 const INTERVAL_VALUES = Array.from({ length: 61 }, (_, index) => index);
 const COUNTDOWN_VALUES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30];
 
 function formatShutter(value: number) {
   return value >= 1 ? `${value}` : `1/${Math.round(1 / value)}`;
+}
+
+type ParamCardProps = {
+  title: string;
+  value: string;
+  active: boolean;
+  onPress: () => void;
+};
+
+function ParamCard({ title, value, active, onPress }: ParamCardProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{ backgroundColor: active ? BRAND : CARD_BG }}
+      className="h-[80px] flex-1 items-center justify-center gap-1 rounded-2xl active:opacity-80"
+    >
+      <Text className={`text-[12px] ${active ? 'text-black' : 'text-white'}`}>{title}</Text>
+      <Text className={`text-[17px] ${active ? 'font-medium text-black' : 'text-white'}`}>{value}</Text>
+    </Pressable>
+  );
 }
 
 function ToolCard({ label, active, onPress, icon }: { label: string; active: boolean; onPress: () => void; icon?: React.ReactNode }) {
@@ -66,12 +88,18 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const recordingState = useCameraStore.use.landscapeRecordingState();
   const startRecording = useCameraStore.use.startLandscapeRecording();
   const stopRecording = useCameraStore.use.stopLandscapeRecording();
+  const changeStreamingSetting = useCameraStore.use.changeStreamingSetting();
+  const changeWhiteBalance = useCameraStore.use.changeWhiteBalance();
+  const changeEv = useCameraStore.use.changeEv();
   const sendCommand = useCameraStore.use.sendCommand();
 
   const [sheetTarget, setSheetTarget] = useState<'manual' | 'tools'>('manual');
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(true);
+  const [activeParam, setActiveParam] = useState<'wb' | 'shutter' | 'gain' | 'ev'>('shutter');
   const [exposure, setExposure] = useState(0.008);
   const [gain, setGain] = useState(6);
+  const [whiteBalance, setWhiteBalance] = useState(0);
+  const [ev, setEv] = useState(0);
   const [autoStretch, setAutoStretch] = useState(true);
   const [watermark, setWatermark] = useState(false);
   const [timerEnabled, setTimerEnabled] = useState(false);
@@ -81,6 +109,13 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('photo');
   const [focusAssist, setFocusAssist] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  const paramValues = useMemo(() => ({
+    wb: whiteBalance === 0 ? 'AUTO' : `${whiteBalance}K`,
+    shutter: formatShutter(exposure),
+    gain: `${gain}dB`,
+    ev: `${ev}`,
+  }), [whiteBalance, exposure, gain, ev]);
 
   const { previewState, stream } = useLandscapeCameraPreview();
   const { captureState, countdownRemaining, repeatTotal, capture, startCountdown, cancel } = useNebulaCapture({ exposure, gain });
@@ -234,8 +269,87 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
           {sheetTarget === 'manual'
             ? (
                 <View className="gap-4">
-                  <LandscapeRuler label="快门" values={SHUTTER_VALUES} value={exposure} formatValue={value => `${formatShutter(value)} s`} formatTick={(value, index) => index % 5 === 0 ? formatShutter(value) : null} onChange={setExposure} />
-                  <LandscapeRuler label="增益" values={GAIN_VALUES} value={gain} formatValue={value => `${value}dB`} formatTick={(value, index) => index % 5 === 0 ? `${value}` : null} onChange={setGain} />
+                  <View className="flex-row gap-3">
+                    <ParamCard
+                      title="白平衡"
+                      value={paramValues.wb}
+                      active={activeParam === 'wb'}
+                      onPress={() => setActiveParam('wb')}
+                    />
+                    <ParamCard
+                      title="快门"
+                      value={paramValues.shutter}
+                      active={activeParam === 'shutter'}
+                      onPress={() => setActiveParam('shutter')}
+                    />
+                    <ParamCard
+                      title="增益"
+                      value={paramValues.gain}
+                      active={activeParam === 'gain'}
+                      onPress={() => setActiveParam('gain')}
+                    />
+                    <ParamCard
+                      title="EV"
+                      value={paramValues.ev}
+                      active={activeParam === 'ev'}
+                      onPress={() => setActiveParam('ev')}
+                    />
+                  </View>
+
+                  <View className="mt-1">
+                    {activeParam === 'shutter' && (
+                      <LandscapeRuler
+                        label=""
+                        values={SHUTTER_VALUES}
+                        value={exposure}
+                        formatValue={value => `${formatShutter(value)} s`}
+                        formatTick={(value, index) => (index % 5 === 0 ? formatShutter(value) : null)}
+                        onChange={(value) => {
+                          setExposure(value);
+                          changeStreamingSetting(value, gain);
+                        }}
+                      />
+                    )}
+                    {activeParam === 'gain' && (
+                      <LandscapeRuler
+                        label=""
+                        values={GAIN_VALUES}
+                        value={gain}
+                        formatValue={value => `${value} dB`}
+                        formatTick={(value, index) => (index % 5 === 0 ? `${value}` : null)}
+                        onChange={(value) => {
+                          setGain(value);
+                          changeStreamingSetting(exposure, value);
+                        }}
+                      />
+                    )}
+                    {activeParam === 'wb' && (
+                      <LandscapeRuler
+                        label=""
+                        values={WB_VALUES}
+                        value={whiteBalance}
+                        formatValue={value => (value === 0 ? 'AUTO' : `${value}K`)}
+                        formatTick={(value, index) => (index % 2 === 0 ? (value === 0 ? 'A' : `${value / 1000}K`) : null)}
+                        onChange={(value) => {
+                          setWhiteBalance(value);
+                          changeWhiteBalance(value);
+                        }}
+                      />
+                    )}
+                    {activeParam === 'ev' && (
+                      <LandscapeRuler
+                        label=""
+                        values={EV_VALUES}
+                        value={ev}
+                        formatValue={value => `${value}`}
+                        formatTick={(value, index) => (index % 2 === 0 ? `${value}` : null)}
+                        onChange={(value) => {
+                          setEv(value);
+                          changeEv(value);
+                        }}
+                      />
+                    )}
+                  </View>
                 </View>
               )
             : (
