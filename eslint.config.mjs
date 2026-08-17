@@ -40,6 +40,8 @@ export default antfu(
       'cli/',
       'expo-env.d.ts',
       'migration/*',
+      // Vendored Stellarium offline runtime (minified engine + data)
+      'src/assets/stellar/**',
     ],
   },
 
