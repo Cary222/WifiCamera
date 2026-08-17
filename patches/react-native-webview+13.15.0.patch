@@ -1,0 +1,56 @@
+diff --git a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+index 251939e..1294eba 100644
+--- a/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
++++ b/node_modules/react-native-webview/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewClient.java
+@@ -2,6 +2,7 @@ package com.reactnativecommunity.webview;
+ 
+ import android.annotation.TargetApi;
+ import android.graphics.Bitmap;
++import android.net.Uri;
+ import android.net.http.SslError;
+ import android.os.Build;
+ import android.os.SystemClock;
+@@ -17,6 +18,7 @@ import android.webkit.WebViewClient;
+ import androidx.annotation.Nullable;
+ import androidx.annotation.RequiresApi;
+ import androidx.core.util.Pair;
++import androidx.webkit.WebViewAssetLoader;
+ 
+ import com.facebook.common.logging.FLog;
+ import com.facebook.react.bridge.Arguments;
+@@ -44,6 +46,7 @@ public class RNCWebViewClient extends WebViewClient {
+     protected RNCWebView.ProgressChangedFilter progressChangedFilter = null;
+     protected @Nullable String ignoreErrFailedForThisURL = null;
+     protected @Nullable RNCBasicAuthCredential basicAuthCredential = null;
++    private WebViewAssetLoader assetLoader;
+ 
+     public void setIgnoreErrFailedForThisURL(@Nullable String url) {
+         ignoreErrFailedForThisURL = url;
+@@ -53,6 +56,27 @@ public class RNCWebViewClient extends WebViewClient {
+         basicAuthCredential = credential;
+     }
+ 
++    private WebViewAssetLoader getAssetLoader(WebView webView) {
++        if (assetLoader == null) {
++            assetLoader = new WebViewAssetLoader.Builder()
++                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(webView.getContext()))
++                .build();
++        }
++        return assetLoader;
++    }
++
++    @Override
++    public WebResourceResponse shouldInterceptRequest(WebView webView, WebResourceRequest request) {
++        WebResourceResponse response = getAssetLoader(webView).shouldInterceptRequest(request.getUrl());
++        return response != null ? response : super.shouldInterceptRequest(webView, request);
++    }
++
++    @Override
++    public WebResourceResponse shouldInterceptRequest(WebView webView, String url) {
++        WebResourceResponse response = getAssetLoader(webView).shouldInterceptRequest(Uri.parse(url));
++        return response != null ? response : super.shouldInterceptRequest(webView, url);
++    }
++
+     @Override
+     public void onPageFinished(WebView webView, String url) {
+         super.onPageFinished(webView, url);

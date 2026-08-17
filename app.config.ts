@@ -120,6 +120,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     'expo-localization',
     'expo-router',
+    './plugins/with-stellarium-assets',
     ['app-icon-badge', appIconBadgeConfig],
     [
       'expo-build-properties',

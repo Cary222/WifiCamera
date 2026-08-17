@@ -36,6 +36,13 @@ SplashScreen.setOptions({
 });
 
 export default function RootLayout() {
+  React.useEffect(() => {
+    // Always release the native splash once the root React tree has mounted.
+    // Auth hydration may fail and leave its status as `idle`; the splash must
+    // not depend on a child route or auth state to become visible.
+    void SplashScreen.hideAsync().catch(() => undefined);
+  }, []);
+
   return (
     <Providers>
       <Stack>

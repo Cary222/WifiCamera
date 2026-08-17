@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function */
 import type { CameraWebSocketStatus } from './websocket-service';
 import {
   CameraWebSocketService,
@@ -83,6 +84,7 @@ describe('cameraWebSocketService', () => {
     expect(socket.sent).toEqual(['{"method":"ping"}']);
     expect(messages).toEqual([{ instruction: 'ready' }]);
     expect(statuses).toEqual(['connecting', 'open']);
+    service.close();
   });
 
   it('reports errors and reconnects after an unexpected close', () => {
@@ -125,6 +127,28 @@ describe('cameraWebSocketService', () => {
     jest.useRealTimers();
   });
 
+  it('continues reconnecting after the finite limit when retryForever is enabled', () => {
+    jest.useFakeTimers();
+    const service = new CameraWebSocketService({
+      url: 'ws://camera/ws/device/',
+      reconnectDelayMs: 250,
+      maxReconnectAttempts: 1,
+      retryForever: true,
+    });
+
+    service.connect();
+    MockWebSocket.instances[0].finish();
+    jest.advanceTimersByTime(250);
+    MockWebSocket.instances[1].finish();
+    jest.advanceTimersByTime(250);
+    MockWebSocket.instances[2].finish();
+    jest.advanceTimersByTime(250);
+
+    expect(MockWebSocket.instances).toHaveLength(4);
+    service.close();
+    jest.useRealTimers();
+  });
+
   it('does not reconnect after an explicit close', () => {
     jest.useFakeTimers();
     const service = new CameraWebSocketService({
@@ -144,5 +168,28 @@ describe('cameraWebSocketService', () => {
     const service = new CameraWebSocketService({ url: 'ws://camera/ws/device/' });
 
     expect(() => service.send({ method: 'ping' })).toThrow('not open');
+  });
+
+  it('sends periodic keep-alive heartbeats while open', () => {
+    jest.useFakeTimers();
+    const service = new CameraWebSocketService({
+      url: 'ws://camera/ws/device/',
+      heartbeatIntervalMs: 2_000,
+    });
+
+    service.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    jest.advanceTimersByTime(2_000);
+    expect(socket.sent).toEqual(['{"device_name":"StartUp","instruction":"HeartBeat"}']);
+
+    jest.advanceTimersByTime(2_000);
+    expect(socket.sent).toHaveLength(2);
+
+    service.close();
+    jest.advanceTimersByTime(2_000);
+    expect(socket.sent).toHaveLength(2);
+    jest.useRealTimers();
   });
 });

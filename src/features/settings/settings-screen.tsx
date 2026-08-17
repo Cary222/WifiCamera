@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { FocusAwareStatusBar, ScrollView, Text, View } from '@/components/ui';
 import { ArrowRight, Battery, Wifi } from '@/components/ui/icons';
 import { useCameraStore } from '@/features/home/camera/camera-store';
+import { translate } from '@/lib/i18n';
 import { LanguageItem } from './components/language-item';
 import { SettingsContainer } from './components/settings-container';
 import { SettingsItem } from './components/settings-item';
@@ -38,7 +39,11 @@ export default function SettingsScreen() {
   const serial = useCameraStore.use.serial();
   const version = useCameraStore.use.version();
   const connectionStatus = useCameraStore.use.connectionStatus();
+  const powerLevel = useCameraStore.use.powerLevel();
   const isConnected = connectionStatus === 'open';
+  const batteryText = !isConnected
+    ? translate('settings.camera_disconnected')
+    : powerLevel === null ? '—' : `${powerLevel}%`;
 
   return (
     <>
@@ -54,8 +59,12 @@ export default function SettingsScreen() {
                   <Text tx="home.wifi_camera" className="ml-3 text-[19px] text-black dark:text-white" />
                 </View>
                 <View className="flex-row items-center">
-                  <Battery percent={92} color="#C8E733" size={30} />
-                  <Text className="ml-2 text-[20px] text-black dark:text-white">92%</Text>
+                  <Battery
+                    percent={isConnected && powerLevel !== null ? powerLevel : 0}
+                    color={isConnected ? '#C8E733' : '#A3A3A3'}
+                    size={30}
+                  />
+                  <Text className="ml-2 text-[20px] text-black dark:text-white">{batteryText}</Text>
                 </View>
               </View>
               <View className="mt-3 flex-row items-center">

@@ -100,6 +100,8 @@ type CameraState = {
   landscapeAutoMode: boolean;
   landscapeManualExposure: number;
   landscapeManualGain: number;
+  landscapeWhiteBalance: number;
+  landscapeEv: number;
   landscapeWatermark: boolean;
   landscapeRatio: LandscapeRatio;
   landscapeTimerPlan: LandscapeTimerPlan;
@@ -122,6 +124,8 @@ type CameraState = {
   startStreamingManual: (exposure: number, gain: number) => void;
   stopStreaming: () => void;
   changeStreamingSetting: (exposure: number, gain: number) => void;
+  changeWhiteBalance: (cct: number) => void;
+  changeEv: (ev: number) => void;
   captureStreamFrame: (path: string) => void;
   startRecording: (baseName: string) => void;
   stopRecording: () => void;
@@ -185,6 +189,9 @@ const CAMERA_INSTRUCTIONS = {
   switchAutoMode: 'switch_auto_mode',
   startRecording: 'streaming_start_save',
   stopRecording: 'streaming_stop_save',
+  startPlateSolve: 'start_plate_solve',
+  setWhiteBalance: 'set_white_balance',
+  setEv: 'set_ev',
 } as const;
 
 /**
@@ -466,6 +473,8 @@ const _useCameraStore = create<CameraState>(set => ({
   // before manual mode is entered, so this is only a safe fallback.
   landscapeManualExposure: 0.001,
   landscapeManualGain: 0,
+  landscapeWhiteBalance: 0,
+  landscapeEv: 0,
   landscapeWatermark: true,
   landscapeRatio: 'full',
   landscapeTimerPlan: DEFAULT_TIMER_PLAN,
@@ -480,8 +489,11 @@ const _useCameraStore = create<CameraState>(set => ({
     if (!cameraWebSocket) {
       cameraWebSocket = new CameraWebSocketService({
         url: getCameraWebSocketUrl(),
+        retryForever: true,
         onStatusChange: (status) => {
-          set({ connectionStatus: status });
+          set(status === 'open'
+            ? { connectionStatus: status, isMockMode: false }
+            : { connectionStatus: status });
           if (status === 'open') {
             _useCameraStore.getState().requestCameraState();
             _useCameraStore.getState().requestCameraStatus();
@@ -604,6 +616,14 @@ const _useCameraStore = create<CameraState>(set => ({
       landscapeManualGain: clampGain(gain),
     });
     scheduleStreamingSetting();
+  },
+  changeWhiteBalance: (cct) => {
+    set({ landscapeWhiteBalance: cct });
+    _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.setWhiteBalance, [cct]);
+  },
+  changeEv: (ev) => {
+    set({ landscapeEv: ev });
+    _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.setEv, [ev]);
   },
   captureStreamFrame: (path) => {
     _useCameraStore.getState().sendInstruction(

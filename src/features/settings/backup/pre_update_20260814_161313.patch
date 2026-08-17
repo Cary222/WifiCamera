@@ -1,0 +1,121 @@
+diff --git a/.env b/.env
+index 4fc2158..1cbeacd 100644
+--- a/.env
++++ b/.env
+@@ -4,9 +4,13 @@ EXPO_PUBLIC_APP_ENV=development
+ # API Configuration (SkySense backend server)
+ EXPO_PUBLIC_API_URL=https://your-skysense-backend.com/api
+ 
+-# WifiCamera device HTTP API (legacy firmware, LAN cleartext).
+-# Override when the camera is reachable at a non-default address.
+-# EXPO_PUBLIC_CAMERA_BASE_URL=http://192.168.1.1:8999
++# USB ADB test mode: MuMu -> 10.0.2.2:18999 -> adb forward -> board 8999.
++# Recreate this mapping after reconnecting the board:
++# adb -s e2621126569ad4a5 forward tcp:18999 tcp:8999
++EXPO_PUBLIC_CAMERA_BASE_URL=http://10.0.2.2:18999
++# USB WHEP relay: relay rewrites ICE candidates to MuMu's host gateway and
++# carries MediaMTX UDP packets through board_webrtc_udp_tunnel over ADB USB.
++EXPO_PUBLIC_CAMERA_WHEP_URL=http://10.0.2.2:18787/board-webrtc/cam0/whep
+ 
+ # Expo Build Configuration
+ EXPO_PUBLIC_EAS_PROJECT_ID=13d38557-f618-4a12-812f-4505aea6929f
+diff --git a/src/features/home/camera/camera-store.ts b/src/features/home/camera/camera-store.ts
+index 094ddc4..fd698cd 100644
+--- a/src/features/home/camera/camera-store.ts
++++ b/src/features/home/camera/camera-store.ts
+@@ -449,8 +449,11 @@ const _useCameraStore = create<CameraState>(set => ({
+     if (!cameraWebSocket) {
+       cameraWebSocket = new CameraWebSocketService({
+         url: getCameraWebSocketUrl(),
++        retryForever: true,
+         onStatusChange: (status) => {
+-          set({ connectionStatus: status });
++          set(status === 'open'
++            ? { connectionStatus: status, isMockMode: false }
++            : { connectionStatus: status });
+           if (status === 'open') {
+             _useCameraStore.getState().requestCameraState();
+             _useCameraStore.getState().requestCameraStatus();
+diff --git a/src/features/home/camera/services/websocket-service.test.ts b/src/features/home/camera/services/websocket-service.test.ts
+index d270723..e1e2881 100644
+--- a/src/features/home/camera/services/websocket-service.test.ts
++++ b/src/features/home/camera/services/websocket-service.test.ts
+@@ -125,6 +125,28 @@ describe('cameraWebSocketService', () => {
+     jest.useRealTimers();
+   });
+ 
++  it('continues reconnecting after the finite limit when retryForever is enabled', () => {
++    jest.useFakeTimers();
++    const service = new CameraWebSocketService({
++      url: 'ws://camera/ws/device/',
++      reconnectDelayMs: 250,
++      maxReconnectAttempts: 1,
++      retryForever: true,
++    });
++
++    service.connect();
++    MockWebSocket.instances[0].finish();
++    jest.advanceTimersByTime(250);
++    MockWebSocket.instances[1].finish();
++    jest.advanceTimersByTime(250);
++    MockWebSocket.instances[2].finish();
++    jest.advanceTimersByTime(250);
++
++    expect(MockWebSocket.instances).toHaveLength(4);
++    service.close();
++    jest.useRealTimers();
++  });
++
+   it('does not reconnect after an explicit close', () => {
+     jest.useFakeTimers();
+     const service = new CameraWebSocketService({
+diff --git a/src/features/home/camera/services/websocket-service.ts b/src/features/home/camera/services/websocket-service.ts
+index 00006f2..1892e18 100644
+--- a/src/features/home/camera/services/websocket-service.ts
++++ b/src/features/home/camera/services/websocket-service.ts
+@@ -13,6 +13,8 @@ export type CameraWebSocketOptions = {
+   url: string;
+   reconnectDelayMs?: number;
+   maxReconnectAttempts?: number;
++  /** Keep retrying after the finite attempt limit for long-lived camera links. */
++  retryForever?: boolean;
+   onMessage?: (message: CameraWebSocketMessage) => void;
+   onParseError?: (error: unknown) => void;
+   onStatusChange?: (status: CameraWebSocketStatus) => void;
+@@ -27,14 +29,15 @@ export class CameraWebSocketService {
+   private reconnectAttempts = 0;
+   /** Timeout handle for the initial connection attempt. */
+   private connectTimeout: ReturnType<typeof setTimeout> | null = null;
+-  private readonly options: Required<Pick<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts'>>
+-    & Omit<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts'>;
++  private readonly options: Required<Pick<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts' | 'retryForever'>>
++    & Omit<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts' | 'retryForever'>;
+ 
+   constructor(options: CameraWebSocketOptions) {
+     this.options = {
+       ...options,
+       reconnectDelayMs: options.reconnectDelayMs ?? 1_000,
+       maxReconnectAttempts: options.maxReconnectAttempts ?? 5,
++      retryForever: options.retryForever ?? false,
+     };
+   }
+ 
+@@ -134,13 +137,17 @@ export class CameraWebSocketService {
+     if (this.manuallyClosed)
+       return;
+     this.options.onStatusChange?.('error');
++    if (this.options.retryForever) {
++      this.scheduleReconnect();
++      return;
++    }
+     this.options.onGiveUp?.();
+   }
+ 
+   private scheduleReconnect(): void {
+     if (this.manuallyClosed || this.reconnectTimer)
+       return;
+-    if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
++    if (!this.options.retryForever && this.reconnectAttempts >= this.options.maxReconnectAttempts) {
+       this.handleConnectionFailed();
+       return;
+     }

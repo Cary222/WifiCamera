@@ -125,3 +125,11 @@ Contributions are welcome. Please open an issue or submit a pull request.
 
 MIT
 # WifiCamera
+
+## Update Log
+
+### 2026-08-14 — Fix settings battery display
+
+- **Type**: Fix
+- **Changes**: Settings now reads the live battery percentage from the camera store and shows the disconnected state instead of a hardcoded `92%` when no camera is connected.
+- **Files**: `src/features/settings/settings-screen.tsx`

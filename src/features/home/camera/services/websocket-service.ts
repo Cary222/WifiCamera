@@ -13,6 +13,10 @@ export type CameraWebSocketOptions = {
   url: string;
   reconnectDelayMs?: number;
   maxReconnectAttempts?: number;
+  /** Keep retrying after the finite attempt limit for long-lived camera links. */
+  retryForever?: boolean;
+  /** Keep-alive heartbeat interval in milliseconds (defaults to 3000ms, 0 disables). */
+  heartbeatIntervalMs?: number;
   onMessage?: (message: CameraWebSocketMessage) => void;
   onParseError?: (error: unknown) => void;
   onStatusChange?: (status: CameraWebSocketStatus) => void;
@@ -23,18 +27,21 @@ export type CameraWebSocketOptions = {
 export class CameraWebSocketService {
   private socket: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private manuallyClosed = false;
   private reconnectAttempts = 0;
   /** Timeout handle for the initial connection attempt. */
   private connectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private readonly options: Required<Pick<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts'>>
-    & Omit<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts'>;
+  private readonly options: Required<Pick<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts' | 'retryForever' | 'heartbeatIntervalMs'>>
+    & Omit<CameraWebSocketOptions, 'reconnectDelayMs' | 'maxReconnectAttempts' | 'retryForever' | 'heartbeatIntervalMs'>;
 
   constructor(options: CameraWebSocketOptions) {
     this.options = {
       ...options,
       reconnectDelayMs: options.reconnectDelayMs ?? 1_000,
       maxReconnectAttempts: options.maxReconnectAttempts ?? 5,
+      retryForever: options.retryForever ?? false,
+      heartbeatIntervalMs: options.heartbeatIntervalMs ?? 3_000,
     };
   }
 
@@ -69,6 +76,7 @@ export class CameraWebSocketService {
         return;
       this.clearConnectTimeout();
       this.reconnectAttempts = 0;
+      this.startHeartbeatTimer();
       this.options.onStatusChange?.('open');
     };
     socket.onmessage = async (event) => {
@@ -95,12 +103,14 @@ export class CameraWebSocketService {
     socket.onerror = () => {
       if (this.socket !== socket)
         return;
+      this.clearHeartbeatTimer();
       this.options.onStatusChange?.('error');
     };
     socket.onclose = () => {
       if (this.socket !== socket)
         return;
       this.clearConnectTimeout();
+      this.clearHeartbeatTimer();
       this.socket = null;
       this.options.onStatusChange?.('closed');
       this.scheduleReconnect();
@@ -112,6 +122,7 @@ export class CameraWebSocketService {
     this.reconnectAttempts = 0;
     this.clearReconnectTimer();
     this.clearConnectTimeout();
+    this.clearHeartbeatTimer();
     const socket = this.socket;
     this.socket = null;
 
@@ -134,13 +145,17 @@ export class CameraWebSocketService {
     if (this.manuallyClosed)
       return;
     this.options.onStatusChange?.('error');
+    if (this.options.retryForever) {
+      this.scheduleReconnect();
+      return;
+    }
     this.options.onGiveUp?.();
   }
 
   private scheduleReconnect(): void {
     if (this.manuallyClosed || this.reconnectTimer)
       return;
-    if (this.reconnectAttempts >= this.options.maxReconnectAttempts) {
+    if (!this.options.retryForever && this.reconnectAttempts >= this.options.maxReconnectAttempts) {
       this.handleConnectionFailed();
       return;
     }
@@ -157,6 +172,27 @@ export class CameraWebSocketService {
       return;
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
+  }
+
+  private startHeartbeatTimer(): void {
+    this.clearHeartbeatTimer();
+    if (this.options.heartbeatIntervalMs <= 0)
+      return;
+    this.heartbeatTimer = setInterval(() => {
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        try {
+          this.socket.send(serializeCameraJsonMessage({ device_name: 'StartUp', instruction: 'HeartBeat' }));
+        }
+        catch {}
+      }
+    }, this.options.heartbeatIntervalMs);
+  }
+
+  private clearHeartbeatTimer(): void {
+    if (!this.heartbeatTimer)
+      return;
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = null;
   }
 
   private clearConnectTimeout(): void {

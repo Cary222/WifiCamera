@@ -4,10 +4,9 @@ import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RTCView } from 'react-native-webrtc';
 import { Text } from '@/components/ui';
 import { useCameraStore } from '../camera-store';
-import { useLandscapeCameraPreview } from '../components/native-camera-preview';
+import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
 import { getCameraBaseUrl } from '../config';
 import {
   ChevronDownIcon,
@@ -156,9 +155,12 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   return (
     <View className="flex-1 bg-black">
       <View className="absolute left-0 items-center justify-center overflow-hidden bg-black" style={{ width, top: previewTop, height: previewHeight }}>
-        {stream
-          ? <RTCView streamURL={stream.toURL()} objectFit="cover" mirror={false} style={{ width, height: surfaceHeight }} />
-          : <Text className="text-sm text-white/40">{previewState === 'error' ? '相机预览连接失败' : '相机预览连接中'}</Text>}
+        <PreviewSurface
+          stream={stream}
+          previewState={previewState}
+          width={width}
+          height={surfaceHeight}
+        />
       </View>
 
       {watermark && <View className="absolute left-5" style={{ top: previewTop + 96 }}><Text className="text-base font-semibold text-white/85">SVBONY</Text></View>}

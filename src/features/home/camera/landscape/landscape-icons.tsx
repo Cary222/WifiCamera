@@ -80,3 +80,12 @@ export function SheetMenuIcon({ color = '#FFF', size = 24, ...props }: IconProps
 export function RatioBoxIcon({ color = '#FFF', size = 24, ...props }: IconProps) {
   return <Svg width={size} height={size} viewBox="0 0 24 24" {...props}><Rect x="3" y="5" width="18" height="14" rx="2.6" {...stroke(color)} /></Svg>;
 }
+
+export function MeteringIcon({ color = '#FFF', size = 24, ...props }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" {...props}>
+      <Path d="M7 4H5.5A1.5 1.5 0 0 0 4 5.5V7M17 4h1.5A1.5 1.5 0 0 1 20 5.5V7M7 20H5.5A1.5 1.5 0 0 1 4 18.5V17M17 20h1.5a1.5 1.5 0 0 0 1.5-1.5V17" {...stroke(color, 2.2)} />
+      <Circle cx={12} cy={12} r={3.2} {...stroke(color, 2)} />
+    </Svg>
+  );
+}

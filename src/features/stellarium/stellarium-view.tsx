@@ -1,94 +1,119 @@
-import type { WebViewProps } from 'react-native-webview';
+import type { WebViewMessageEvent, WebViewProps } from 'react-native-webview';
 import type { StellariumBridge } from './stellarium-service';
-/**
- * StellariumView — pure WebView wrapper for the Stellarium Web Engine.
- * Handles platform-specific source paths and postMessage bridge.
- *
- * The HTML asset path differs per platform:
- *   iOS:        'stellar/index.html'   (bundled in app bundle)
- *   Android:    'file:///android_asset/stellar/index.html'
- *
- * This component does NOT contain any business logic — only
- * platform source resolution and the WebView itself.
- */
 import * as React from 'react';
-import { Platform } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { Text } from '@/components/ui';
 import { createStellariumBridge } from './stellarium-service';
 
-const STELLARIUM_HTML_PATH = Platform.select({
-  ios: 'stellar/index.html',
-  android: 'file:///android_asset/stellar/index.html',
-  default: 'stellar/index.html',
+const READY_TIMEOUT_MS = 15_000;
+const STELLARIUM_SOURCE = Platform.select({
+  android: { uri: 'https://appassets.androidplatform.net/assets/stellar/index.html' },
+  ios: { uri: 'stellar/index.html' },
+  default: { uri: 'stellar/index.html' },
 });
 
-const WEBVIEW_PROPS: WebViewProps = Platform.select({
-  android: {
-    allowFileAccess: true,
-    mixedContentMode: 'always' as const,
-  },
-  ios: {
-    allowUniversalAccessFromFileURLs: true,
-    scrollEnabled: false,
-    bounces: false,
-    overScrollMode: 'never',
-    allowsBackForwardNavigationGestures: false,
-  },
-  default: {},
-});
-
-export type StellariumViewRef = {
-  webViewRef: React.RefObject<WebView | null>;
-} & StellariumBridge;
-
+export type StellariumViewHandle = StellariumBridge;
 export type StellariumViewProps = {
   onReady?: () => void;
+  onError?: (message: string) => void;
   style?: WebViewProps['style'];
 };
 
-export type StellariumViewHandle = {
-  gotoRaDec: (ra: number, dec: number, duration?: number) => void;
-  zoomTo: (fovDeg: number, duration?: number) => void;
-  searchTarget: (name: string) => void;
-  toggleConstellations: (visible: boolean) => void;
-  setFovFrame: (fovDeg: number, sensorW: number, sensorH: number) => void;
-};
-
-export function StellariumView({ ref, onReady, style }: StellariumViewProps & { ref?: React.RefObject<StellariumViewHandle | null> }) {
+export function StellariumView({ ref, onError, onReady, style }: StellariumViewProps & { ref?: React.RefObject<StellariumViewHandle | null> }) {
   const webViewRef = React.useRef<WebView>(null);
-  const bridge = React.useRef(createStellariumBridge((msg: unknown) => {
-    webViewRef.current?.postMessage(JSON.stringify(msg));
+  const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const readyRef = React.useRef(false);
+  const [error, setError] = React.useState<string>();
+  const [loading, setLoading] = React.useState(true);
+  const clearTimeout = React.useCallback(() => {
+    if (timeoutRef.current)
+      globalThis.clearTimeout(timeoutRef.current);
+    timeoutRef.current = undefined;
+  }, []);
+  const reportError = React.useCallback((message: string) => {
+    clearTimeout();
+    bridge.current.setReady(false);
+    setLoading(false);
+    setError(message);
+    onError?.(message);
+  }, [clearTimeout, onError]);
+  const bridge = React.useRef(createStellariumBridge(webViewRef, {
+    onError: message => reportError(message),
+    onReload: () => webViewRef.current?.reload(),
   }));
-
-  React.useImperativeHandle(ref, () => ({
-    gotoRaDec: bridge.current.gotoRaDec,
-    zoomTo: bridge.current.zoomTo,
-    searchTarget: bridge.current.searchTarget,
-    toggleConstellations: bridge.current.toggleConstellations,
-    setFovFrame: bridge.current.setFovFrame,
-  }));
-
-  const handleMessage = React.useCallback((event: { nativeEvent: { data?: string } }) => {
+  const beginLoading = React.useCallback(() => {
+    clearTimeout();
+    readyRef.current = false;
+    bridge.current.setReady(false);
+    setError(undefined);
+    setLoading(true);
+    timeoutRef.current = globalThis.setTimeout(() => {
+      if (!readyRef.current)
+        reportError('Stellarium initialization timed out.');
+    }, READY_TIMEOUT_MS);
+  }, [clearTimeout, reportError]);
+  const markReady = React.useCallback(() => {
+    clearTimeout();
+    bridge.current.setReady(true);
+    setLoading(false);
+    setError(undefined);
+    if (!readyRef.current) {
+      readyRef.current = true;
+      onReady?.();
+    }
+  }, [clearTimeout, onReady]);
+  React.useEffect(() => clearTimeout, [clearTimeout]);
+  React.useImperativeHandle(ref, () => bridge.current, []);
+  const onMessage = React.useCallback((event: WebViewMessageEvent) => {
     try {
-      if (event.nativeEvent.data) {
-        const msg = JSON.parse(event.nativeEvent.data);
-        if (msg.type === 'engine_ready' && onReady) {
-          onReady();
-        }
+      const message = JSON.parse(event.nativeEvent.data);
+      if (message.type === 'ready' || message.type === 'engine_ready') {
+        markReady();
+      }
+      else if (message.type === 'error') {
+        reportError(message.message || 'Stellarium failed to start.');
       }
     }
-    catch { /* ignore non-JSON messages */ }
-  }, [onReady]);
-
+    catch { reportError('Received an unreadable Stellarium message.'); }
+  }, [markReady, reportError]);
   return (
-    <WebView
-      ref={webViewRef}
-      source={{ uri: STELLARIUM_HTML_PATH }}
-      style={[{ flex: 1 }, style]}
-      onMessage={handleMessage}
-      javaScriptEnabled
-      domStorageEnabled
-      {...WEBVIEW_PROPS}
-    />
+    <View style={styles.root}>
+      <WebView
+        ref={webViewRef}
+        source={STELLARIUM_SOURCE}
+        style={[styles.webView, style]}
+        javaScriptEnabled
+        domStorageEnabled
+        scrollEnabled={false}
+        bounces={false}
+        overScrollMode="never"
+        setBuiltInZoomControls={false}
+        allowsBackForwardNavigationGestures={false}
+        onLoadStart={beginLoading}
+        onLoad={markReady}
+        onLoadEnd={markReady}
+        onLoadProgress={({ nativeEvent }) => {
+          if (nativeEvent.progress >= 0.95)
+            markReady();
+        }}
+        onMessage={onMessage}
+        onError={() => reportError('WebView failed to load Stellarium.')}
+      />
+      {loading && (
+        <View style={styles.status}>
+          <ActivityIndicator />
+          <Text className="text-sm text-white">Loading star map...</Text>
+        </View>
+      )}
+      {error && (
+        <View style={styles.status}>
+          <Text className="text-center text-sm text-white">{error}</Text>
+          <Text className="mt-2 text-xs text-white/70" onPress={() => bridge.current.reload()}>Tap to retry</Text>
+        </View>
+      )}
+    </View>
   );
 }
+
+const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: '#05070b' }, webView: { flex: 1, backgroundColor: 'transparent' }, status: { ...StyleSheet.absoluteFillObject, alignItems: 'center', backgroundColor: '#05070bcc', justifyContent: 'center', padding: 24 } });

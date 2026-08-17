@@ -1,3 +1,4 @@
+import type { Href } from 'expo-router';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Pressable, useWindowDimensions, View } from 'react-native';
@@ -7,7 +8,7 @@ import { translate } from '@/lib/i18n';
 type ModeCardProps = {
   icon: any;
   label: string;
-  route: string;
+  route: Href;
   width: number;
 };
 
@@ -16,7 +17,7 @@ function ModeCard({ icon, label, route, width }: ModeCardProps) {
 
   return (
     <Pressable
-      onPress={() => router.push(route as any)}
+      onPress={() => router.push(route)}
       style={{ width }}
       className="h-[139px] rounded-[17.069px] border-[0.569px] border-neutral-200 bg-neutral-50 p-5 active:opacity-70 dark:border-[#2d2d2d] dark:bg-[#111213]"
     >
@@ -57,19 +58,19 @@ export function ModeGrid() {
         <ModeCard
           icon={landscapeIcon}
           label={translate('home.mode_landscape')}
-          route="/camera?mode=landscape"
+          route={{ pathname: '/camera', params: { mode: 'landscape' } }}
           width={cardWidth}
         />
         <ModeCard
           icon={starryIcon}
           label={translate('home.mode_starry')}
-          route="/camera?mode=nebula"
+          route={{ pathname: '/camera', params: { mode: 'nebula' } }}
           width={cardWidth}
         />
         <ModeCard
           icon={planetIcon}
           label={translate('home.mode_planet')}
-          route="/camera"
+          route={{ pathname: '/camera', params: { mode: 'planet' } }}
           width={cardWidth}
         />
         <ModeCard

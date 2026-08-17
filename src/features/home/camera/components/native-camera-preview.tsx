@@ -2,13 +2,17 @@
 
 import type { MediaStream } from 'react-native-webrtc';
 
-import { useEffect, useState } from 'react';
-import { View } from 'react-native';
-import { RTCView } from 'react-native-webrtc';
+import { memo, useEffect, useState } from 'react';
+import { NativeModules, View } from 'react-native';
 import { Text } from '@/components/ui';
+import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
 import { getCameraWhepUrl } from '../config';
 import { openWhepSession } from '../services/whep-service';
+
+const NativeWebRTC = NativeModules.WebRTCModule ? require('react-native-webrtc') : null;
+
+export const RTCView = NativeWebRTC?.RTCView ?? View;
 
 export type CameraPreviewMode = 'auto' | 'manual';
 export type CameraPreviewState = 'connecting' | 'live' | 'error';
@@ -156,6 +160,36 @@ export function useLandscapeCameraPreview(_options: LandscapePreviewOptions = {}
 
   return { previewState, stream };
 }
+
+export type PreviewSurfaceProps = {
+  stream: MediaStream | null;
+  previewState: CameraPreviewState;
+  width: number;
+  height: number;
+};
+
+export const PreviewSurface = memo(({ stream, previewState, width, height }: PreviewSurfaceProps) => {
+  if (stream && NativeWebRTC) {
+    return (
+      <RTCView
+        streamURL={stream.toURL()}
+        objectFit="cover"
+        mirror={false}
+        style={{ width, height }}
+      />
+    );
+  }
+  return (
+    <View className="flex-1 items-center justify-center bg-[#0B0B0D]" style={{ width, height }}>
+      <Text className="text-sm text-white/40">
+        {previewState === 'error'
+          ? translate('landscape.preview_failed')
+          : translate('landscape.preview_connecting')}
+      </Text>
+    </View>
+  );
+});
+PreviewSurface.displayName = 'PreviewSurface';
 
 /**
  * Keeps the existing preview-area layout intact and replaces only its

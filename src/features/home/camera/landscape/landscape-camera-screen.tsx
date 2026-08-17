@@ -1,19 +1,15 @@
 /* eslint-disable max-lines-per-function */
 
-import type { MediaStream } from 'react-native-webrtc';
-
 import type { LandscapeCaptureMode, LandscapeRatio } from '../camera-store';
-import type { CameraPreviewState } from '../components/native-camera-preview';
 import { Image } from 'expo-image';
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { RTCView } from 'react-native-webrtc';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
-import { useLandscapeCameraPreview } from '../components/native-camera-preview';
+import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
 import { getImage } from '../services/file-service';
 
 import {
@@ -88,40 +84,6 @@ function formatShutter(value: number): string {
   return value >= 1 ? `${value}` : `1/${Math.round(1 / value)}`;
 }
 
-type PreviewSurfaceProps = {
-  stream: MediaStream | null;
-  previewState: CameraPreviewState;
-  width: number;
-  height: number;
-};
-
-/**
- * Isolated so that dragging a ruler (which re-renders the whole screen every
- * frame) never re-reconciles the video surface.
- */
-const PreviewSurface = memo(({ stream, previewState, width, height }: PreviewSurfaceProps) => {
-  if (stream) {
-    return (
-      <RTCView
-        streamURL={stream.toURL()}
-        objectFit="cover"
-        mirror={false}
-        style={{ width, height }}
-      />
-    );
-  }
-  return (
-    <View className="flex-1 items-center justify-center bg-[#0B0B0D]">
-      <Text className="text-sm text-white/40">
-        {previewState === 'error'
-          ? translate('landscape.preview_failed')
-          : translate('landscape.preview_connecting')}
-      </Text>
-    </View>
-  );
-});
-PreviewSurface.displayName = 'PreviewSurface';
-
 type ToolCardProps = {
   icon?: React.ReactNode;
   label: string;
@@ -186,6 +148,8 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const autoMode = useCameraStore.use.landscapeAutoMode();
   const manualExposure = useCameraStore.use.landscapeManualExposure();
   const manualGain = useCameraStore.use.landscapeManualGain();
+  const whiteBalance = useCameraStore.use.landscapeWhiteBalance();
+  const ev = useCameraStore.use.landscapeEv();
   const watermark = useCameraStore.use.landscapeWatermark();
   const ratio = useCameraStore.use.landscapeRatio();
   const timerPlan = useCameraStore.use.landscapeTimerPlan();
@@ -199,6 +163,8 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const setWatermark = useCameraStore.use.setLandscapeWatermark();
   const setRatio = useCameraStore.use.setLandscapeRatio();
   const changeStreamingSetting = useCameraStore.use.changeStreamingSetting();
+  const changeWhiteBalance = useCameraStore.use.changeWhiteBalance();
+  const changeEv = useCameraStore.use.changeEv();
   const startLandscapeCapture = useCameraStore.use.startLandscapeCapture();
   const startLandscapeCountdown = useCameraStore.use.startLandscapeCountdown();
   const cancelLandscapeTimerCapture = useCameraStore.use.cancelLandscapeTimerCapture();
@@ -240,8 +206,6 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [burstOpen, setBurstOpen] = useState(false);
   const [activeParam, setActiveParam] = useState<ManualParam>('shutter');
-  const [whiteBalance, setWhiteBalance] = useState(0);
-  const [ev, setEv] = useState(0);
   const [timedShootOn, setTimedShootOn] = useState(false);
   const [countdownOn, setCountdownOn] = useState(false);
   const [countdownSeconds, setCountdownSeconds] = useState(3);
@@ -524,7 +488,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     value={whiteBalance}
                     formatValue={value => (value === 0 ? 'AUTO' : `${value}K`)}
                     formatTick={(value, index) => (index % 2 === 0 ? (value === 0 ? 'A' : `${value / 1000}K`) : null)}
-                    onChange={setWhiteBalance}
+                    onChange={changeWhiteBalance}
                   />
                 )}
                 {activeParam === 'ev' && (
@@ -534,7 +498,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     value={ev}
                     formatValue={value => `${value}`}
                     formatTick={(value, index) => (index % 2 === 0 ? `${value}` : null)}
-                    onChange={setEv}
+                    onChange={changeEv}
                   />
                 )}
               </View>

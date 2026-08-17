@@ -1,214 +1,100 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>Stellarium Web Engine</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>Stellarium</title>
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    html, body {
-      overscroll-behavior: none;
-      -webkit-overflow-scrolling: auto;
-      overflow: hidden;
-      position: fixed;
-      width: 100%;
-      height: 100%;
-      background: #000;
-    }
-
-    canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      touch-action: none;
-      -webkit-user-select: none;
-      user-select: none;
-    }
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;position:fixed;background:#05070b}
+    canvas{display:block;width:100%;height:100%;touch-action:none;user-select:none}
   </style>
 </head>
 <body>
-  <canvas id="stellarium-canvas"></canvas>
-
-  <!--
-    Stellarium Web Engine build outputs.
-    Get these by compiling the Stellarium Web Engine from:
-    https://github.com/Stellarium/stellarium
-
-    Build instructions:
-    1. Install Emscripten SDK (emsdk)
-    2. Clone: git clone https://github.com/Stellarium/stellarium.git
-    3. cd stellarium/web-engine
-    4. emsdk activate && source emsdk_env.sh
-    5. make js
-    6. Copy the following files from build/js/ to this directory:
-       - stellarium-web-engine.js
-       - stellarium-web-engine.wasm
-  -->
-  <!-- <script src="stellarium-web-engine.js"></script> -->
-  <script src="https://cdn.jsdelivr.net/gh/Stellarium/stellarium@latest/web-engine/build/js/stellarium-web-engine.js"></script>
-
+  <canvas id="sky"></canvas>
+  <script src="stellarium-web-engine.js"></script>
   <script>
-    (function() {
-      const canvas = document.getElementById('stellarium-canvas');
-      let engine = null;
-      let readyFired = false;
-
-      // ─── WebGL Context Lost / Restored ───────────────────────────────────────
-      canvas.addEventListener('webglcontextlost', function(e) {
-        e.preventDefault();
-        sendMessage({ type: 'context_lost' });
-      });
-
-      canvas.addEventListener('webglcontextrestored', function() {
-        sendMessage({ type: 'context_restored' });
-      });
-
-      // ─── PostMessage bridge ──────────────────────────────────────────────────
-      // Receive messages from React Native
-      document.addEventListener('message', handleNativeMessage);
-
-      // Also support the WebView 'message' event (same behavior)
-      window.addEventListener('message', handleNativeMessage);
-
-      function sendMessage(data) {
-        if (window.ReactNativeWebView) {
-          window.ReactNativeWebView.postMessage(JSON.stringify(data));
-        } else if (window.parent) {
-          window.parent.postMessage(JSON.stringify(data), '*');
+    (() => {
+      let stel = null;
+      const pendingCommands = [];
+      const pendingMessages = [];
+      let flushTimer = null;
+      function flushMessages() {
+        if (!window.ReactNativeWebView?.postMessage) return false;
+        while (pendingMessages.length) window.ReactNativeWebView.postMessage(pendingMessages.shift());
+        if (flushTimer !== null) {
+          clearInterval(flushTimer);
+          flushTimer = null;
         }
+        return true;
       }
+      const send = message => {
+        pendingMessages.push(JSON.stringify(message));
+        if (!flushMessages() && flushTimer === null) flushTimer = setInterval(flushMessages, 100);
+      };
+      const assetUrl = path => new URL(path, document.baseURI).href;
+      const isFiniteNumber = value => typeof value === 'number' && Number.isFinite(value);
 
-      function handleNativeMessage(event) {
-        let msg;
-        try {
-          msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        } catch (e) {
-          console.error('[Stellarium] Failed to parse message:', e);
-          return;
-        }
-
-        if (!engine) {
-          console.warn('[Stellarium] Engine not ready, queuing message:', msg.type);
-          return;
-        }
-
-        switch (msg.type) {
-          case 'goto_radec':
-            handleGotoRadec(msg);
-            break;
-
-          case 'zoom_to':
-            handleZoomTo(msg);
-            break;
-
-          case 'search_target':
-            handleSearchTarget(msg);
-            break;
-
+      function reportError(message) { send({ type: 'error', message: String(message) }); }
+      function gotoRaDec(message) {
+        const raDeg = message.raDeg ?? message.ra;
+        const decDeg = message.decDeg ?? message.dec;
+        if (!isFiniteNumber(raDeg) || raDeg < 0 || raDeg > 360 || !isFiniteNumber(decDeg) || decDeg < -90 || decDeg > 90) return reportError('Invalid RA/Dec command.');
+        const icrf = stel.s2c(raDeg * Math.PI / 180, decDeg * Math.PI / 180);
+        stel.lookAt(stel.convertFrame(stel.core.observer, 'ICRF', 'OBSERVED', icrf), message.duration ?? 0.5);
+      }
+      function zoomTo(message) {
+        const fovDeg = message.fovDeg ?? message.fov;
+        if (!isFiniteNumber(fovDeg) || fovDeg <= 0 || fovDeg > 360) return reportError('Invalid FOV command.');
+        stel.zoomTo(fovDeg * Math.PI / 180, message.duration ?? 0.3);
+      }
+      function execute(message) {
+        switch (message.type) {
+          case 'goto_radec': return gotoRaDec(message);
+          case 'zoom_to': return zoomTo(message);
+          case 'search_target': {
+            const object = stel.getObj(message.name);
+            return object ? object.pointAndLock(0.5) : reportError(`Target not found: ${message.name}`);
+          }
           case 'toggle_constellations':
-            handleToggleConstellations(msg);
-            break;
-
+            stel.core.constellations.lines_visible = Boolean(message.visible);
+            return;
           case 'set_fov_frame':
-            handleSetFovFrame(msg);
-            break;
-
-          default:
-            console.warn('[Stellarium] Unknown message type:', msg.type);
+            // The engine has no overlay-frame API; preserve the old command by setting its FOV.
+            return zoomTo({ fovDeg: message.fovDeg ?? message.fov });
+          default: return reportError(`Unknown Stellarium command: ${message.type}`);
         }
       }
-
-      // ─── Command Handlers ─────────────────────────────────────────────────────
-
-      function handleGotoRadec(msg) {
-        const { ra, dec, duration = 0.5 } = msg;
-        if (typeof engine.lookAt !== 'function') {
-          console.error('[Stellarium] lookAt not available');
-          return;
-        }
-        // Convert RA/Dec to direction vector (Stellarium uses ICRF)
-        const pos = engine.s2c(ra, dec);
-        engine.lookAt(pos, duration);
+      function receive(event) {
+        try {
+          const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          if (!message || typeof message.type !== 'string') throw new Error('Invalid Stellarium command.');
+          if (!stel) pendingCommands.push(message); else execute(message);
+        } catch (error) { reportError(error); }
       }
+      document.addEventListener('message', receive);
+      window.addEventListener('message', receive);
+      document.getElementById('sky').addEventListener('webglcontextlost', event => { event.preventDefault(); send({ type: 'context_lost' }); });
+      document.getElementById('sky').addEventListener('webglcontextrestored', () => send({ type: 'context_restored' }));
 
-      function handleZoomTo(msg) {
-        const { fov, duration = 0.3 } = msg;
-        // fov is in degrees, convert to radians
-        const fovRad = (fov * Math.PI) / 180;
-        if (typeof engine.zoomTo === 'function') {
-          engine.zoomTo(fovRad, duration);
-        } else if (typeof engine.setValue === 'function') {
-          engine.setValue('core.observer.fov', fovRad);
-        }
-      }
-
-      function handleSearchTarget(msg) {
-        const { name } = msg;
-        if (typeof engine.getObj !== 'function') {
-          console.error('[Stellarium] getObj not available');
-          return;
-        }
-        const obj = engine.getObj(name);
-        if (obj) {
-          obj.pointAndLock(0.5);
-        } else {
-          sendMessage({ type: 'error', message: 'Target not found: ' + name });
-        }
-      }
-
-      function handleToggleConstellations(msg) {
-        const { visible } = msg;
-        if (engine.core && engine.core.constellations) {
-          engine.core.constellations.lines_visible = visible;
-          if (engine.core.constellations.labels_visible !== undefined) {
-            engine.core.constellations.labels_visible = visible;
-          }
-        }
-      }
-
-      function handleSetFovFrame(msg) {
-        const { fov, sensorW, sensorH } = msg;
-        // Set FOV based on sensor dimensions and desired field of view
-        // This helps show the actual telescope's view frame
-        const fovRad = (fov * Math.PI) / 180;
-        if (typeof engine.setValue === 'function') {
-          engine.setValue('core.observer.fov', fovRad);
-        }
-      }
-
-      // ─── Initialize Engine ───────────────────────────────────────────────────
-      function init() {
-        if (typeof StelWebEngine === 'undefined') {
-          console.error('[Stellarium] StelWebEngine not found. Ensure stellarium-web-engine.js is loaded.');
-          sendMessage({ type: 'error', message: 'StelWebEngine not loaded' });
-          return;
-        }
-
-        engine = StelWebEngine({
-          canvas: canvas,
-          onReady: function(stel) {
-            console.log('[Stellarium] Engine ready');
-            engine = stel;
-            sendMessage({ type: 'engine_ready' });
-          },
-          onError: function(err) {
-            console.error('[Stellarium] Engine error:', err);
-            sendMessage({ type: 'error', message: String(err) });
-          }
-        });
-      }
-
-      // Start initialization when DOM is ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-      } else {
-        init();
-      }
+      if (typeof StelWebEngine !== 'function') return reportError('Stellarium engine was not found.');
+      StelWebEngine({
+        wasmFile: assetUrl('stellarium-web-engine.wasm'),
+        canvas: document.getElementById('sky'),
+        onReady(engine) {
+          stel = engine;
+          stel.core.stars.addDataSource({ url: assetUrl('data/stars') });
+          stel.core.dsos.addDataSource({ url: assetUrl('data/dso') });
+          stel.core.skycultures.addDataSource({ url: assetUrl('data/skycultures/western'), key: 'western' });
+          stel.core.milkyway.addDataSource({ url: assetUrl('data/surveys/milkyway') });
+          stel.core.atmosphere.visible = false;
+          stel.core.landscapes.visible = false;
+          stel.setFont('regular', assetUrl('fonts/Roboto-Regular.ttf'), 1.38);
+          stel.setFont('bold', assetUrl('fonts/Roboto-Bold.ttf'), 1.38);
+          send({ type: 'ready' });
+          while (pendingCommands.length) execute(pendingCommands.shift());
+        },
+        onError: reportError,
+      }).catch?.(reportError);
     })();
   </script>
 </body>

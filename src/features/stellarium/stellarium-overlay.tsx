@@ -25,6 +25,7 @@ type Props = {
 export function StellariumOverlay({ visible, onClose }: Props) {
   const stellaRef = React.useRef<StellariumViewHandle>(null);
   const [ready, setReady] = React.useState(false);
+  const [error, setError] = React.useState<string>();
   const [constellations, setConstellations] = React.useState(true);
 
   // TODO: wire up to actual RA/Dec solving result from camera deep-sky mode
@@ -33,7 +34,7 @@ export function StellariumOverlay({ visible, onClose }: Props) {
   // Follow camera RA/Dec updates — placeholder until solving is wired in
   React.useEffect(() => {
     if (ready && cameraStatus) {
-      stellaRef.current?.gotoRaDec(0, 0);
+      stellaRef.current?.gotoRaDec(83.82, -5.39);
     }
   }, [ready, cameraStatus]);
 
@@ -44,7 +45,15 @@ export function StellariumOverlay({ visible, onClose }: Props) {
     <View style={StyleSheet.absoluteFill} className="z-50 bg-black">
       <StellariumView
         ref={stellaRef}
-        onReady={() => setReady(true)}
+        onReady={() => {
+          setError(undefined);
+          setReady(true);
+          stellaRef.current?.gotoRaDec(83.82, -5.39);
+        }}
+        onError={(message) => {
+          setReady(false);
+          setError(message);
+        }}
       />
 
       {/* Top bar */}
@@ -59,6 +68,7 @@ export function StellariumOverlay({ visible, onClose }: Props) {
         {!ready && (
           <Text className="ml-2 text-xs text-white/60">Loading...</Text>
         )}
+        {error && <Text className="ml-2 text-xs text-red-300">{error}</Text>}
       </View>
 
       {/* Bottom toolbar */}

@@ -1,7 +1,13 @@
 /* eslint-disable max-lines-per-function */
 
-import type { MediaStreamTrack } from 'react-native-webrtc';
-import { MediaStream, RTCPeerConnection, RTCSessionDescription } from 'react-native-webrtc';
+import type { MediaStream, MediaStreamTrack } from 'react-native-webrtc';
+import { NativeModules } from 'react-native';
+
+const NativeWebRTC = NativeModules.WebRTCModule ? require('react-native-webrtc') : null;
+
+const MediaStreamClass = NativeWebRTC?.MediaStream;
+const RTCPeerConnection = NativeWebRTC?.RTCPeerConnection;
+const RTCSessionDescription = NativeWebRTC?.RTCSessionDescription;
 
 // Matches the browser build (app.js `postWhepOfferWhenReady`): keep offering the
 // WHEP endpoint while the board is still spinning up its MediaMTX source.
@@ -104,8 +110,11 @@ let liveSessionCount = 0;
  *   still starting, so a fast WHEP connect never races the RTSP source.
  */
 export async function openWhepSession(whepUrl: string, options: WhepSessionOptions = {}): Promise<WhepSession> {
+  if (!RTCPeerConnection || !MediaStreamClass) {
+    throw new Error('WebRTC native module is not available in this environment');
+  }
   const peer = new RTCPeerConnection({ iceServers: [] });
-  const stream = new MediaStream();
+  const stream: MediaStream = new MediaStreamClass();
   let sessionUrl: string | null = null;
   let offerData: OfferData | null = null;
   let queuedCandidates: LocalCandidate[] = [];
@@ -170,7 +179,7 @@ export async function openWhepSession(whepUrl: string, options: WhepSessionOptio
       if (track.kind !== 'video')
         continue;
       track.onended = notifyDisconnected;
-      if (!stream.getTracks().some(current => current.id === track.id)) {
+      if (!stream.getTracks().some((current: MediaStreamTrack) => current.id === track.id)) {
         stream.addTrack(track);
       }
     }
