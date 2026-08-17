@@ -3,8 +3,8 @@ index 4fc2158..1cbeacd 100644
 --- a/.env
 +++ b/.env
 @@ -4,9 +4,13 @@ EXPO_PUBLIC_APP_ENV=development
- # API Configuration (WiFi Camera backend server)
- EXPO_PUBLIC_API_URL=https://your-wificamera-backend.com/api
+ # API Configuration (SkySense backend server)
+ EXPO_PUBLIC_API_URL=https://your-skysense-backend.com/api
  
 -# WifiCamera device HTTP API (legacy firmware, LAN cleartext).
 -# Override when the camera is reachable at a non-default address.
