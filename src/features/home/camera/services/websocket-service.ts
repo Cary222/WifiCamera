@@ -2,6 +2,7 @@ import type {
   CameraJsonMessage,
   CameraWebSocketMessage,
 } from './websocket-protocol';
+import { appLogger } from '@/lib/app-logger';
 import {
   parseCameraWebSocketMessage,
   serializeCameraJsonMessage,
@@ -56,6 +57,7 @@ export class CameraWebSocketService {
     }
 
     this.options.onStatusChange?.('connecting');
+    appLogger.info('WS', '开始连接控制通道', { url: this.options.url });
 
     // Safety timeout: if the socket doesn't open within 4s, treat it as unreachable.
     // This handles browsers that fire `onerror` immediately (no onclose) for
@@ -76,6 +78,7 @@ export class CameraWebSocketService {
         return;
       this.clearConnectTimeout();
       this.reconnectAttempts = 0;
+      appLogger.info('WS', '控制通道已连接');
       this.startHeartbeatTimer();
       this.options.onStatusChange?.('open');
     };
@@ -104,6 +107,7 @@ export class CameraWebSocketService {
       if (this.socket !== socket)
         return;
       this.clearHeartbeatTimer();
+      appLogger.warn('WS', '控制通道发生错误');
       this.options.onStatusChange?.('error');
     };
     socket.onclose = () => {
@@ -112,6 +116,7 @@ export class CameraWebSocketService {
       this.clearConnectTimeout();
       this.clearHeartbeatTimer();
       this.socket = null;
+      appLogger.warn('WS', '控制通道已断开');
       this.options.onStatusChange?.('closed');
       this.scheduleReconnect();
     };
@@ -139,6 +144,8 @@ export class CameraWebSocketService {
     }
 
     this.socket.send(serializeCameraJsonMessage(message));
+    if (message.instruction !== 'HeartBeat')
+      appLogger.debug('WS', '发送相机指令', message);
   }
 
   private handleConnectionFailed(): void {
@@ -161,6 +168,7 @@ export class CameraWebSocketService {
     }
 
     this.reconnectAttempts += 1;
+    appLogger.info('WS', `将在 ${this.options.reconnectDelayMs}ms 后重连`, { attempt: this.reconnectAttempts });
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect();

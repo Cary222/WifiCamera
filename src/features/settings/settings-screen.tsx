@@ -88,6 +88,7 @@ export default function SettingsScreen() {
 
             <SettingHeading tx="settings.more" />
             <SettingsContainer>
+              <SettingsItem text="settings.diagnostic_log" onPress={() => router.push('/diagnostic-log')} />
               <SettingsItem text="settings.privacy" onPress={() => {}} />
               <SettingsItem text="settings.reset_camera" onPress={() => {}} />
             </SettingsContainer>

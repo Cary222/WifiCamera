@@ -5,6 +5,7 @@ import type { MediaStream } from 'react-native-webrtc';
 import { memo, useEffect, useState } from 'react';
 import { NativeModules, View } from 'react-native';
 import { Text } from '@/components/ui';
+import { appLogger } from '@/lib/app-logger';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
 import { getCameraWhepUrl } from '../config';
@@ -83,6 +84,7 @@ export function useLandscapeCameraPreview(_options: LandscapePreviewOptions = {}
         return;
       setStream(null);
       setPreviewState('connecting');
+      appLogger.info('WHEP', '视频流将在 600ms 后重连');
       void releaseSession();
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
@@ -200,7 +202,7 @@ export function NativeCameraPreview() {
 
   return (
     <View className="flex-1 overflow-hidden rounded-2xl bg-neutral-900">
-      {stream && (
+      {stream && NativeWebRTC && (
         <RTCView
           streamURL={stream.toURL()}
           objectFit="cover"

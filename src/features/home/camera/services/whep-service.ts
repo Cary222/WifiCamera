@@ -2,6 +2,7 @@
 
 import type { MediaStream, MediaStreamTrack } from 'react-native-webrtc';
 import { NativeModules } from 'react-native';
+import { appLogger } from '@/lib/app-logger';
 
 const NativeWebRTC = NativeModules.WebRTCModule ? require('react-native-webrtc') : null;
 
@@ -111,8 +112,10 @@ let liveSessionCount = 0;
  */
 export async function openWhepSession(whepUrl: string, options: WhepSessionOptions = {}): Promise<WhepSession> {
   if (!RTCPeerConnection || !MediaStreamClass) {
+    appLogger.error('WHEP', 'WebRTC 原生模块不可用');
     throw new Error('WebRTC native module is not available in this environment');
   }
+  appLogger.info('WHEP', '开始协商视频流', { whepUrl });
   const peer = new RTCPeerConnection({ iceServers: [] });
   const stream: MediaStream = new MediaStreamClass();
   let sessionUrl: string | null = null;
@@ -197,8 +200,10 @@ export async function openWhepSession(whepUrl: string, options: WhepSessionOptio
     offerData = parseOffer(localSdp);
 
     const response = await postWhepOfferWhenReady(whepUrl, localSdp, () => closed);
-    if (!response.ok)
+    if (!response.ok) {
+      appLogger.warn('WHEP', '视频协商请求失败', { status: response.status });
       throw new Error(`WHEP negotiation failed: HTTP ${response.status}`);
+    }
 
     const location = response.headers.get('location');
     if (location)
@@ -213,10 +218,12 @@ export async function openWhepSession(whepUrl: string, options: WhepSessionOptio
     }
 
     liveSessionCount += 1;
+    appLogger.info('WHEP', '视频流已连接', { liveSessionCount });
     if (__DEV__)
       console.warn(`[CameraWHEP] session live, total=${liveSessionCount}`);
   }
   catch (error) {
+    appLogger.error('WHEP', '视频流协商失败', String(error));
     peer.close();
     stream.release();
     throw error;

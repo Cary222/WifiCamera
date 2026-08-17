@@ -9,6 +9,7 @@ export default function SettingsLayout() {
     >
       <Stack.Screen name="index" />
       <Stack.Screen name="about" />
+      <Stack.Screen name="diagnostic-log" />
       <Stack.Screen name="ota" />
       <Stack.Screen name="wifi-password" />
     </Stack>
