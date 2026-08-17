@@ -36,6 +36,7 @@ type Options = {
 
 type SerStatusPayload = {
   recording?: boolean;
+  status?: string;
   written_frames?: number;
   accepted_frames?: number;
   effective_fps?: number;
@@ -46,6 +47,21 @@ function readSerStatusPayload(data: unknown): SerStatusPayload | null {
   if (typeof data !== 'object' || data === null)
     return null;
   return data as SerStatusPayload;
+}
+
+/**
+ * The board reports an in-flight recording either through `recording` or via a
+ * transitional `status` string (see the browser app's `normalizeSerStatus`).
+ */
+function isSerRecording(payload: SerStatusPayload): boolean {
+  if (payload.recording === true)
+    return true;
+  const status = String(payload.status ?? '').toLowerCase();
+  return ['recording', 'running', 'starting', 'stopping'].includes(status);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -70,14 +86,38 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset }: Options)
 
   const isConnected = connectionStatus === 'open';
 
-  useEffect(() => {
-    if (isConnected)
-      changeStreamingSetting(exposure, gain);
-  }, [exposure, gain, isConnected, changeStreamingSetting]);
+  // 与星云模式一致：进入页面不要用本地默认值覆盖板端 AE。changeStreamingSetting
+  // 会让板端切到手动并锁定该曝光/增益，一进来就下发会得到与实际光照无关的亮度。
+  const appliedSettingRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isConnected)
       return;
+    const key = `${exposure}/${gain}`;
+    if (appliedSettingRef.current === null) {
+      appliedSettingRef.current = key;
+      return;
+    }
+    if (appliedSettingRef.current === key)
+      return;
+    appliedSettingRef.current = key;
+    changeStreamingSetting(exposure, gain);
+  }, [exposure, gain, isConnected, changeStreamingSetting]);
+
+  // 板端切换硬件裁切窗口会中断当前推流（见网页端 roi_addon.js 的 ROI 恢复流程），
+  // 所以进入页面时沿用板端现有视场，只有用户主动换预设后才下发。
+  const appliedRoiKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isConnected)
+      return;
+    if (appliedRoiKeyRef.current === null) {
+      appliedRoiKeyRef.current = roiPreset.key;
+      return;
+    }
+    if (appliedRoiKeyRef.current === roiPreset.key)
+      return;
+    appliedRoiKeyRef.current = roiPreset.key;
     sendCommand({
       device_name: 'main_camera',
       instruction: 'set_sensor_roi',
@@ -134,6 +174,45 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset }: Options)
     }, 1500);
   }, [sendCommandWait]);
 
+  const readSerStatus = useCallback(async (): Promise<SerStatusPayload | null> => {
+    const result = await sendCommandWait('get_ser_status', [], 4500);
+    return readSerStatusPayload(result.msg?.data);
+  }, [sendCommandWait]);
+
+  /**
+   * Poll `get_ser_status` until the board agrees with the state we expect, the
+   * same handshake the browser app performs via `waitForSerCondition`.
+   */
+  const waitForSerCondition = useCallback(async (
+    predicate: (payload: SerStatusPayload) => boolean,
+    timeoutMs: number,
+  ): Promise<SerStatusPayload | null> => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const payload = await readSerStatus();
+      if (payload && predicate(payload))
+        return payload;
+      await sleep(350);
+    }
+    return null;
+  }, [readSerStatus]);
+
+  /**
+   * SER pulls RAW frames, so the board needs a stream whose exposure matches the
+   * target frame rate before recording starts (browser: `ensureSerStreaming`).
+   */
+  const ensureSerStreaming = useCallback(async (fps: number) => {
+    const exposureForFps = Math.max(0.001, Math.min(0.25, 1 / Math.max(fps, 0.1)));
+    const result = await sendCommandWait('start_streaming_exposure', [exposureForFps, -1], 22_000);
+    if (result.error)
+      throw new Error(result.error);
+    if (result.timeout)
+      throw new Error('启动 RAW 采集流超时');
+    if (result.msg?.success === false)
+      throw new Error('启动 RAW 采集流失败');
+    await sleep(700);
+  }, [sendCommandWait]);
+
   const startRecording = useCallback(async () => {
     if (!isConnected || isRecording)
       return;
@@ -143,6 +222,9 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset }: Options)
 
     try {
       const bitDepth = format === 'ser16' ? 16 : format === 'ser12' ? 12 : 8;
+      if (format !== 'mp4')
+        await ensureSerStreaming(roiPreset.fps);
+
       const result = format === 'mp4'
         ? await sendCommandWait('streaming_start_save', [`planet_${Date.now()}`], 10_000)
         : await sendCommandWait('start_ser_record', [
@@ -158,6 +240,14 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset }: Options)
       if (result.msg?.success === false)
         throw new Error('板端拒绝了录制请求');
 
+      // Only claim we are recording once the board confirms it, so the UI can
+      // never show REC for a session the board silently refused.
+      if (format !== 'mp4') {
+        const started = await waitForSerCondition(isSerRecording, 10_000);
+        if (!started)
+          throw new Error('板端未进入 SER 录制状态');
+      }
+
       setIsRecording(true);
       recordingTimerRef.current = setInterval(() => {
         setRecordingSeconds(seconds => seconds + 1);
@@ -170,7 +260,17 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset }: Options)
       setIsRecording(false);
       setActionError(error instanceof Error ? error.message : String(error));
     }
-  }, [isConnected, isRecording, format, roiPreset, sendCommandWait, clearTimers, pollSerStatus]);
+  }, [
+    isConnected,
+    isRecording,
+    format,
+    roiPreset,
+    sendCommandWait,
+    clearTimers,
+    pollSerStatus,
+    ensureSerStreaming,
+    waitForSerCondition,
+  ]);
 
   const stopRecording = useCallback(async () => {
     if (!isConnected || !isRecording)
@@ -185,16 +285,17 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset }: Options)
           throw new Error('停止录制超时');
       }
       else {
-        const result = await sendCommandWait('stop_ser_record', [], 10_000);
+        const result = await sendCommandWait('stop_ser_record', [], 15_000);
         if (result.error)
           throw new Error(result.error);
-        if (result.timeout) {
-          // 二次查询 SER 状态以确认是否已落盘停止
-          const checkStatus = await sendCommandWait('get_ser_status', [], 3000);
-          const payload = readSerStatusPayload(checkStatus.msg?.data);
-          if (payload?.recording)
-            throw new Error('停止录制超时，文件可能仍在刷盘');
-        }
+        // The SER writer keeps flushing after the command returns; wait for the
+        // board to leave the recording state so the file is complete on disk.
+        const stopped = await waitForSerCondition(
+          payload => !isSerRecording(payload),
+          20_000,
+        );
+        if (!stopped)
+          throw new Error('SER 文件刷盘未在预期时间内完成');
       }
       requestCameraState();
     }
@@ -204,7 +305,15 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset }: Options)
     finally {
       setIsRecording(false);
     }
-  }, [isConnected, isRecording, format, sendCommandWait, clearTimers, requestCameraState]);
+  }, [
+    isConnected,
+    isRecording,
+    format,
+    sendCommandWait,
+    clearTimers,
+    requestCameraState,
+    waitForSerCondition,
+  ]);
 
   const dismissError = useCallback(() => setActionError(null), []);
 
