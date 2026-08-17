@@ -5,7 +5,7 @@ import { View } from 'react-native';
 import { FocusAwareStatusBar } from '@/components/ui';
 import { StellariumView } from '@/features/stellarium/stellarium-view';
 
-export default function StarMapIndex() {
+export default function StarMapScreen() {
   return (
     <>
       <StatusBar style="light" />

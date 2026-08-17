@@ -1,6 +1,6 @@
 import { Redirect, SplashScreen, Tabs } from 'expo-router';
 import * as React from 'react';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUniwind } from 'uniwind';
@@ -40,29 +40,32 @@ export default function TabLayout() {
   }, []);
   useEffect(() => {
     const timer = setTimeout(() => {
-      hideSplash();
+      void hideSplash();
     }, 1000);
     return () => clearTimeout(timer);
   }, [hideSplash]);
+
+  // Stable screenOptions — object identity is preserved across re-renders
+  // unless theme or insets change, preventing unnecessary tab bar re-mounts
+  // that could cause style flicker during Uniwind / Zustand re-render cascades.
+  const screenOptions = useMemo(() => ({
+    headerShown: false,
+    tabBarStyle: {
+      backgroundColor: isDark ? '#0A0B0D' : '#FFFFFF',
+      borderTopWidth: 0.5,
+      borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(10, 11, 13, 0.08)',
+      paddingBottom: Math.max(insets.bottom, 8),
+      paddingTop: 8,
+      height: 64 + Math.max(insets.bottom, 8),
+    },
+  }), [isDark, insets.bottom]);
 
   if (gate.kind === 'redirect') {
     return <Redirect href={gate.href} />;
   }
 
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: isDark ? '#0A0B0D' : '#FFFFFF',
-          borderTopWidth: 0.5,
-          borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(10, 11, 13, 0.08)',
-          paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 8,
-          height: 64 + Math.max(insets.bottom, 8),
-        },
-      }}
-    >
+    <Tabs screenOptions={screenOptions}>
       <Tabs.Screen
         name="(home)"
         options={{

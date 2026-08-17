@@ -1,56 +1,69 @@
+# WifiCamera
+
 <p align="center">
-    <img alt="SkySense" src="https://github.com/skysense/skysense/assets/11137944/a8163d23-897a-4efe-91ce-b9bf7348c18f" width="200" />
+    <img alt="WifiCamera" src="https://github.com/wificamera/wificamera/assets/11137944/a8163d23-897a-4efe-91ce-b9bf7348c18f" width="200" />
 </p>
 
-<h1 align="center">
-  SkySense
-</h1>
+<p align="center">
+    A mobile application for wireless astronomy cameras. Connect to your camera over WiFi and capture in multiple modes — landscape, planet video, starry sky, and deep space.
+</p>
 
-![expo](https://img.shields.io/github/package-json/dependency-version/skysense/skysense-app/expo?label=expo) ![react-native](https://img.shields.io/github/package-json/dependency-version/skysense/skysense-app/react-native?label=react-native) ![GitHub Repo stars](https://img.shields.io/github/stars/skysense/skysense) ![GitHub commit activity (branch)](https://img.shields.io/github/commit-activity/m/skysense/skysense-app/main)
+<p align="center">
 
-SkySense is a mobile application for monitoring sky brightness and light pollution. It connects to ESP8266-based SQM (Sky Quality Meter) devices to provide real-time measurements of night sky quality, temperature, humidity, pressure, and battery status.
+![expo](https://img.shields.io/github/package-json/dependency-version/wificamera/wificamera-app/expo?label=expo)
+![react-native](https://img.shields.io/github/package-json/dependency-version/wificamera/wificamera-app/react-native?label=react-native)
+![GitHub Repo stars](https://img.shields.io/github/stars/wificamera/wificamera)
+![GitHub commit activity (branch)](https://img.shields.io/github/commit-activity/m/wificamera/wificamera-app/main)
 
-## About SkySense
+</p>
 
-SkySense helps astronomers, light pollution researchers, and citizen scientists track and analyze sky quality over time. The app connects to hardware devices deployed outdoors to continuously monitor changes in light pollution levels.
+---
+
+## About
+
+WifiCamera turns your Android or iOS device into a remote control for your WiFi astronomy camera. Once connected to the same network as the camera, you can preview the live feed, adjust exposure settings, switch between shooting modes, browse captured photos on the camera's storage card, and push firmware updates — all from your phone.
 
 ## Key Features
 
-- **Real-time SQM Monitoring**: Live sky brightness measurements displayed in mag/arcsec²
-- **Multi-Sensor Dashboard**: Temperature, humidity, pressure, battery, and WiFi signal strength
-- **Device Management**: Add, view, and manage multiple ESP8266 devices
-- **Historical Data & Charts**: Analyze sky quality trends over hours, days, and weeks
-- **Dark Mode**: Optimized for nighttime observation use
-- **Offline Support**: Local data caching when network is unavailable
+- **Device Discovery & Connection**: Auto-scan the local network for compatible cameras; connect with one tap
+- **Live Preview**: WebRTC-based real-time video feed from the camera
+- **Multi-Mode Shooting**
+  - **Landscape**: Timed bursts, countdown, EV/gain/white-balance controls
+  - **Planet Video**: Short video capture optimized for planetary imaging
+  - **Starry Sky**: Long-exposure deep-sky capture with gain/exposure presets
+  - **Deep Space**: Stellarium integration for plate-solving and star-map overlay
+- **Photo Gallery**: Browse, view, and manage folders on the camera's TF card
+- **Firmware Update (OTA)**: Push firmware packages directly to the device over the local network
+- **Dark Mode**: Full dark theme tuned for nighttime field use
 
 ## Technology Stack
 
 - **Expo SDK 54** with React Native 0.81.5
-- **TypeScript** for type safety
+- **TypeScript** throughout
 - **Expo Router 6** for file-based routing
 - **NativeWind / TailwindCSS** for styling
-- **Zustand** for state management
-- **React Query** for data fetching
+- **Zustand + MMKV** for state and encrypted local storage
+- **React Query** for server-state management
 - **TanStack Form + Zod** for form handling
-- **MMKV** for encrypted local storage
+- **WebRTC** (`react-native-webrtc`) for live camera preview
+- **WebSocket** for device command/control channel
+- **Stellarium WebView** for deep-space star maps
 - **react-native-gifted-charts** for data visualization
-- **Jest + React Testing Library** for testing
+- **Jest + React Testing Library** for unit testing
 
-## Getting Started
-
-### Prerequisites
+## Prerequisites
 
 - Node.js 18+
 - pnpm 9+
-- Expo CLI
-- For physical device testing: Expo Go or a custom dev client
+- Expo CLI (`npx expo-cli`)
+- For physical device testing: Expo Go (development) or a custom dev client (production)
 
-### Installation
+## Getting Started
 
 ```bash
 # Clone the repository
-git clone https://github.com/skysense/skysense.git
-cd skysense-app
+git clone https://github.com/wificamera/wificamera.git
+cd wificamera-app
 
 # Install dependencies
 pnpm install
@@ -75,7 +88,7 @@ pnpm ios
 # Local Android build (requires android/ directory from prebuild)
 cd android && ./gradlew assembleProdRelease
 
-# EAS Cloud Build (for urgent delivery)
+# EAS Cloud Build
 eas build --platform android --profile production
 ```
 
@@ -83,38 +96,43 @@ eas build --platform android --profile production
 
 ```
 src/
-├── app/                  # Expo Router routes
+├── app/                      # Expo Router routes (file-based routing)
 ├── features/
-│   ├── skysense/         # Core monitoring dashboard
-│   ├── device/           # Device management
-│   ├── history/          # Historical data & charts
-│   ├── settings/         # App settings
-│   └── auth/             # User authentication
-├── components/ui/        # Base UI components
-├── lib/                  # Utilities (API, storage, i18n)
-├── services/             # API clients & WebSocket
-└── translations/         # i18n language files
+│   ├── home/                 # Home screen & camera modes
+│   │   ├── camera/           # Camera capture, preview, WebSocket control
+│   │   │   ├── landscape/    # Landscape / timed-burst mode
+│   │   │   ├── planet/       # Planet video mode
+│   │   │   ├── nebula/       # Deep-space capture & plate-solving
+│   │   │   ├── services/     # HTTP client, WebSocket, WHEP, OTA, file services
+│   │   │   └── components/   # Shared camera UI components
+│   │   └── album/            # Camera storage browser
+│   ├── deep-space/           # Deep-space mode screen & navigation
+│   ├── stellarium/           # Stellarium WebView integration
+│   ├── settings/             # App settings, OTA, language, theme
+│   ├── onboarding/           # First-launch onboarding
+│   └── auth/                 # User authentication
+├── components/ui/            # Base UI components (Button, Text, Modal…)
+├── lib/                      # Utilities (API client, storage, i18n, env)
+├── translations/             # i18n language files (en, zh, ar)
+└── assets/
+    └── stellar/              # Stellarium sky-culture data
 ```
-
-## Backend & Data Sync
-
-- **Phase 1**: App works with local mock data (no backend required)
-- **Phase 2**: HTTP API communication with ESP8266 devices
-- **Phase 3**: WebSocket for real-time data streaming
-- **Future**: Supabase or custom Node.js backend for data persistence and user accounts
 
 ## Development Commands
 
 ```bash
-pnpm start           # Start dev server
-pnpm android         # Run on Android
-pnpm ios             # Run on iOS
-pnpm lint            # ESLint check
-pnpm type-check      # TypeScript validation
-pnpm test            # Run tests
-pnpm check-all       # All quality checks
-pnpm build:preview:android   # EAS preview build
-pnpm build:production:android # EAS production build
+pnpm start                     # Start dev server
+pnpm android                  # Run on Android
+pnpm ios                      # Run on iOS
+pnpm lint                     # ESLint check
+pnpm type-check               # TypeScript validation
+pnpm test                     # Run tests
+pnpm check-all                # All quality checks
+pnpm lint:translations        # Validate i18n JSON files
+pnpm build:preview:android    # EAS preview build (Android)
+pnpm build:production:android # EAS production build (Android)
+pnpm build:preview:ios        # EAS preview build (iOS)
+pnpm build:production:ios     # EAS production build (iOS)
 ```
 
 ## Contributing
@@ -124,12 +142,3 @@ Contributions are welcome. Please open an issue or submit a pull request.
 ## License
 
 MIT
-# WifiCamera
-
-## Update Log
-
-### 2026-08-14 — Fix settings battery display
-
-- **Type**: Fix
-- **Changes**: Settings now reads the live battery percentage from the camera store and shows the disconnected state instead of a hardcoded `92%` when no camera is connected.
-- **Files**: `src/features/settings/settings-screen.tsx`
