@@ -43,6 +43,7 @@ export default antfu(
       'migration/*',
       'skills-lock.json',
       'tools/',
+      'uniwind-types.d.ts',
       // Vendored Stellarium offline runtime (minified engine + data)
       'src/assets/stellar/**',
     ],
