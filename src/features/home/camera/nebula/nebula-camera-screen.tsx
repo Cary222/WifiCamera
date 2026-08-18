@@ -1,5 +1,6 @@
 /* eslint-disable max-lines-per-function */
 
+import type { LandscapeRatio } from '../camera-store';
 import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
@@ -88,6 +89,8 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const recordingState = useCameraStore.use.landscapeRecordingState();
   const startRecording = useCameraStore.use.startLandscapeRecording();
   const stopRecording = useCameraStore.use.stopLandscapeRecording();
+  const landscapeRatio = useCameraStore.use.landscapeRatio();
+  const setLandscapeRatio = useCameraStore.use.setLandscapeRatio();
   const changeStreamingSetting = useCameraStore.use.changeStreamingSetting();
   const changeWhiteBalance = useCameraStore.use.changeWhiteBalance();
   const changeEv = useCameraStore.use.changeEv();
@@ -106,7 +109,6 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const [countdownEnabled, setCountdownEnabled] = useState(false);
   const [timerPlan, setTimerPlan] = useState({ count: 3, interval: 3 });
   const [countdown, setCountdown] = useState(3);
-  const [aspectRatio, setAspectRatio] = useState<'4:3' | '16:9'>('4:3');
   const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('photo');
   const [focusAssist, setFocusAssist] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -122,7 +124,15 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const { captureState, countdownRemaining, repeatTotal, capture, startCountdown, cancel } = useNebulaCapture({ exposure, gain });
   const { solveState, result: solveResult, solve, dismissResult } = usePlateSolve();
 
-  const previewAspectHeight = aspectRatio === '4:3' ? 0.75 : 0.5625;
+  // Nebula always works with a 4:3 or 16:9 framing, never the full-frame
+  // default used by other landscape flows.
+  const nebulaRatio: LandscapeRatio = landscapeRatio === '16:9' ? '16:9' : '4:3';
+  useEffect(() => {
+    if (landscapeRatio === 'full')
+      setLandscapeRatio('4:3');
+  }, [landscapeRatio, setLandscapeRatio]);
+
+  const previewAspectHeight = nebulaRatio === '4:3' ? 0.75 : 0.5625;
   const previewHeight = Math.min(height, width / previewAspectHeight);
   const spare = Math.max(0, height - previewHeight);
   const topShare = 0.35;
@@ -359,7 +369,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                   <View className="flex-row gap-3">
                     <ToolCard icon={<StopwatchIcon color={timerEnabled ? '#111' : '#FFF'} />} label="定时拍摄" active={timerEnabled} onPress={() => setTimerEnabled(value => !value)} />
                     <ToolCard icon={<CountdownIcon color={countdownEnabled ? '#111' : '#FFF'} />} label="倒计时" active={countdownEnabled} onPress={() => setCountdownEnabled(value => !value)} />
-                    <ToolCard label={aspectRatio} active={false} onPress={() => setAspectRatio(value => (value === '4:3' ? '16:9' : '4:3'))} />
+                    <ToolCard label={nebulaRatio} active={false} onPress={() => setLandscapeRatio(nebulaRatio === '4:3' ? '16:9' : '4:3')} />
                     <ToolCard icon={<WatermarkFlaskIcon color={watermark ? '#111' : '#FFF'} />} label="水印" active={watermark} onPress={() => setWatermark(value => !value)} />
                   </View>
                   <Pressable onPress={() => setAutoStretch(value => !value)} style={{ backgroundColor: autoStretch ? BRAND : CARD_BG }} className="h-[70px] items-center justify-center rounded-2xl">
@@ -381,7 +391,11 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
       )}
 
       <View className="absolute inset-x-0 bottom-0 flex-row items-center justify-between bg-[#0A0A0A] px-5" style={{ paddingBottom: insets.bottom + 12, paddingTop: 12 }}>
-        <Pressable className="size-[54px] overflow-hidden rounded-full bg-white/10">{imageUrl ? <Image source={{ uri: imageUrl }} style={{ width: 54, height: 54 }} contentFit="cover" /> : <View className="size-[54px] rounded-full bg-white/10" />}</Pressable>
+        <Pressable className="size-[54px] items-center justify-center overflow-hidden rounded-full bg-white/10">
+          {imageUrl
+            ? <Image source={{ uri: imageUrl }} style={{ width: 54, height: nebulaRatio === '4:3' ? 40.5 : 30.4 }} contentFit="cover" />
+            : <View className="size-[54px] rounded-full bg-white/10" />}
+        </Pressable>
         <View className="h-[40px] flex-row items-center rounded-full border border-white/22 px-1">{(['photo', 'video'] as const).map(mode => <Pressable key={mode} onPress={() => setCaptureMode(mode)} style={captureMode === mode ? { backgroundColor: BRAND } : undefined} className="h-[32px] min-w-[60px] items-center justify-center rounded-full"><Text className={`text-[13px] ${captureMode === mode ? 'font-medium text-black' : 'text-white'}`}>{mode === 'photo' ? '拍照' : '视频'}</Text></Pressable>)}</View>
         <Pressable onPress={() => setSheetOpen(value => !value)} className="size-[54px] items-center justify-center rounded-full border border-white/35"><SheetMenuIcon color={sheetOpen ? BRAND : '#FFFFFF'} /></Pressable>
       </View>
