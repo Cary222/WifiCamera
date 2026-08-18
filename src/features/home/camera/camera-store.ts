@@ -595,8 +595,12 @@ const _useCameraStore = create<CameraState>(set => ({
     manualModeSwitchTimer = setTimeout(enterManualMode, MANUAL_MODE_STATE_TIMEOUT_MS);
   },
 
+  // The board's `start_streaming_exposure(exposure, gain)` takes gain as a
+  // required positional argument, so auto mode has to pass the -1 "let the
+  // board decide" placeholder that the ROI path already relies on. Sending
+  // only ['auto'] makes the board raise a missing-argument TypeError.
   startStreaming: (mode = 'auto') => {
-    _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.startStreaming, [mode]);
+    _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.startStreaming, [mode, -1]);
   },
   startStreamingManual: (exposure, gain) => {
     set({

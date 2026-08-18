@@ -3,7 +3,7 @@
 import type { PlanetFormat, RoiPreset } from './use-planet-capture';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui';
@@ -21,6 +21,7 @@ import {
 } from '../landscape/landscape-icons';
 import { LandscapeRuler } from '../landscape/landscape-ruler';
 import { PLANET_ROI_PRESETS, usePlanetCapture } from './use-planet-capture';
+import { useShutterCountdown } from './use-shutter-countdown';
 
 const BRAND = '#CBFF3C';
 const CARD_BG = '#141518';
@@ -128,7 +129,8 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   const [bitDepth, setBitDepth] = useState<BitDepth>('8-bit');
 
   // Fig 3 state (Quick Settings)
-  const [meteringMode, setMeteringMode] = useState<MeteringMode>('matrix');
+  // 板端尚未提供测光模式指令，先固定为全画面并禁用切换。
+  const meteringMode: MeteringMode = 'matrix';
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('4:3');
   const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
 
@@ -176,9 +178,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     return `${getCameraBaseUrl()}/get_image?path=${encodeURIComponent(imagePath)}`;
   }, [newestCameraJpgUrl]);
 
-  const handleShutter = () => {
-    if (!isConnected)
-      return;
+  const runShutter = useCallback(() => {
     if (captureMode === 'photo') {
       void capturePhoto();
       return;
@@ -186,6 +186,21 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     if (isRecording)
       void stopRecording();
     else void startRecording();
+  }, [captureMode, capturePhoto, isRecording, startRecording, stopRecording]);
+
+  const countdown = useShutterCountdown({ seconds: countdownSeconds, onFire: runShutter });
+  const countdownRemaining = countdown.remaining;
+
+  const handleShutter = () => {
+    if (!isConnected)
+      return;
+    // 停止录制不该被倒计时延迟，只有开始拍摄才走倒计时。
+    if (isRecording && !countdown.isRunning()) {
+      runShutter();
+      return;
+    }
+    if (!countdown.start())
+      runShutter();
   };
 
   const handleCaptureModePress = (mode: 'photo' | 'video') => {
@@ -196,7 +211,14 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     handleShutter();
   };
 
-  const surfaceHeight = Math.min(height, width / 0.5625);
+  // 与风景模式一致：全幅铺满 16:9 视口，4:3 / 16:9 按所选比例裁切预览高度。
+  const surfaceHeight = useMemo(() => {
+    const fullHeight = Math.min(height, width / 0.5625);
+    if (aspectRatio === 'full')
+      return fullHeight;
+    const ratioValue = aspectRatio === '4:3' ? 0.75 : 0.5625;
+    return Math.min(fullHeight, width / ratioValue);
+  }, [aspectRatio, height, width]);
 
   return (
     <View className="flex-1 bg-black">
@@ -402,8 +424,8 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                 : (
                     /* ─── 图三：快捷设置面板 (Arrow Up State) ─── */
                     <View className="mb-2">
-                      {/* Row 1: 测光模式 */}
-                      <View className="mb-3.5 flex-row items-center justify-between px-1">
+                      {/* Row 1: 测光模式（板端暂无对应指令，置灰待接入） */}
+                      <View className="mb-3.5 flex-row items-center justify-between px-1" style={{ opacity: 0.4 }}>
                         <View className="flex-row items-center gap-2.5">
                           <MeteringIcon color="#FFF" size={24} />
                           <Text className="text-[15px] font-normal text-white">测光模式</Text>
@@ -419,7 +441,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                             return (
                               <Pressable
                                 key={modeKey}
-                                onPress={() => setMeteringMode(modeKey)}
+                                disabled
                                 style={{ backgroundColor: selected ? BRAND : 'transparent' }}
                                 className="h-[28px] min-w-[52px] items-center justify-center rounded-full px-3"
                               >
@@ -507,13 +529,20 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                   }}
                 >
                   <View
+                    className="items-center justify-center"
                     style={{
                       width: isVideoRecording ? 28 : 62,
                       height: isVideoRecording ? 28 : 62,
                       borderRadius: isVideoRecording ? 6 : 31,
                       backgroundColor: isVideoRecording ? '#FF3B30' : '#FFFFFF',
                     }}
-                  />
+                  >
+                    {countdownRemaining > 0 && (
+                      <Text className="text-[26px] font-bold text-black">
+                        {countdownRemaining}
+                      </Text>
+                    )}
+                  </View>
                 </Pressable>
               </View>
             )}
