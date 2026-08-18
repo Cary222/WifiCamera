@@ -7,7 +7,7 @@
  *   deep   — deep-sky stacking workflow
  */
 import { useCallback } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui';
 
 export type CameraMode = 'raw' | 'stream' | 'deep';
@@ -43,8 +43,8 @@ export function ModeSelector({ mode, onModeChange }: Props) {
     <View className="overflow-hidden rounded-2xl bg-neutral-100 dark:bg-[#1A1A1A]">
       <View className="relative h-12 p-1.5">
         <View
-          className="absolute top-1.5 h-[calc(100%-12px)] w-[33%] rounded-xl bg-primary-500"
-          style={{ left: `${INDICATOR_POSITIONS[mode]}%` }}
+          className="absolute top-1.5 w-[33%] rounded-xl bg-primary-500"
+          style={[StyleSheet.absoluteFillObject, { top: 6, bottom: 6, left: `${INDICATOR_POSITIONS[mode]}%` }]}
         />
 
         <View className="relative flex h-full flex-row">

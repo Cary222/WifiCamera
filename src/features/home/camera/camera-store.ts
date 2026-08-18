@@ -91,6 +91,10 @@ type CameraState = {
   remainingExposureTime: number;
   lastCommandError: string | null;
   cameraState: BoardCameraState | null;
+  /** Current Wi-Fi band: true = 5GHz, false = 2.4GHz. Null when unknown / disconnected. */
+  wifiBand: boolean | null;
+  /** When true, show the device connection modal on home screen after Wi-Fi switch. */
+  showConnectionModal: boolean;
 
   landscapeShutterMode: LandscapeShutterMode;
   landscapeCaptureMode: LandscapeCaptureMode;
@@ -161,6 +165,8 @@ type CameraState = {
   setNewestCameraJpgUrl: (url: string) => void;
   setNewestStreamJpgUrl: (url: string) => void;
   setCurrentExposureConfig: (config: LongExposureConfig) => void;
+  setWifiBand: (band: boolean) => void;
+  setShowConnectionModal: (show: boolean) => void;
   addExposureConfig: (config: Omit<LongExposureConfig, 'id'>) => void;
   updateExposureConfig: (config: LongExposureConfig) => void;
   deleteExposureConfig: (id: number) => void;
@@ -192,6 +198,7 @@ const CAMERA_INSTRUCTIONS = {
   startPlateSolve: 'start_plate_solve',
   setWhiteBalance: 'set_white_balance',
   setEv: 'set_ev',
+  switchWifiBand: 'switch_wifi_band',
 } as const;
 
 /**
@@ -462,6 +469,8 @@ const _useCameraStore = create<CameraState>(set => ({
   remainingExposureTime: 0,
   lastCommandError: null,
   cameraState: null,
+  wifiBand: null,
+  showConnectionModal: false,
 
   landscapeShutterMode: 'auto',
   landscapeCaptureMode: 'photo',
@@ -760,6 +769,8 @@ const _useCameraStore = create<CameraState>(set => ({
   setVersion: version => set({ version }),
   setNewestCameraJpgUrl: newestCameraJpgUrl => set({ newestCameraJpgUrl }),
   setNewestStreamJpgUrl: newestStreamJpgUrl => set({ newestStreamJpgUrl }),
+  setWifiBand: wifiBand => set({ wifiBand }),
+  setShowConnectionModal: show => set({ showConnectionModal: show }),
   setCurrentExposureConfig: currentExposureConfig => set({ currentExposureConfig }),
   addExposureConfig: (config) => {
     const nextId = Math.max(0, ..._useCameraStore.getState().exposureConfigs.map(item => item.id)) + 1;
@@ -931,6 +942,23 @@ function handleCameraMessage(
     case 'disk':
       if (typeof message.used_space === 'number' && typeof message.all_space === 'number') {
         set({ usedSpace: message.used_space, allSpace: message.all_space });
+      }
+      break;
+    case CAMERA_INSTRUCTIONS.switchWifiBand:
+      if (message.data !== undefined && message.data !== null) {
+        if (typeof message.data === 'object') {
+          const data = message.data as Record<string, unknown>;
+          const band = data.band;
+          if (band === '5G' || band === '5g') {
+            set({ wifiBand: true });
+          }
+          else if (band === '2.4G' || band === '2.4g') {
+            set({ wifiBand: false });
+          }
+        }
+        else if (typeof message.data === 'number') {
+          set({ wifiBand: message.data === 1 });
+        }
       }
       break;
   }

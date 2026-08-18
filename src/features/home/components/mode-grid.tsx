@@ -19,9 +19,9 @@ function ModeCard({ icon, label, route, width }: ModeCardProps) {
     <Pressable
       onPress={() => router.push(route)}
       style={{ width }}
-      className="h-[139px] rounded-[17.069px] border-[0.569px] border-neutral-200 bg-neutral-50 p-5 active:opacity-70 dark:border-[#2d2d2d] dark:bg-[#111213]"
+      className="h-[139px] rounded-[17.069px] border-[0.569px] border-neutral-200 bg-neutral-50 p-5 active:opacity-70 dark:border-[#48484880] dark:bg-[#111213]"
     >
-      <View className="size-[45px] items-center justify-center rounded-lg bg-neutral-100 dark:bg-[#1A1A1A]">
+      <View className="size-[45px] items-center justify-center rounded-lg bg-transparent">
         <Image
           source={icon}
           style={{ width: 28, height: 28 }}

@@ -36,10 +36,13 @@ export default antfu(
       'android',
       'ios',
       '.vscode',
+      '.cursor',
       'docs/',
       'cli/',
       'expo-env.d.ts',
       'migration/*',
+      'skills-lock.json',
+      'tools/',
       // Vendored Stellarium offline runtime (minified engine + data)
       'src/assets/stellar/**',
     ],

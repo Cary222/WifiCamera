@@ -9,14 +9,17 @@ function applies(arguments_) {
   try {
     execFileSync('git', arguments_, { cwd: projectRoot, stdio: 'pipe' });
     return true;
-  } catch { return false; }
+  }
+  catch { return false; }
 }
 
 if (applies(['apply', '--reverse', '--check', patch])) {
   console.log('Stellarium WebView AssetLoader patch already applied.');
-} else if (applies(['apply', '--check', patch])) {
+}
+else if (applies(['apply', '--check', patch])) {
   execFileSync('git', ['apply', patch], { cwd: projectRoot, stdio: 'inherit' });
   console.log('Applied Stellarium WebView AssetLoader patch.');
-} else {
+}
+else {
   throw new Error('react-native-webview no longer matches the supported 13.15.0 AssetLoader patch.');
 }

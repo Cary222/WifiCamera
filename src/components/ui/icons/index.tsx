@@ -25,6 +25,7 @@ export * from './settings';
 export * from './settings-filled';
 export * from './share';
 export * from './starmap-filled';
+export * from './storage';
 export * from './support';
 export * from './temperature';
 export * from './user';

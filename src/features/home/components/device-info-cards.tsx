@@ -1,7 +1,12 @@
+/* eslint-disable perfectionist/sort-imports */
+import { Image } from 'expo-image';
 import { View } from 'react-native';
+
 import { Text } from '@/components/ui';
-import { Battery } from '@/components/ui/icons';
 import { translate } from '@/lib/i18n';
+
+const cardIcon = require('@/assets/common/card.png');
+const powerIcon = require('@/assets/common/Power.png');
 
 type Props = {
   /** Battery percentage, or null when the board has no battery gauge. */
@@ -9,37 +14,42 @@ type Props = {
   /** True when the board reports it is charging. */
   inCharge?: boolean;
   storageRemaining: string;
+  /** True when the camera is connected. */
+  isConnected: boolean;
 };
 
-export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaining }: Props) {
+export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaining, isConnected }: Props) {
   return (
-    <>
-      <View className="mr-2 mb-4 ml-5">
-        <Text className="text-[32px] font-light text-black dark:text-white">
-          {translate('home.wifi_camera')}
+    <View className="mx-[19px] my-6 rounded-[25px] border border-neutral-200 bg-white p-5 dark:border-[#48484880] dark:bg-[#101011]">
+      <Text className="text-[28px] font-bold text-white">
+        {translate('home.wifi_camera')}
+      </Text>
+
+      <View className="mt-5 flex-row items-center gap-2 self-start rounded-[20px] border border-neutral-200 bg-transparent px-4 py-2 dark:border-[#48484880]">
+        <View className={`size-[10px] rounded-full ${isConnected ? 'bg-[#c8e733]' : 'bg-neutral-400'}`} />
+        <Text className={`text-[14px] font-normal ${isConnected ? 'text-[#c8e733]' : 'text-neutral-400'}`}>
+          {translate(isConnected ? 'home.device_connected' : 'home.device_not_connected')}
         </Text>
       </View>
 
-      <View className="mr-5 mb-4 ml-12">
-        <View className="flex-row items-center gap-2 rounded-[20px] border border-neutral-300 bg-neutral-100 px-4 py-2 dark:border-[rgba(72,72,72,0.3)] dark:bg-[#121315]">
-          <View className="size-[10px] rounded-full bg-[#c5e538]" />
-          <Text className="text-[16px] font-normal text-[#c5e538]">
-            {translate('home.device_connected')}
-          </Text>
-        </View>
-      </View>
-
-      <View className="mx-5 mb-6 flex-row gap-4">
-        <View className="flex-1 rounded-[15px] border border-neutral-200 bg-neutral-50 p-5 dark:border-[rgba(72,72,72,0.5)] dark:bg-[#111113]">
+      <View className="mt-5 flex-row gap-3">
+        <View className="flex-1 rounded-[20px] border border-neutral-200 bg-transparent p-4 dark:border-[#48484880]">
           <View className="flex-row items-center gap-3">
-            <Battery color="#000000" className="dark:text-white" width={30} height={30} />
+            <View className="size-[52px] items-center justify-center rounded-[15px]">
+              <Image
+                source={powerIcon}
+                style={{ width: 28, height: 28 }}
+                contentFit="contain"
+                tintColor="#c8e733"
+              />
+            </View>
             <View className="flex-1">
-              <Text className="text-[22px] font-light text-black dark:text-white">
-                {batteryLevel === null ? '—' : `${batteryLevel}%`}
+              <Text className="text-[22px] font-light text-white">
+                {batteryLevel === null ? '—' : `${Math.round(batteryLevel)}%`}
               </Text>
               <Text
                 className={`mt-1 text-[12px] font-light ${
-                  inCharge ? 'text-[#c5e538]' : 'text-black/50 dark:text-white/50'
+                  inCharge ? 'text-[#c8e733]' : 'text-white/50'
                 }`}
               >
                 {inCharge
@@ -50,22 +60,26 @@ export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaini
           </View>
         </View>
 
-        <View className="flex-1 rounded-[15px] border border-neutral-200 bg-neutral-50 p-5 dark:border-[rgba(72,72,72,0.5)] dark:bg-[#111113]">
+        <View className="flex-1 rounded-[20px] border border-neutral-200 bg-transparent p-4 dark:border-[#48484880]">
           <View className="flex-row items-center gap-3">
-            <View className="size-[30px] items-center justify-center">
-              <Text className="text-xl">💾</Text>
+            <View className="size-[52px] items-center justify-center rounded-[15px]">
+              <Image
+                source={cardIcon}
+                style={{ width: 28, height: 28 }}
+                contentFit="contain"
+              />
             </View>
             <View className="flex-1">
-              <Text className="text-[22px] font-light text-black dark:text-white">
+              <Text className="text-[22px] font-light text-white">
                 {storageRemaining}
               </Text>
-              <Text className="mt-1 text-[12px] font-light text-black/50 dark:text-white/50">
+              <Text className="mt-1 text-[12px] font-light text-white/50">
                 {translate('home.storage_remaining')}
               </Text>
             </View>
           </View>
         </View>
       </View>
-    </>
+    </View>
   );
 }

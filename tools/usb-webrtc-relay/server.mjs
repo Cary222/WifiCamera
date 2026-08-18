@@ -1,7 +1,7 @@
-/* eslint-disable -- Host-side byte-level ADB UDP relay; protocol framing intentionally mirrors the verified web reference implementation. */
+/* eslint-disable no-unused-vars -- Host-side byte-level ADB UDP relay; protocol framing intentionally mirrors the verified web reference implementation. */
+import { createSocket } from 'node:dgram';
 import { createServer, request as httpRequest } from 'node:http';
 import { connect as netConnect } from 'node:net';
-import { createSocket } from 'node:dgram';
 
 const port = Number(process.env.USB_RELAY_PORT || 18787);
 const boardWhepHost = process.env.BOARD_WHEP_HOST || '127.0.0.1';
@@ -49,7 +49,8 @@ function resetClients() {
 function cleanupStaleClients(maxAgeMs = 8000) {
   const now = Date.now();
   for (const [key, client] of clients) {
-    if (now - client.seenAt > maxAgeMs) closeClient(key, client);
+    if (now - client.seenAt > maxAgeMs)
+      closeClient(key, client);
   }
 }
 
@@ -68,7 +69,8 @@ function receiveTunnelFrames(client, chunk, key) {
       client.tunnel?.destroy();
       return;
     }
-    if (client.buffer.length < size + 4) return;
+    if (client.buffer.length < size + 4)
+      return;
     const message = client.buffer.subarray(4, size + 4);
     client.buffer = client.buffer.subarray(size + 4);
     stats.boardPackets += 1;
@@ -78,7 +80,8 @@ function receiveTunnelFrames(client, chunk, key) {
 }
 
 function ensureTunnel(client, key) {
-  if (client.tunnel && !client.tunnel.destroyed) return;
+  if (client.tunnel && !client.tunnel.destroyed)
+    return;
   const tunnel = netConnect({ host: tunnelHost, port: tunnelPort });
   client.tunnel = tunnel;
   client.tunnelReady = false;
@@ -86,13 +89,15 @@ function ensureTunnel(client, key) {
   client.queue = [];
 
   tunnel.on('connect', () => {
-    if (client.tunnel !== tunnel) return;
+    if (client.tunnel !== tunnel)
+      return;
     client.tunnelReady = true;
     for (const message of client.queue.splice(0)) writeTunnelFrame(tunnel, message);
   });
   tunnel.on('data', chunk => receiveTunnelFrames(client, chunk, key));
-  tunnel.on('error', error => {
-    if (client.tunnel === tunnel) stats.lastError = `ADB UDP tunnel ${key}: ${error.message}`;
+  tunnel.on('error', (error) => {
+    if (client.tunnel === tunnel)
+      stats.lastError = `ADB UDP tunnel ${key}: ${error.message}`;
   });
   tunnel.on('close', () => {
     if (client.tunnel === tunnel) {
@@ -128,13 +133,14 @@ udpSocket.on('message', (message, rinfo) => {
   stats.clientBytes += message.length;
   ensureTunnel(client, key);
   if (!client.tunnelReady) {
-    if (client.queue.length >= 64) client.queue.shift();
+    if (client.queue.length >= 64)
+      client.queue.shift();
     client.queue.push(Buffer.from(message));
     return;
   }
   writeTunnelFrame(client.tunnel, message);
 });
-udpSocket.on('error', error => {
+udpSocket.on('error', (error) => {
   stats.lastError = `relay UDP socket: ${error.message}`;
 });
 udpSocket.bind(relayUdpPort, relayBindHost);
@@ -145,11 +151,13 @@ function rewriteSdpCandidates(sdp) {
   const trailing = sdp.endsWith(lineEnding);
   const rewritten = sdp
     .split(/\r?\n/)
-    .map(line => {
+    .map((line) => {
       const match = line.match(/^(a=candidate:\S+\s+\d+\s+)(udp|tcp)(\s+\d+)(\s+)(\S+)(\s+)(\d+)(\s+typ\s+host(?:\s+.*)?)$/i);
-      if (!match) return line;
+      if (!match)
+        return line;
       const [, before, protocol, priority, spaceBeforeAddress, _address, spaceBeforePort, _port, after] = match;
-      if (protocol.toLowerCase() !== 'udp') return '';
+      if (protocol.toLowerCase() !== 'udp')
+        return '';
       return `${before}${protocol}${priority}${spaceBeforeAddress}${relayAdvertiseHost}${spaceBeforePort}${relayUdpPort}${after}`;
     })
     .filter(Boolean)
@@ -158,9 +166,11 @@ function rewriteSdpCandidates(sdp) {
 }
 
 function rewriteLocation(location, incomingUrl) {
-  if (!location) return location;
+  if (!location)
+    return location;
   try {
-    if (location.startsWith('/')) return `${incomingUrl.origin}/board-webrtc${location}`;
+    if (location.startsWith('/'))
+      return `${incomingUrl.origin}/board-webrtc${location}`;
     const upstream = new URL(location);
     if (upstream.hostname === boardWhepHost && Number(upstream.port || 80) === boardWhepPort) {
       return `${incomingUrl.origin}/board-webrtc${upstream.pathname}${upstream.search}`;
@@ -182,9 +192,10 @@ function proxyWhep(request, response) {
       ...request.headers,
       host: `${boardWhepHost}:${boardWhepPort}`,
     },
-  }, upstreamResponse => {
+  }, (upstreamResponse) => {
     const headers = { ...upstreamResponse.headers };
-    if (headers.location) headers.location = rewriteLocation(String(headers.location), incomingUrl);
+    if (headers.location)
+      headers.location = rewriteLocation(String(headers.location), incomingUrl);
     const contentType = String(headers['content-type'] || '');
     if (!contentType.includes('application/sdp')) {
       response.writeHead(upstreamResponse.statusCode || 502, headers);
@@ -203,9 +214,10 @@ function proxyWhep(request, response) {
   });
 
   upstream.setTimeout(10_000, () => upstream.destroy(new Error('board WHEP proxy timeout')));
-  upstream.on('error', error => {
+  upstream.on('error', (error) => {
     stats.lastError = `WHEP proxy: ${error.message}`;
-    if (!response.headersSent) response.writeHead(502, { 'content-type': 'application/json' });
+    if (!response.headersSent)
+      response.writeHead(502, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ error: stats.lastError }));
   });
   request.pipe(upstream);

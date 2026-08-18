@@ -21,7 +21,7 @@ export function ExposurePresets({ configs, selectedId, onSelect }: Props) {
         {configs.map((config) => {
           const selected = config.id === selectedId;
           const selectedStyle = 'border-primary-500 bg-primary-50 dark:bg-primary-900/30';
-          const unselectedStyle = 'border-neutral-200 bg-white dark:border-[#2C2C2C] dark:bg-[#1A1A1A]';
+          const unselectedStyle = 'border-neutral-200 bg-white dark:border-[#48484880] dark:bg-[#1A1A1A]';
           return (
             <Pressable
               key={config.id}

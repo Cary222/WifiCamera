@@ -45,7 +45,7 @@ export function OnboardingScreen() {
             setIsFirstTime(false);
             // 自动设置为已登录状态，无需真实 token
             signIn({ access: 'auto-signin', refresh: 'auto-signin' });
-            router.replace('/(app)');
+            router.replace('/');
           }}
         />
       </SafeAreaView>

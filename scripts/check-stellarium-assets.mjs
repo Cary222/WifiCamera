@@ -16,8 +16,11 @@ const missing = [];
 for (const relativePath of required) {
   try {
     const file = await stat(path.join(root, relativePath));
-    if (!file.isFile() || file.size === 0) missing.push(relativePath);
-  } catch { missing.push(relativePath); }
+    if (!file.isFile() || file.size === 0)
+      missing.push(relativePath);
+  }
+  catch { missing.push(relativePath); }
 }
-if (missing.length) throw new Error(`Incomplete Stellarium runtime: ${missing.join(', ')}`);
+if (missing.length)
+  throw new Error(`Incomplete Stellarium runtime: ${missing.join(', ')}`);
 console.log(`Stellarium runtime verified (${required.length} required files).`);

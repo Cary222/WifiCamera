@@ -17,7 +17,7 @@ export function SettingsContainer({ children, title }: Props) {
           tx={title}
         />
       )}
-      <View className="overflow-hidden rounded-[17px] border border-neutral-200 bg-white dark:border-[#2D2D2D] dark:bg-[#111213]">
+      <View className="overflow-hidden rounded-[17px] border border-neutral-200 bg-white dark:border-[#48484880] dark:bg-[#111213]">
         {children}
       </View>
     </View>

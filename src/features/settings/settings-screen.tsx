@@ -1,37 +1,23 @@
 import type { TxKeyPath } from '@/lib/i18n';
 import Env from 'env';
+/* eslint-disable perfectionist/sort-imports */
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 
 import { FocusAwareStatusBar, ScrollView, Text, View } from '@/components/ui';
-import { ArrowRight, Battery, Wifi } from '@/components/ui/icons';
+import { ArrowRight, Wifi } from '@/components/ui/icons';
 import { useCameraStore } from '@/features/home/camera/camera-store';
 import { translate } from '@/lib/i18n';
 import { LanguageItem } from './components/language-item';
 import { SettingsContainer } from './components/settings-container';
 import { SettingsItem } from './components/settings-item';
 import { ThemeItem } from './components/theme-item';
+import { WifiBandSelector } from './components/wifi-band-selector';
+
+const powerIcon = require('@/assets/common/Power.png');
 
 function SettingHeading({ tx }: { tx: TxKeyPath }) {
   return <Text tx={tx} className="mb-3 px-1 text-[20px] font-bold text-black dark:text-white" />;
-}
-
-function WifiBandSelector() {
-  return (
-    <View className="mx-4 mb-5 flex-row items-center justify-between rounded-[15px] border border-neutral-200 bg-white px-5 py-4 dark:border-[#48484880] dark:bg-[#111113]">
-      <View>
-        <Text tx="settings.wifi_band" className="text-[18px] text-black dark:text-white" />
-        <Text tx="settings.wifi_band_hint" className="mt-2 text-[12px] text-neutral-500 dark:text-charcoal-400" />
-      </View>
-      <View className="h-[41px] w-[143px] flex-row rounded-[7px] border border-neutral-200 p-[3px] dark:border-[#2D2D2E]">
-        <View className="flex-1 items-center justify-center">
-          <Text className="text-[12px] text-neutral-500 dark:text-white">2.4GHz</Text>
-        </View>
-        <View className="flex-1 items-center justify-center rounded-[4px] bg-[#C8E733]">
-          <Text className="text-[12px] text-[#2B2B2B]">5GHz</Text>
-        </View>
-      </View>
-    </View>
-  );
 }
 
 export default function SettingsScreen() {
@@ -43,7 +29,7 @@ export default function SettingsScreen() {
   const isConnected = connectionStatus === 'open';
   const batteryText = !isConnected
     ? translate('settings.camera_disconnected')
-    : powerLevel === null ? '—' : `${powerLevel}%`;
+    : powerLevel === null ? '—' : `${Math.round(powerLevel)}%`;
 
   return (
     <>
@@ -52,24 +38,28 @@ export default function SettingsScreen() {
         <ScrollView contentContainerStyle={{ paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
           <View className="px-5 pt-14">
             <Text tx="settings.title" className="text-[32px] font-light text-black dark:text-white" />
-            <View className="mt-8 rounded-[25px] border border-neutral-200 bg-white p-5 dark:border-white dark:bg-[#101011]">
+            <View className="mt-8 rounded-[25px] border border-neutral-200 bg-white p-5 dark:border-[#48484880] dark:bg-[#101011]">
               <View className="flex-row items-center justify-between">
                 <View className="flex-row items-center">
                   <Wifi color="#C8E733" size={22} />
                   <Text tx="home.wifi_camera" className="ml-3 text-[19px] text-black dark:text-white" />
                 </View>
                 <View className="flex-row items-center">
-                  <Battery
-                    percent={isConnected && powerLevel !== null ? powerLevel : 0}
-                    color={isConnected ? '#C8E733' : '#A3A3A3'}
-                    size={30}
+                  <Image
+                    source={powerIcon}
+                    style={{ width: 28, height: 28 }}
+                    contentFit="contain"
+                    tintColor={isConnected ? '#C8E733' : '#A3A3A3'}
                   />
                   <Text className="ml-2 text-[20px] text-black dark:text-white">{batteryText}</Text>
                 </View>
               </View>
               <View className="mt-3 flex-row items-center">
                 <View className={`mr-2 size-2 rounded-full ${isConnected ? 'bg-[#C8E733]' : 'bg-neutral-400 dark:bg-charcoal-500'}`} />
-                <Text tx={isConnected ? 'device.connected' : 'settings.camera_disconnected'} className="text-[12px] text-neutral-600 dark:text-white" />
+                <Text
+                  tx={isConnected ? 'device.connected' : 'settings.camera_disconnected'}
+                  className={`text-[12px] ${isConnected ? 'text-[#C8E733]' : 'text-neutral-500 dark:text-charcoal-400'}`}
+                />
               </View>
             </View>
           </View>
