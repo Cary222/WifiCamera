@@ -1,5 +1,6 @@
 /* eslint-disable max-lines-per-function */
 
+import type { AspectRatio } from './preview-layout';
 import type { PlanetFormat, RoiPreset } from './use-planet-capture';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -20,6 +21,7 @@ import {
   SheetMenuIcon,
 } from '../landscape/landscape-icons';
 import { LandscapeRuler } from '../landscape/landscape-ruler';
+import { getPreviewSurfaceHeight } from './preview-layout';
 import { PLANET_ROI_PRESETS, usePlanetCapture } from './use-planet-capture';
 import { useShutterCountdown } from './use-shutter-countdown';
 
@@ -81,7 +83,6 @@ type ActiveParamCard = 'exposure' | 'gain' | 'format';
 type ContainerFormat = 'mp4' | 'ser';
 type BitDepth = '8-bit' | '12-bit' | '16-bit';
 type MeteringMode = 'center' | 'target' | 'matrix';
-type AspectRatio = '4:3' | '16:9' | 'full';
 
 function ParamCard({ label, value, active, onPress }: {
   label: string;
@@ -211,14 +212,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     handleShutter();
   };
 
-  // 与风景模式一致：全幅铺满 16:9 视口，4:3 / 16:9 按所选比例裁切预览高度。
-  const surfaceHeight = useMemo(() => {
-    const fullHeight = Math.min(height, width / 0.5625);
-    if (aspectRatio === 'full')
-      return fullHeight;
-    const ratioValue = aspectRatio === '4:3' ? 0.75 : 0.5625;
-    return Math.min(fullHeight, width / ratioValue);
-  }, [aspectRatio, height, width]);
+  const surfaceHeight = useMemo(
+    () => getPreviewSurfaceHeight(aspectRatio, width, height),
+    [aspectRatio, height, width],
+  );
 
   return (
     <View className="flex-1 bg-black">
