@@ -249,6 +249,12 @@
       "title": "سمة"
     },
     "title": "إعدادات",
+    "transport": "طريقة الاتصال",
+    "transport_auto": "تلقائي",
+    "transport_hint": "كشف تلقائي لـ USB و Wi-Fi",
+    "transport_probing": "جارٍ الكشف",
+    "transport_usb": "USB",
+    "transport_wifi": "Wi-Fi",
     "version": "إصدار",
     "website": "موقع الكتروني",
     "wifi": "إعدادات Wi-Fi",

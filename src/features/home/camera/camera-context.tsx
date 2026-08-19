@@ -22,12 +22,15 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
   const connectionStatus = useCameraStore.use.connectionStatus();
   const setSerial = useCameraStore.use.setSerial();
   const setVersion = useCameraStore.use.setVersion();
+  const initTransport = useCameraStore.use.initTransport();
   const [currentRaDec, setCurrentRaDec] = React.useState<{ ra: number; dec: number } | null>(null);
 
   useEffect(() => {
+    // Resolve the link first so the socket opens against the reachable address.
+    initTransport();
     connect();
     return disconnect;
-  }, [connect, disconnect]);
+  }, [connect, disconnect, initTransport]);
 
   useEffect(() => {
     if (connectionStatus === 'open') {

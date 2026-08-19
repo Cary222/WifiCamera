@@ -249,6 +249,12 @@
       "title": "Theme"
     },
     "title": "Settings",
+    "transport": "Connection",
+    "transport_auto": "Auto",
+    "transport_hint": "Auto-detect USB and Wi-Fi",
+    "transport_probing": "Detecting",
+    "transport_usb": "USB",
+    "transport_wifi": "Wi-Fi",
     "version": "Version",
     "website": "Website",
     "wifi": "Wi-Fi Settings",

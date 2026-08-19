@@ -249,6 +249,12 @@
       "title": "主题"
     },
     "title": "设置",
+    "transport": "连接方式",
+    "transport_auto": "自动",
+    "transport_hint": "自动探测 USB 与 Wi-Fi",
+    "transport_probing": "探测中",
+    "transport_usb": "USB",
+    "transport_wifi": "Wi-Fi",
     "version": "版本",
     "website": "官网",
     "wifi": "Wi-Fi 设置",

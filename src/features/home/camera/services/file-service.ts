@@ -7,8 +7,6 @@ import { cameraClient } from '../client';
 import { getCameraBaseUrl } from '../config';
 import { unwrapCamera } from '../errors';
 
-const BASE = getCameraBaseUrl();
-
 function arrayBufferToDataUri(buffer: ArrayBuffer, mimeType = 'image/jpeg'): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -23,7 +21,7 @@ function arrayBufferToDataUri(buffer: ArrayBuffer, mimeType = 'image/jpeg'): str
  * POST /FileCopy/get_image/ endpoint returns 404 on the current firmware.
  */
 export async function getImage(filePath: string): Promise<string> {
-  const response = await fetch(`${BASE}/get_image?path=${encodeURIComponent(filePath)}`);
+  const response = await fetch(`${getCameraBaseUrl()}/get_image?path=${encodeURIComponent(filePath)}`);
 
   if (!response.ok) {
     throw new Error(`[GET IMAGE] HTTP ${response.status} for ${filePath}`);
@@ -35,7 +33,7 @@ export async function getImage(filePath: string): Promise<string> {
 
 /** POST /FileCopy/ask_jpg_stretch/ — trigger FITS→JPG stretch on camera side. */
 export async function askJpgStretch(fitsName: string): Promise<void> {
-  const res = await cameraClient.post(`${BASE}/FileCopy/ask_jpg_stretch/`, {
+  const res = await cameraClient.post('/FileCopy/ask_jpg_stretch/', {
     fits_name: fitsName,
   });
   unwrapCamera(res.data as Parameters<typeof unwrapCamera>[0], 'POST', '/FileCopy/ask_jpg_stretch/');
@@ -47,7 +45,7 @@ export async function uploadFitsJpeg(file: Blob, fitsName: string): Promise<bool
   formData.append('file', file as unknown as Blob, `${fitsName}.jpg`);
   formData.append('fits_name', fitsName);
 
-  const res = await cameraClient.post(`${BASE}/FileCopy/upload_fits_jpeg/`, formData as unknown as Record<string, unknown>, {
+  const res = await cameraClient.post('/FileCopy/upload_fits_jpeg/', formData as unknown as Record<string, unknown>, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   const unwrapped = unwrapCamera(res.data as Parameters<typeof unwrapCamera>[0], 'POST', '/FileCopy/upload_fits_jpeg/') as { upload?: boolean };
@@ -60,7 +58,7 @@ export async function uploadFitsJpeg(file: Blob, fitsName: string): Promise<bool
  */
 export async function getPower(): Promise<{ power: number; in_charging: number }> {
   const res = await cameraClient.get<{ success: true; data: { power: number; in_charging: number } }>(
-    `${BASE}/FileCopy/power/`,
+    '/FileCopy/power/',
   );
   return unwrapCamera(res.data, 'GET', '/FileCopy/power/');
 }
@@ -68,7 +66,7 @@ export async function getPower(): Promise<{ power: number; in_charging: number }
 /** GET /FileCopy/get_disks/ — list of storage mount points. */
 export async function getDisks(): Promise<string[]> {
   const res = await cameraClient.get<{ success: true; data: { disks: string[] } }>(
-    `${BASE}/FileCopy/get_disks/`,
+    '/FileCopy/get_disks/',
   );
   return unwrapCamera(res.data, 'GET', '/FileCopy/get_disks/').disks;
 }
@@ -79,7 +77,7 @@ export async function getDisks(): Promise<string[]> {
  */
 export async function getDiskUsage(): Promise<{ used: number; total: number; free?: number }> {
   const res = await cameraClient.get<{ success: true; data: { used: number; total: number; free?: number } }>(
-    `${BASE}/FileCopy/get_disk_usage/`,
+    '/FileCopy/get_disk_usage/',
   );
   return unwrapCamera(res.data, 'GET', '/FileCopy/get_disk_usage/');
 }
@@ -89,7 +87,7 @@ export type Mp4File = { name: string; size: number; mtime: number };
 
 export async function listMp4(): Promise<Mp4File[]> {
   const res = await cameraClient.get<{ success: true; data: { mp4_files: Mp4File[] } }>(
-    `${BASE}/FileCopy/list_mp4/`,
+    '/FileCopy/list_mp4/',
   );
   return unwrapCamera(res.data, 'GET', '/FileCopy/list_mp4/').mp4_files;
 }

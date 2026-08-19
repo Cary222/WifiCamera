@@ -161,7 +161,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const setCaptureMode = useCameraStore.use.setLandscapeCaptureMode();
   const setTimerPlan = useCameraStore.use.setLandscapeTimerPlan();
   const setWatermark = useCameraStore.use.setLandscapeWatermark();
-  const setRatio = useCameraStore.use.setLandscapeRatio();
+  const setRatio = useCameraStore.use.setLandscapeSensorRatio();
   const changeStreamingSetting = useCameraStore.use.changeStreamingSetting();
   const changeWhiteBalance = useCameraStore.use.changeWhiteBalance();
   const changeEv = useCameraStore.use.changeEv();
@@ -178,7 +178,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const ratioValue = ratio === '4:3' ? 0.75 : RATIO_16_9;
   const previewHeight = Math.min(screenHeight, screenWidth / ratioValue);
   const spareHeight = Math.max(0, screenHeight - previewHeight);
-  const topShare = ratio === '16:9' ? PREVIEW_TOP_SPARE_SHARE_16_9 : PREVIEW_TOP_SPARE_SHARE_4_3;
+  const topShare = ratio === '4:3' ? PREVIEW_TOP_SPARE_SHARE_4_3 : PREVIEW_TOP_SPARE_SHARE_16_9;
   const previewTop = Math.max(Math.min(insets.top, spareHeight), Math.round(spareHeight * topShare));
   // The video surface keeps its maximum size so the ratio animation never
   // resizes it (resizing mid-animation stutters the stream on Android).
@@ -280,10 +280,10 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   ]);
 
   const handleRatioPress = useCallback(() => {
-    setRatio(ratio === '16:9' ? '4:3' : '16:9');
+    setRatio(ratio === '4:3' ? '16:9' : '4:3');
   }, [ratio, setRatio]);
 
-  const ratioLabel: LandscapeRatio = ratio === '16:9' ? '16:9' : '4:3';
+  const ratioLabel: LandscapeRatio = ratio === '4:3' ? '4:3' : '16:9';
   const shutterDisabled = isCapturing || isRepeating || isRecordingBusy;
 
   return (

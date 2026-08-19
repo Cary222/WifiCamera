@@ -5,12 +5,22 @@ import type {
   CameraWebSocketMessage,
 } from './services/websocket-protocol';
 import type { CameraWebSocketStatus } from './services/websocket-service';
+import type { CameraTransport, CameraTransportPreference } from './transport';
 import type { CameraSerial, CameraVersion } from './types';
 
 import { create } from 'zustand';
 import { createSelectors } from '@/lib/utils';
 import { getCameraWebSocketUrl } from './config';
 import { CameraWebSocketService } from './services/websocket-service';
+import {
+  getActiveTransport,
+  getTransportPreference,
+  probeTransports,
+  setActiveTransport,
+  setTransportPreference,
+  TRANSPORT_FALLBACK_GRACE_MS,
+  TRANSPORT_PROBE_MIN_INTERVAL_MS,
+} from './transport';
 
 export type CameraStatus
   = | 'idle'
@@ -95,6 +105,12 @@ type CameraState = {
   wifiBand: boolean | null;
   /** When true, show the device connection modal on home screen after Wi-Fi switch. */
   showConnectionModal: boolean;
+  /** Link currently used to reach the board. */
+  transport: CameraTransport;
+  /** User's link choice; `auto` lets probing decide. */
+  transportPreference: CameraTransportPreference;
+  /** True while a probe is in flight, preventing re-entrant probes. */
+  transportProbing: boolean;
 
   landscapeShutterMode: LandscapeShutterMode;
   landscapeCaptureMode: LandscapeCaptureMode;
@@ -123,6 +139,7 @@ type CameraState = {
   setLandscapeTimerPlan: (plan: LandscapeTimerPlan) => void;
   setLandscapeWatermark: (enabled: boolean) => void;
   setLandscapeRatio: (ratio: LandscapeRatio) => void;
+  setLandscapeSensorRatio: (ratio: Exclude<LandscapeRatio, 'full'>) => void;
   switchAutoMode: (auto: boolean) => void;
   startStreaming: (mode: 'auto') => void;
   startStreamingManual: (exposure: number, gain: number) => void;
@@ -143,6 +160,8 @@ type CameraState = {
 
   connect: () => void;
   disconnect: () => void;
+  initTransport: () => void;
+  switchTransport: (preference: CameraTransportPreference) => void;
   sendCommand: (message: CameraJsonMessage) => void;
   sendCommandWait: (
     instruction: string,
@@ -199,6 +218,18 @@ const CAMERA_INSTRUCTIONS = {
   setWhiteBalance: 'set_white_balance',
   setEv: 'set_ev',
   switchWifiBand: 'switch_wifi_band',
+  setSensorRoi: 'set_sensor_roi',
+} as const;
+
+/**
+ * Sensor crop windows backing the landscape ratio switch. The board rebuilds the
+ * whole VI -> VPSS -> VENC chain from this window, so preview and captured JPEG
+ * always share the selected ratio. Bounds mirror the board's validation:
+ * `x + width <= 1920`, `y + height <= 1080`, every value even.
+ */
+const LANDSCAPE_RATIO_ROI = {
+  '16:9': { x: 0, y: 0, width: 1920, height: 1080 },
+  '4:3': { x: 240, y: 0, width: 1440, height: 1080 },
 } as const;
 
 /**
@@ -225,6 +256,55 @@ let recordingTimer: ReturnType<typeof setTimeout> | null = null;
 let manualModeSwitchTimer: ReturnType<typeof setTimeout> | null = null;
 let manualModeSettings: { exposure: number; gain: number } | null = null;
 let repeatCancelled = false;
+/** When the control channel last left `open`; null while connected. */
+let disconnectedSince: number | null = null;
+let lastProbeAt = 0;
+
+/**
+ * Re-probe while `auto` and fall back to whichever link answers.
+ *
+ * Deliberately hung off `onStatusChange` rather than `onGiveUp`: the camera
+ * socket runs with `retryForever`, so its attempt budget never runs out and
+ * `onGiveUp` never fires. The guards below keep a flapping USB link — which
+ * re-enumerates several times per session — from bouncing the app between
+ * transports: the link must stay down past the grace period, probes are
+ * throttled, and a switch only happens when the other link actually answers.
+ */
+function maybeFallbackTransport(): void {
+  const state = _useCameraStore.getState();
+  if (state.transportPreference !== 'auto' || state.transportProbing)
+    return;
+  if (disconnectedSince === null || Date.now() - disconnectedSince < TRANSPORT_FALLBACK_GRACE_MS)
+    return;
+  if (Date.now() - lastProbeAt < TRANSPORT_PROBE_MIN_INTERVAL_MS)
+    return;
+
+  lastProbeAt = Date.now();
+  _useCameraStore.setState({ transportProbing: true });
+  void probeTransports(state.transport)
+    .then((reachable) => {
+      if (reachable && reachable !== _useCameraStore.getState().transport)
+        applyTransport(reachable);
+    })
+    .finally(() => _useCameraStore.setState({ transportProbing: false }));
+}
+
+/**
+ * Point every channel at `transport` by cycling the control connection.
+ *
+ * The preview effect keys on `connectionStatus`, so the closed -> open
+ * transition tears down the old WHEP session and reopens it against the new
+ * address. Without the full cycle, control would move while video stayed on
+ * the previous link.
+ */
+function applyTransport(transport: CameraTransport): void {
+  const state = _useCameraStore.getState();
+  state.disconnect();
+  setActiveTransport(transport);
+  disconnectedSince = null;
+  _useCameraStore.setState({ transport });
+  state.connect();
+}
 
 /**
  * Commands awaiting their matching board response, keyed by command id.
@@ -470,6 +550,9 @@ const _useCameraStore = create<CameraState>(set => ({
   lastCommandError: null,
   cameraState: null,
   wifiBand: null,
+  transport: getActiveTransport(),
+  transportPreference: getTransportPreference(),
+  transportProbing: false,
   showConnectionModal: false,
 
   landscapeShutterMode: 'auto',
@@ -504,11 +587,14 @@ const _useCameraStore = create<CameraState>(set => ({
             ? { connectionStatus: status, isMockMode: false }
             : { connectionStatus: status });
           if (status === 'open') {
+            disconnectedSince = null;
             _useCameraStore.getState().requestCameraState();
             _useCameraStore.getState().requestCameraStatus();
           }
           else {
             settlePendingCommands('设备连接已断开');
+            disconnectedSince ??= Date.now();
+            maybeFallbackTransport();
           }
         },
         onMessage: message => handleCameraMessage(message, set),
@@ -532,6 +618,33 @@ const _useCameraStore = create<CameraState>(set => ({
     cameraWebSocket?.close();
     cameraWebSocket = null;
     set({ connectionStatus: 'closed', isMockMode: false });
+  },
+  initTransport: () => {
+    const preference = getTransportPreference();
+    set({ transportPreference: preference, transport: getActiveTransport() });
+    if (preference !== 'auto') {
+      setActiveTransport(preference);
+      set({ transport: preference });
+      return;
+    }
+    lastProbeAt = Date.now();
+    set({ transportProbing: true });
+    void probeTransports(getActiveTransport())
+      .then((reachable) => {
+        if (reachable && reachable !== _useCameraStore.getState().transport)
+          applyTransport(reachable);
+      })
+      .finally(() => set({ transportProbing: false }));
+  },
+  switchTransport: (preference) => {
+    setTransportPreference(preference);
+    set({ transportPreference: preference });
+    if (preference === 'auto') {
+      _useCameraStore.getState().initTransport();
+      return;
+    }
+    if (preference !== _useCameraStore.getState().transport)
+      applyTransport(preference);
   },
   sendCommand: (message) => {
     cameraWebSocket?.send(message);
@@ -580,6 +693,19 @@ const _useCameraStore = create<CameraState>(set => ({
   }),
   setLandscapeWatermark: landscapeWatermark => set({ landscapeWatermark }),
   setLandscapeRatio: landscapeRatio => set({ landscapeRatio }),
+  setLandscapeSensorRatio: (landscapeRatio) => {
+    const state = _useCameraStore.getState();
+    if (state.landscapeRatio === landscapeRatio)
+      return;
+    set({ landscapeRatio });
+    const roi = LANDSCAPE_RATIO_ROI[landscapeRatio];
+    // Changing the sensor window tears down and rebuilds VI/VPSS/VENC, so the
+    // preview drops for a moment before WHEP renegotiates on its own.
+    state.sendInstruction(
+      CAMERA_INSTRUCTIONS.setSensorRoi,
+      [roi.x, roi.y, roi.width, roi.height, 0],
+    );
+  },
 
   switchAutoMode: (auto) => {
     const state = _useCameraStore.getState();

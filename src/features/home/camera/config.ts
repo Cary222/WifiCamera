@@ -1,4 +1,4 @@
-import Env from 'env';
+import { getActiveTransport, getTransportEndpoints } from './transport';
 
 /**
  * Camera-specific runtime configuration.
@@ -21,10 +21,12 @@ export type CameraEndpointKey = keyof typeof CAMERA_ENDPOINTS;
 
 /**
  * Resolved base URL for the camera HTTP API.
- * The default is applied once while building the validated environment object.
+ *
+ * Resolved per call rather than cached, because the active transport can change
+ * at runtime (USB relay vs the board's own WiFi AP).
  */
 export function getCameraBaseUrl(): string {
-  return Env.EXPO_PUBLIC_CAMERA_BASE_URL;
+  return getTransportEndpoints(getActiveTransport()).base;
 }
 
 export function getCameraWebSocketUrl(): string {
@@ -32,11 +34,10 @@ export function getCameraWebSocketUrl(): string {
 }
 
 /**
- * MediaMTX serves WHEP on 8889. When the control API is tunneled over ADB,
- * use an explicit WiFi WHEP URL because ADB forward only carries TCP signaling,
- * not WebRTC's UDP media stream.
+ * MediaMTX serves WHEP on 8889 directly over WiFi. Over USB the URL points at
+ * the host relay instead, because ADB forward only carries TCP signaling while
+ * WebRTC media is UDP.
  */
 export function getCameraWhepUrl(): string {
-  return Env.EXPO_PUBLIC_CAMERA_WHEP_URL
-    ?? `${getCameraBaseUrl().replace(/:\d+$/, ':8889')}/cam0/whep`;
+  return getTransportEndpoints(getActiveTransport()).whep;
 }
