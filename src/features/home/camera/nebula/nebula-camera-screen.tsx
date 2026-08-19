@@ -90,7 +90,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const startRecording = useCameraStore.use.startLandscapeRecording();
   const stopRecording = useCameraStore.use.stopLandscapeRecording();
   const landscapeRatio = useCameraStore.use.landscapeRatio();
-  const setLandscapeRatio = useCameraStore.use.setLandscapeRatio();
+  const setLandscapeSensorRatio = useCameraStore.use.setLandscapeSensorRatio();
   const changeStreamingSetting = useCameraStore.use.changeStreamingSetting();
   const changeWhiteBalance = useCameraStore.use.changeWhiteBalance();
   const changeEv = useCameraStore.use.changeEv();
@@ -129,8 +129,8 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const nebulaRatio: LandscapeRatio = landscapeRatio === '16:9' ? '16:9' : '4:3';
   useEffect(() => {
     if (landscapeRatio === 'full')
-      setLandscapeRatio('4:3');
-  }, [landscapeRatio, setLandscapeRatio]);
+      setLandscapeSensorRatio('4:3');
+  }, [landscapeRatio, setLandscapeSensorRatio]);
 
   const previewAspectHeight = nebulaRatio === '4:3' ? 0.75 : 0.5625;
   const previewHeight = Math.min(height, width / previewAspectHeight);
@@ -369,7 +369,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                   <View className="flex-row gap-3">
                     <ToolCard icon={<StopwatchIcon color={timerEnabled ? '#111' : '#FFF'} />} label="定时拍摄" active={timerEnabled} onPress={() => setTimerEnabled(value => !value)} />
                     <ToolCard icon={<CountdownIcon color={countdownEnabled ? '#111' : '#FFF'} />} label="倒计时" active={countdownEnabled} onPress={() => setCountdownEnabled(value => !value)} />
-                    <ToolCard label={nebulaRatio} active={false} onPress={() => setLandscapeRatio(nebulaRatio === '4:3' ? '16:9' : '4:3')} />
+                    <ToolCard label={nebulaRatio} active={false} onPress={() => setLandscapeSensorRatio(nebulaRatio === '4:3' ? '16:9' : '4:3')} />
                     <ToolCard icon={<WatermarkFlaskIcon color={watermark ? '#111' : '#FFF'} />} label="水印" active={watermark} onPress={() => setWatermark(value => !value)} />
                   </View>
                   <Pressable onPress={() => setAutoStretch(value => !value)} style={{ backgroundColor: autoStretch ? BRAND : CARD_BG }} className="h-[70px] items-center justify-center rounded-2xl">
