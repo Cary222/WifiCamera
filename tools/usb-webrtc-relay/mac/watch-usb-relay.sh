@@ -123,18 +123,18 @@ check_board_tunnel() {
     if [ -z "$ADB" ]; then
         return 1
     fi
-    # 通过尝试连接来检查 TCP 18190 是否可访问
-    timeout 1 bash -c "echo >/dev/tcp/localhost/18190" 2>/dev/null
+    # 检查板子上的进程是否存在
+    "$ADB" -s "$TARGET_SERIAL" shell "ps" | grep -q "board_webrtc_udp_tunnel"
 }
 
 # 重启板子隧道
 restart_board_tunnel() {
     log_watch "板子隧道未运行,正在重启..."
-    # 先杀死可能存在的旧进程 (板子用 killall)
-    "$ADB" -s "$TARGET_SERIAL" shell "killall board_webrtc_udp_tunnel 2>/dev/null || true" 2>/dev/null
+    # 先杀死可能存在的旧进程 (使用 start-stop-daemon -K)
+    "$ADB" -s "$TARGET_SERIAL" shell "start-stop-daemon -K -x /userdata/hjc_test/board_webrtc_udp_tunnel 2>/dev/null || true" 2>/dev/null
     sleep 1
-    # 启动新进程
-    "$ADB" -s "$TARGET_SERIAL" shell "/userdata/hjc_test/board_webrtc_udp_tunnel 18190 127.0.0.1 8189 &" 2>/dev/null
+    # 启动新进程 (使用 start-stop-daemon 创建守护进程)
+    "$ADB" -s "$TARGET_SERIAL" shell "start-stop-daemon -S -b -x /userdata/hjc_test/board_webrtc_udp_tunnel -- 18190 127.0.0.1 8189" 2>/dev/null
     sleep 2
 }
 
