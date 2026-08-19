@@ -12,6 +12,7 @@ import { LanguageItem } from './components/language-item';
 import { SettingsContainer } from './components/settings-container';
 import { SettingsItem } from './components/settings-item';
 import { ThemeItem } from './components/theme-item';
+import { TransportSelector } from './components/transport-selector';
 import { WifiBandSelector } from './components/wifi-band-selector';
 
 const powerIcon = require('@/assets/common/Power.png');
@@ -66,6 +67,7 @@ export default function SettingsScreen() {
 
           <View className="mt-8">
             <SettingHeading tx="settings.wifi" />
+            <TransportSelector />
             <WifiBandSelector />
           </View>
 

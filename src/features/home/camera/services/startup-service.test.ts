@@ -23,6 +23,10 @@ jest.mock('axios', () => {
   const create = () => ({
     request,
     interceptors: {
+      request: {
+
+        use: (_onFulfilled: (config: unknown) => unknown) => {},
+      },
       response: {
         // eslint-disable-next-line react/no-unnecessary-use-prefix -- mirrors axios interceptor API
         use: (

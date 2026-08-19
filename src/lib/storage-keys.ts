@@ -29,6 +29,8 @@ export const STORAGE_KEYS = {
   BOUND_DEVICE_NAME: 'BOUND_DEVICE_NAME',
   /** Serialised `{ access, refresh }` token object (see `TokenType` in `@/lib/auth/utils`). */
   AUTH_TOKEN: 'token',
+  /** Camera link preference: 'auto' | 'usb' | 'wifi'. */
+  CAMERA_TRANSPORT: 'CAMERA_TRANSPORT',
 } as const;
 
 /** Union of every key string. Useful for type-safe helpers. */

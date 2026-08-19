@@ -44,6 +44,7 @@ export function useLandscapeCameraPreview(_options: LandscapePreviewOptions = {}
   const startStreaming = useCameraStore.use.startStreaming();
   const startStreamingManual = useCameraStore.use.startStreamingManual();
   const connectionStatus = useCameraStore.use.connectionStatus();
+  const transport = useCameraStore.use.transport();
   const [previewState, setPreviewState] = useState<CameraPreviewState>('connecting');
   const [stream, setStream] = useState<MediaStream | null>(null);
 
@@ -158,7 +159,8 @@ export function useLandscapeCameraPreview(_options: LandscapePreviewOptions = {}
       void releaseSession();
     };
     // 不依赖模式/曝光/增益，避免调参时断开并重建 WebRTC 会话。
-  }, [connectionStatus]);
+    // transport 变化必须重建：WHEP 地址随链路切换而变。
+  }, [connectionStatus, transport]);
 
   return { previewState, stream };
 }

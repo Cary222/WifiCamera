@@ -5,12 +5,18 @@ import { CAMERA_REQUEST_TIMEOUT_MS, getCameraBaseUrl } from './config';
 import { CameraApiError } from './errors';
 
 export const cameraClient = axios.create({
-  baseURL: getCameraBaseUrl(),
   timeout: CAMERA_REQUEST_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
   },
+});
+
+// Resolved per request instead of at module load, so switching between the USB
+// relay and the board's WiFi AP takes effect without rebuilding this instance.
+cameraClient.interceptors.request.use((config) => {
+  config.baseURL = getCameraBaseUrl();
+  return config;
 });
 
 cameraClient.interceptors.response.use(

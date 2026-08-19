@@ -1,5 +1,5 @@
 param(
-  [string]$Serial = "e2621126569ad4a5",
+  [string]$Serial = 'auto',
   [int]$Port = 18787,
   [int]$RelayUdpPort = 18189
 )
@@ -47,8 +47,16 @@ function Resolve-BoardSerial {
   throw "Multiple physical ADB boards are online; specify -Serial explicitly: $($online -join ', ')"
 }
 
+$RequestedSerial = $Serial
 $Serial = Resolve-BoardSerial
-Write-Host "[usb-relay] selected board serial: $Serial"
+Write-Host "[usb-relay] selected board serial: $Serial (mode: $RequestedSerial)"
+
+. (Join-Path $PSScriptRoot 'relay-common.ps1')
+Initialize-RelayAdbEnvironment -Adb $adb | Out-Null
+$clearedSerials = @(Remove-RelayForwardsForOtherSerials -Adb $adb -KeepSerial $Serial)
+if ($clearedSerials.Count -gt 0) {
+  Write-Host "[usb-relay] cleared stale relay forwards from: $($clearedSerials -join ', ')"
+}
 
 # All forwards are temporary host-side mappings; this script never changes board files.
 foreach ($mapping in @(
@@ -86,7 +94,7 @@ $env:RELAY_WEBRTC_BIND_HOST = "0.0.0.0"
 $env:RELAY_WEBRTC_ADVERTISE_HOST = "10.0.2.2"
 $env:RELAY_WEBRTC_UDP_PORT = "$RelayUdpPort"
 
-Start-Process -FilePath node -ArgumentList @("$PSScriptRoot\..\server.mjs") -WorkingDirectory "$PSScriptRoot\.." -WindowStyle Hidden
+Start-Process -FilePath node -ArgumentList @("server.mjs") -WorkingDirectory $PSScriptRoot -WindowStyle Hidden
 Start-Sleep -Milliseconds 800
 
 $health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/stream-health" -TimeoutSec 5
@@ -96,8 +104,7 @@ Write-Host "[usb-relay] control/image remain: http://10.0.2.2:18999"
 
 $watcher = Join-Path $PSScriptRoot "watch-usb-relay.ps1"
 Start-Process -FilePath "powershell.exe" -ArgumentList @(
-  '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-  "$PSScriptRoot\watch-usb-relay.ps1",
-  '-Serial', $Serial, '-Port', $Port, '-RelayUdpPort', $RelayUdpPort
+  '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $watcher,
+  '-Serial', $RequestedSerial, '-Port', $Port, '-RelayUdpPort', $RelayUdpPort
 ) -WindowStyle Hidden
 Write-Host "[usb-relay] forward/relay watcher started"
