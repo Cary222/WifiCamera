@@ -2,16 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { FocusAwareStatusBar, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera/camera-store';
-import { getDiskUsage, getPower } from '@/features/home/camera/services/file-service';
+import { getPower } from '@/features/home/camera/services/file-service';
 import { translate } from '@/lib/i18n';
 import { ConnectionStatusCard } from './components/connection-status-card';
 import { DeviceConnectionModal } from './components/device-connection-modal';
 import { DeviceInfoCards } from './components/device-info-cards';
 import { ModeGrid } from './components/mode-grid';
+import { useStorageInfo } from './hooks/use-storage-info';
 
 export function HomeScreen() {
   const [modalVisible, setModalVisible] = useState(false);
-  const [storageRemaining, setStorageRemaining] = useState<string>('—');
   const connectionStatus = useCameraStore.use.connectionStatus();
   const powerLevel = useCameraStore.use.powerLevel();
   const inCharge = useCameraStore.use.inCharge();
@@ -20,6 +20,7 @@ export function HomeScreen() {
   const setShowConnectionModal = useCameraStore.use.setShowConnectionModal();
 
   const isConnected = connectionStatus === 'open';
+  const storageRemaining = useStorageInfo(isConnected);
 
   // Show connection modal when triggered by Wi-Fi switch (using ref to avoid setState in effect)
   const showModalRef = useRef(false);
@@ -40,25 +41,12 @@ export function HomeScreen() {
       };
     }
 
-    void getDiskUsage()
-      .then(({ used, total, free }) => {
-        if (!active)
-          return;
-        const remaining = free ?? Math.max(0, total - used);
-        setStorageRemaining(`${remaining.toFixed(1)}GB`);
-      })
-      .catch(() => {
-        if (active)
-          setStorageRemaining('—');
-      });
-
     void getPower()
       .then(({ power, in_charging }) => {
         if (active)
           setPower(power, in_charging);
       })
       .catch(() => {
-        // Board without a battery gauge — the store keeps powerLevel as null.
       });
 
     return () => {

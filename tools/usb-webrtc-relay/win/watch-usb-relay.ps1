@@ -75,7 +75,7 @@ function Start-RelayIfMissing {
   $env:RELAY_WEBRTC_BIND_HOST = "0.0.0.0"
   $env:RELAY_WEBRTC_ADVERTISE_HOST = "10.0.2.2"
   $env:RELAY_WEBRTC_UDP_PORT = "$RelayUdpPort"
-  Start-Process -FilePath "node" -ArgumentList @("server.mjs") -WorkingDirectory $scriptDir -WindowStyle Hidden
+  Start-Process -FilePath "node" -ArgumentList @("$scriptDir\..\server.mjs") -WorkingDirectory "$scriptDir\.." -WindowStyle Hidden
   Write-WatchLog "relay was not listening; started server.mjs"
 }
 

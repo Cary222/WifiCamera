@@ -73,13 +73,30 @@ export async function getDisks(): Promise<string[]> {
   return unwrapCamera(res.data, 'GET', '/FileCopy/get_disks/').disks;
 }
 
+/** GET /FileCopy/get_sd_card_mount_point/ — get SD card mount point path. */
+export async function getSdCardMountPoint(): Promise<string | null> {
+  try {
+    const res = await cameraClient.get<{ success: true; data: { mount_point: string | null } }>(
+      `${BASE}/FileCopy/get_sd_card_mount_point/`,
+    );
+    const data = unwrapCamera(res.data, 'GET', '/FileCopy/get_sd_card_mount_point/');
+    return data.mount_point;
+  }
+  catch {
+    return null;
+  }
+}
+
 /**
  * GET /FileCopy/get_disk_usage/ — current firmware reports used/total/free in GB.
  * (Verified against the connected board: total 29.1074, used 12.3161.)
+ * @param mountPoint - optional mount point to query specific disk
  */
-export async function getDiskUsage(): Promise<{ used: number; total: number; free?: number }> {
+export async function getDiskUsage(mountPoint?: string): Promise<{ used: number; total: number; free?: number }> {
+  const params = mountPoint ? { mount_point: mountPoint } : {};
   const res = await cameraClient.get<{ success: true; data: { used: number; total: number; free?: number } }>(
     `${BASE}/FileCopy/get_disk_usage/`,
+    { params },
   );
   return unwrapCamera(res.data, 'GET', '/FileCopy/get_disk_usage/');
 }
