@@ -238,9 +238,6 @@ const LANDSCAPE_RATIO_ROI = {
  * most one command per window, always ending on the final value.
  */
 const STREAMING_SETTING_THROTTLE_MS = 120;
-/** Wait briefly for a fresh board AE sample before freezing it for manual mode. */
-const MANUAL_MODE_STATE_TIMEOUT_MS = 400;
-const MANUAL_MODE_SETTING_TIMEOUT_MS = 300;
 
 const LANDSCAPE_CAPTURE_TIMEOUT_MS = 15_000;
 const RECORDING_COMMAND_TIMEOUT_MS = 60_000;
@@ -253,8 +250,6 @@ let captureStatePoll: ReturnType<typeof setInterval> | null = null;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 let repeatTimer: ReturnType<typeof setTimeout> | null = null;
 let recordingTimer: ReturnType<typeof setTimeout> | null = null;
-let manualModeSwitchTimer: ReturnType<typeof setTimeout> | null = null;
-let manualModeSettings: { exposure: number; gain: number } | null = null;
 let repeatCancelled = false;
 /** When the control channel last left `open`; null while connected. */
 let disconnectedSince: number | null = null;
@@ -351,61 +346,6 @@ function clearRecordingTimer(): void {
   if (recordingTimer)
     clearTimeout(recordingTimer);
   recordingTimer = null;
-}
-
-function clearManualModeSwitchTimer(): void {
-  if (manualModeSwitchTimer)
-    clearTimeout(manualModeSwitchTimer);
-  manualModeSwitchTimer = null;
-}
-
-function cancelManualModeSwitch(): void {
-  clearManualModeSwitchTimer();
-  manualModeSettings = null;
-}
-
-function getPreviewSettings(preview: BoardCameraState['preview']): { exposure: number; gain: number } | null {
-  const exposure = preview?.exposure_s;
-  const gain = preview?.gain;
-  if (typeof exposure !== 'number' || typeof gain !== 'number'
-    || !Number.isFinite(exposure) || !Number.isFinite(gain)) {
-    return null;
-  }
-  return {
-    exposure: clampExposure(exposure),
-    gain: clampGain(gain),
-  };
-}
-
-function switchToManualMode(): void {
-  if (!manualModeSettings)
-    return;
-  clearManualModeSwitchTimer();
-  manualModeSettings = null;
-  _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.switchAutoMode, [1]);
-}
-
-function enterManualMode(): void {
-  clearManualModeSwitchTimer();
-  const state = _useCameraStore.getState();
-  if (!state.landscapeAutoMode)
-    return;
-
-  const exposure = clampExposure(state.landscapeManualExposure);
-  const gain = clampGain(state.landscapeManualGain);
-  _useCameraStore.setState({
-    landscapeAutoMode: false,
-    landscapeShutterMode: 'pro',
-    landscapeManualExposure: exposure,
-    landscapeManualGain: gain,
-  });
-  manualModeSettings = { exposure, gain };
-  // Program the manual registers while AE is still in control. The board then
-  // freezes exactly these values when `switch_auto_mode` disables AE.
-  state.sendInstruction(CAMERA_INSTRUCTIONS.changeStreamingSetting, [exposure, gain]);
-  // Old firmware may not acknowledge this setting change. Fall back to the
-  // same mode switch after a short, bounded delay.
-  manualModeSwitchTimer = setTimeout(switchToManualMode, MANUAL_MODE_SETTING_TIMEOUT_MS);
 }
 
 function scheduleStreamingSetting(): void {
@@ -613,7 +553,6 @@ const _useCameraStore = create<CameraState>(set => ({
     cameraWebSocket.connect();
   },
   disconnect: () => {
-    cancelManualModeSwitch();
     settlePendingCommands('设备连接已断开');
     cameraWebSocket?.close();
     cameraWebSocket = null;
@@ -710,7 +649,6 @@ const _useCameraStore = create<CameraState>(set => ({
   switchAutoMode: (auto) => {
     const state = _useCameraStore.getState();
     if (auto) {
-      cancelManualModeSwitch();
       set({
         landscapeAutoMode: true,
         landscapeShutterMode: 'auto',
@@ -722,12 +660,16 @@ const _useCameraStore = create<CameraState>(set => ({
     if (!state.landscapeAutoMode)
       return;
 
-    // Freeze the current AE result rather than reusing a previous M value.
-    // `camera_state.preview` arrives quickly on supported firmware; the timeout
-    // retains the last valid board sample for older or briefly unavailable boards.
-    cancelManualModeSwitch();
-    state.requestCameraState();
-    manualModeSwitchTimer = setTimeout(enterManualMode, MANUAL_MODE_STATE_TIMEOUT_MS);
+    const exposure = clampExposure(state.landscapeManualExposure);
+    const gain = clampGain(state.landscapeManualGain);
+    set({
+      landscapeAutoMode: false,
+      landscapeShutterMode: 'pro',
+      landscapeManualExposure: exposure,
+      landscapeManualGain: gain,
+    });
+    state.sendInstruction(CAMERA_INSTRUCTIONS.switchAutoMode, [1]);
+    state.sendInstruction(CAMERA_INSTRUCTIONS.changeStreamingSetting, [exposure, gain]);
   },
 
   // The board's `start_streaming_exposure(exposure, gain)` takes gain as a
@@ -1000,17 +942,7 @@ function handleCameraMessage(
       if (typeof videoName === 'string' && videoName) {
         update.landscapeLatestVideoName = videoName;
       }
-      const preview = getPreviewSettings(state.preview);
-      if (preview && _useCameraStore.getState().landscapeAutoMode) {
-        // Keep the manual controls primed with the board's current AE values.
-        update.landscapeManualExposure = preview.exposure;
-        update.landscapeManualGain = preview.gain;
-      }
       set(update);
-      if (manualModeSwitchTimer && !manualModeSettings && _useCameraStore.getState().landscapeAutoMode) {
-        // This is the fresh response requested just before entering manual mode.
-        enterManualMode();
-      }
       // `capture_stream_frame` reports completion through camera_state on this
       // firmware, not necessarily through its own instruction response.
       if (typeof jpgPath === 'string' && _useCameraStore.getState().landscapeCaptureState === 'capturing') {
@@ -1029,7 +961,6 @@ function handleCameraMessage(
       break;
     }
     case CAMERA_INSTRUCTIONS.changeStreamingSetting:
-      switchToManualMode();
       break;
     case CAMERA_INSTRUCTIONS.captureStreamFrame: {
       const data = message.data as Record<string, unknown> | undefined;

@@ -73,6 +73,9 @@ describe('camera store', () => {
       landscapeShutterMode: 'auto',
       landscapeManualExposure: 0.001,
       landscapeManualGain: 0,
+      landscapeCaptureState: 'idle',
+      landscapeCapturePendingId: null,
+      lastCommandError: null,
     });
   });
 
@@ -119,18 +122,28 @@ describe('camera store', () => {
     );
   });
 
-  it('freezes the latest board AE values when entering manual mode', () => {
+  it('preserves user configured manual exposure and gain across auto mode switches', () => {
     jest.useFakeTimers();
+    useCameraStore.setState({
+      landscapeManualExposure: 0.05,
+      landscapeManualGain: 30,
+      landscapeAutoMode: false,
+      landscapeShutterMode: 'pro',
+    });
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
 
-    socket.message({
-      device_name: 'main_camera',
-      instruction: 'camera_state',
-      data: { preview: { exposure_s: 0.0125, gain: 14.6 } },
+    // Switch to auto mode
+    useCameraStore.getState().switchAutoMode(true);
+    expect(useCameraStore.getState()).toMatchObject({
+      landscapeAutoMode: true,
+      landscapeShutterMode: 'auto',
+      landscapeManualExposure: 0.05,
+      landscapeManualGain: 30,
     });
-    useCameraStore.getState().switchAutoMode(false);
+
+    // Board reports AE values while in auto mode; user's manual settings must NOT be overwritten
     socket.message({
       device_name: 'main_camera',
       instruction: 'camera_state',
@@ -138,30 +151,57 @@ describe('camera store', () => {
     });
 
     expect(useCameraStore.getState()).toMatchObject({
+      landscapeManualExposure: 0.05,
+      landscapeManualGain: 30,
+    });
+
+    // Switch back to manual mode; should immediately switch to manual and apply user's saved manual settings (0.05s, 30dB)
+    useCameraStore.getState().switchAutoMode(false);
+
+    expect(useCameraStore.getState()).toMatchObject({
       landscapeAutoMode: false,
       landscapeShutterMode: 'pro',
-      landscapeManualExposure: 0.0075,
-      landscapeManualGain: 6,
+      landscapeManualExposure: 0.05,
+      landscapeManualGain: 30,
     });
     expect(socket.sent.slice(-2).map(message => JSON.parse(message))).toMatchObject([
-      { instruction: 'camera_state' },
-      { instruction: 'change_streaming_setting', params: [0.0075, 6] },
+      { instruction: 'switch_auto_mode', params: [1] },
+      { instruction: 'change_streaming_setting', params: [0.05, 30] },
     ]);
+  });
+
+  it('completes stream-frame capture from camera_state last_result', () => {
+    jest.useFakeTimers();
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    useCameraStore.getState().startLandscapeCapture();
+
+    const capture = socket.sent
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'capture_stream_frame');
+    expect(capture.params[0]).toMatch(/^\/mnt\/sdcard\/Pictures\/stream_frame_\d+\.jpg$/);
+    expect(useCameraStore.getState().landscapeCaptureState).toBe('capturing');
 
     socket.message({
       device_name: 'main_camera',
-      instruction: 'change_streaming_setting',
-      data: true,
+      instruction: 'camera_state',
+      data: {
+        streaming: true,
+        last_result: { jpg_path: capture.params[0] },
+      },
     });
-    expect(socket.sent.slice(-1).map(message => JSON.parse(message))).toMatchObject([
-      { instruction: 'switch_auto_mode', params: [1] },
-    ]);
-    jest.advanceTimersByTime(300);
-    expect(socket.sent).toHaveLength(5);
+
+    expect(useCameraStore.getState()).toMatchObject({
+      landscapeCaptureState: 'idle',
+      newestCameraJpgUrl: capture.params[0],
+      newestStreamJpgUrl: capture.params[0],
+      lastCommandError: null,
+    });
   });
 
-  it('falls back to the most recent valid AE cache when state refresh times out', () => {
-    jest.useFakeTimers();
+  it('immediately applies manual settings and switches mode without waiting', () => {
     useCameraStore.setState({
       landscapeManualExposure: 0.025,
       landscapeManualGain: 18,
@@ -171,20 +211,15 @@ describe('camera store', () => {
     socket.open();
 
     useCameraStore.getState().switchAutoMode(false);
-    jest.advanceTimersByTime(400);
 
     expect(useCameraStore.getState()).toMatchObject({
       landscapeAutoMode: false,
       landscapeManualExposure: 0.025,
       landscapeManualGain: 18,
     });
-    expect(socket.sent.slice(-1).map(message => JSON.parse(message))).toMatchObject([
-      { instruction: 'change_streaming_setting', params: [0.025, 18] },
-    ]);
-
-    jest.advanceTimersByTime(300);
-    expect(socket.sent.slice(-1).map(message => JSON.parse(message))).toMatchObject([
+    expect(socket.sent.slice(-2).map(message => JSON.parse(message))).toMatchObject([
       { instruction: 'switch_auto_mode', params: [1] },
+      { instruction: 'change_streaming_setting', params: [0.025, 18] },
     ]);
   });
 });
