@@ -9,6 +9,17 @@
 - **板端协议修正**：实测 `http://192.168.1.1:8999/FileCopy/list_pic_folders/` 在 2026-08-12 返回 `data.dirs`（含 10 个真实目录，约 0.3 秒响应），而旧代码只读取 `data.pic_folders`，导致真实目录被忽略并回退 mock。现已兼容 `dirs` 与旧 `pic_folders`，并支持 `YYYY-MM-DD` 日期目录、`full_path`、`pic_num`。
 - 验证：`pnpm run type-check` 通过；相机相关 4 个测试套件、33 项测试通过。
 
+### 相册日期解析与 1787 年异常日期修复（2026-08-13）
+
+- **根因**：原先使用宽松正则 `/(\d{4})(\d{2})(\d{2})/` 直接匹配文件名中的连续 8 位数字，导致 `stream_frame_1786355122069.jpg` 或 `solve-annotated-upload-1785836975474.jpg` 中的 13 位毫秒时间戳前 8 位（如 `17858369`）被误识别为 1785 年 83 月 69 日，经 JavaScript `Date` 溢出换算后显示为 **1787 年**。
+- **修复**：对齐网页端 `hjc_app_server_f8be5fd/app.js` 的 `parseAlbumDateFromPath` 与 `isPlausibleAlbumDate` 逻辑：
+  1. 优先提取 `stream_frame_`、`solve_` 等命名中的 10~13 位时间戳并按毫秒解析；
+  2. 支持完整时间 `YYYY-MM-DD-HH-mm-ss` 及 ISO 日期 `YYYY-MM-DD`；
+  3. 紧凑日期 `YYYYMMDD` 限制在 `20xx` 年、有效月份与日期区间；
+  4. 增加 `isPlausibleAlbumDate` 校验（年份 `< 2022` 或未来时间判定为不合理，归入「未校时拍摄」）；
+  5. 实测板端所有历史图片（包括 7 月 20 日、8 月 4 日等所有拍摄）均准确解析为 `2026年x月x日`，1787 年等异常日期彻底消除。
+- 验证：`pnpm run type-check` 通过；相机/相册测试 7 个套件、53 项测试通过。
+
 ### 板端电池最新服务部署（2026-08-13）
 
 - 抽取并同步服务器 `new_wificamera_sdk/test/net_server_test` 今日最新提交 `fa43708`（`feat: SOC 查表换成 600mA 放电曲线 11 点`），替换原来的 5 点估算表，电量映射更精准。

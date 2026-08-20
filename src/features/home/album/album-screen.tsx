@@ -51,42 +51,88 @@ function formatStorage(
   };
 }
 
-function parseDateFromFolder(f: { name: string; path?: string; mtime?: number }): { label: string; timestamp: string; sortKey: string } {
-  const text = `${f.path || ''} ${f.name}`;
+function isPlausibleAlbumDate(date: unknown): date is Date {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime()))
+    return false;
+  const y = date.getFullYear();
+  // Filter out uncalibrated board clock (e.g. 2021) and anomalous future epochs
+  if (y < 2022)
+    return false;
+  if (date.getTime() > Date.now() + 30 * 86_400_000)
+    return false;
+  return true;
+}
 
-  // 1. Check for YYYY-MM-DD (e.g. /Pictures/2026-08-13/...)
-  const isoMatch = text.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    const year = isoMatch[1];
-    const month = Number(isoMatch[2]);
-    const day = Number(isoMatch[3]);
-    const monthStr = String(month).padStart(2, '0');
-    const dayStr = String(day).padStart(2, '0');
-    return {
-      label: `${year}年${month}月${day}日`,
-      timestamp: `${year}-${monthStr}-${dayStr}`,
-      sortKey: `${year}${monthStr}${dayStr}`,
-    };
+function parseAlbumDate(pathOrName: string, mtime?: number): Date | null {
+  const full = String(pathOrName || '');
+  const name = full.split(/[\\/]/).pop() || full;
+
+  // 1. Millisecond timestamps in filenames (e.g. stream_frame_1786355122069, solve_..._1785836975474)
+  const msPrefixMatch = name.match(/(?:stream_frame_|solve[_-]|upload[_-]|synthetic[_-]|picture[_-]|big-)(\d{10,13})/i);
+  if (msPrefixMatch) {
+    let ms = Number(msPrefixMatch[1]);
+    if (msPrefixMatch[1].length <= 10)
+      ms *= 1000;
+    const d = new Date(ms);
+    if (isPlausibleAlbumDate(d))
+      return d;
   }
 
-  // 2. Check for compact YYYYMMDD (e.g. 20260810)
-  const compactMatch = text.match(/(\d{4})(\d{2})(\d{2})/);
+  // 1b. 13-digit millisecond timestamps in filename (e.g. -1785859700496)
+  const msMatch = name.match(/[-_](\d{13})(?:[-_.]|$)/);
+  if (msMatch) {
+    const d = new Date(Number(msMatch[1]));
+    if (isPlausibleAlbumDate(d))
+      return d;
+  }
+
+  // 2. Full timestamp in filename/path: YYYY-MM-DD-HH-mm-ss or YYYY-MM-DD_HH-mm-ss
+  const fullDateMatch = full.match(/(20\d{2})-(\d{2})-(\d{2})[-_](\d{2})[-_](\d{2})[-_](\d{2})/);
+  if (fullDateMatch) {
+    const d = new Date(
+      Number(fullDateMatch[1]),
+      Number(fullDateMatch[2]) - 1,
+      Number(fullDateMatch[3]),
+      Number(fullDateMatch[4]),
+      Number(fullDateMatch[5]),
+      Number(fullDateMatch[6]),
+    );
+    if (isPlausibleAlbumDate(d))
+      return d;
+  }
+
+  // 3. YYYY-MM-DD in path or filename
+  const isoDateMatch = full.match(/(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])/);
+  if (isoDateMatch) {
+    const d = new Date(Number(isoDateMatch[1]), Number(isoDateMatch[2]) - 1, Number(isoDateMatch[3]), 12, 0, 0);
+    if (isPlausibleAlbumDate(d))
+      return d;
+  }
+
+  // 4. Compact YYYYMMDD (strictly 20xx, month 01-12, day 01-31 with delimiters/word boundaries)
+  const compactMatch = name.match(/(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?:_|$|\.)/);
   if (compactMatch) {
-    const year = compactMatch[1];
-    const month = Number(compactMatch[2]);
-    const day = Number(compactMatch[3]);
-    const monthStr = String(month).padStart(2, '0');
-    const dayStr = String(day).padStart(2, '0');
-    return {
-      label: `${year}年${month}月${day}日`,
-      timestamp: `${year}-${monthStr}-${dayStr}`,
-      sortKey: `${year}${monthStr}${dayStr}`,
-    };
+    const d = new Date(Number(compactMatch[1]), Number(compactMatch[2]) - 1, Number(compactMatch[3]), 12, 0, 0);
+    if (isPlausibleAlbumDate(d))
+      return d;
   }
 
-  // 3. Use mtime timestamp
-  if (typeof f.mtime === 'number' && f.mtime > 1000000000) {
-    const d = new Date(f.mtime * 1000);
+  // 5. Fallback to mtime if plausible
+  if (typeof mtime === 'number' && mtime > 0) {
+    let ms = mtime;
+    if (ms < 1e11)
+      ms *= 1000;
+    const d = new Date(ms);
+    if (isPlausibleAlbumDate(d))
+      return d;
+  }
+
+  return null;
+}
+
+function parseDateFromFolder(f: { name: string; path?: string; mtime?: number }): { label: string; timestamp: string; sortKey: string } {
+  const d = parseAlbumDate(f.path || f.name, f.mtime);
+  if (d) {
     const year = d.getFullYear();
     const month = d.getMonth() + 1;
     const day = d.getDate();
@@ -100,8 +146,8 @@ function parseDateFromFolder(f: { name: string; path?: string; mtime?: number })
   }
 
   return {
-    label: '拍摄记录',
-    timestamp: '近期',
+    label: '未校时拍摄',
+    timestamp: '未校时',
     sortKey: '00000000',
   };
 }
