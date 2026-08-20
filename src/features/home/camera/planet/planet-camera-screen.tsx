@@ -21,7 +21,11 @@ import {
   SheetMenuIcon,
 } from '../landscape/landscape-icons';
 import { LandscapeRuler } from '../landscape/landscape-ruler';
-import { getPreviewSurfaceHeight } from './preview-layout';
+import {
+  getEffectiveSensorRoi,
+  getPreviewSurfaceHeightForRoi,
+  isNativeSensorAspectRatio,
+} from './preview-layout';
 import { PLANET_ROI_PRESETS, usePlanetCapture } from './use-planet-capture';
 import { useShutterCountdown } from './use-shutter-countdown';
 
@@ -84,20 +88,22 @@ type ContainerFormat = 'mp4' | 'ser';
 type BitDepth = '8-bit' | '12-bit' | '16-bit';
 type MeteringMode = 'center' | 'target' | 'matrix';
 
-function ParamCard({ label, value, active, onPress }: {
+function ParamCard({ label, value, active, disabled = false, onPress }: {
   label: string;
   value: string;
   active: boolean;
+  disabled?: boolean;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       style={{
         backgroundColor: active ? BRAND : CARD_BG,
         borderColor: active ? BRAND : 'rgba(255, 255, 255, 0.12)',
       }}
-      className="h-[74px] flex-1 items-center justify-center rounded-2xl border active:opacity-80"
+      className="h-[74px] flex-1 items-center justify-center rounded-2xl border active:opacity-80 disabled:opacity-40"
     >
       <Text className={`text-[12px] ${active ? 'font-medium text-black/75' : 'text-white/55'}`}>
         {label}
@@ -116,6 +122,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
 
   const connectionStatus = useCameraStore.use.connectionStatus();
   const newestCameraJpgUrl = useCameraStore.use.newestCameraJpgUrl();
+  const latestVideoName = useCameraStore.use.landscapeLatestVideoName();
 
   // Top capsule arrow direction: 'down' (图二) <-> 'up' (图三)
   const [arrowDirection, setArrowDirection] = useState<ArrowDirection>('down');
@@ -132,13 +139,25 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   // Fig 3 state (Quick Settings)
   // 板端尚未提供测光模式指令，先固定为全画面并禁用切换。
   const meteringMode: MeteringMode = 'matrix';
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('4:3');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('full');
   const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
 
   // Common ROI and Capture State
   const [roiPreset, setRoiPreset] = useState<RoiPreset>(PLANET_ROI_PRESETS[0]);
   const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('video');
   const [roiSheetOpen, setRoiSheetOpen] = useState(false);
+  const activeRoiPreset = useMemo(
+    () => aspectRatio === '16:9' && !isNativeSensorAspectRatio(roiPreset, '16:9')
+      ? PLANET_ROI_PRESETS[0]
+      : roiPreset,
+    [aspectRatio, roiPreset],
+  );
+  const selectableRoiPresets = useMemo(
+    () => aspectRatio === '16:9'
+      ? PLANET_ROI_PRESETS.filter(preset => isNativeSensorAspectRatio(preset, '16:9'))
+      : PLANET_ROI_PRESETS,
+    [aspectRatio],
+  );
 
   const format: PlanetFormat = useMemo(() => {
     if (containerFormat === 'mp4')
@@ -162,22 +181,29 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     recordingSeconds,
     writtenFrames,
     isCapturing,
+    isApplyingRoi,
+    effectiveRoi,
     actionError,
     capturePhoto,
     startRecording,
     stopRecording,
     dismissError,
-  } = usePlanetCapture({ exposure, gain, format, roiPreset });
+  } = usePlanetCapture({ exposure, gain, format, roiPreset: activeRoiPreset, aspectRatio });
 
   const isConnected = connectionStatus === 'open';
   const isVideoRecording = captureMode === 'video' && isRecording;
 
   const imageUrl = useMemo(() => {
-    if (!newestCameraJpgUrl)
-      return null;
-    const imagePath = newestCameraJpgUrl.replace(/\.fits$/i, '_preview.jpg');
-    return `${getCameraBaseUrl()}/get_image?path=${encodeURIComponent(imagePath)}`;
-  }, [newestCameraJpgUrl]);
+    if (newestCameraJpgUrl) {
+      const imagePath = newestCameraJpgUrl.replace(/\.fits$/i, '_preview.jpg');
+      return `${getCameraBaseUrl()}/get_image?path=${encodeURIComponent(imagePath)}`;
+    }
+    if (latestVideoName) {
+      const thumbPath = `/mnt/sdcard/Videos/${latestVideoName.replace(/\.mp4$/i, '_thumb.jpg')}`;
+      return `${getCameraBaseUrl()}/get_image?path=${encodeURIComponent(thumbPath)}`;
+    }
+    return null;
+  }, [newestCameraJpgUrl, latestVideoName]);
 
   const runShutter = useCallback(() => {
     if (captureMode === 'photo') {
@@ -193,7 +219,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   const countdownRemaining = countdown.remaining;
 
   const handleShutter = () => {
-    if (!isConnected)
+    if (!isConnected || isApplyingRoi || previewState !== 'live')
       return;
     // 停止录制不该被倒计时延迟，只有开始拍摄才走倒计时。
     if (isRecording && !countdown.isRunning()) {
@@ -204,17 +230,26 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
       runShutter();
   };
 
+  const handleBack = useCallback(() => {
+    countdown.cancel();
+    if (isRecording)
+      void stopRecording();
+    onBack();
+  }, [countdown, isRecording, onBack, stopRecording]);
+
   const handleCaptureModePress = (mode: 'photo' | 'video') => {
     if (captureMode !== mode) {
+      countdown.cancel();
       setCaptureMode(mode);
       return;
     }
     handleShutter();
   };
 
+  const settingsDisabled = isRecording || isCapturing || isApplyingRoi || countdownRemaining > 0;
   const surfaceHeight = useMemo(
-    () => getPreviewSurfaceHeight(aspectRatio, width, height),
-    [aspectRatio, height, width],
+    () => getPreviewSurfaceHeightForRoi(effectiveRoi, width, height),
+    [effectiveRoi, height, width],
   );
 
   return (
@@ -235,7 +270,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
         style={{ top: insets.top + 10 }}
       >
         <Pressable
-          onPress={onBack}
+          onPress={handleBack}
           style={{ backgroundColor: PILL_BG }}
           className="size-9 items-center justify-center rounded-full active:opacity-70"
         >
@@ -245,10 +280,13 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
         {/* Top Capsule: Toggles arrow direction (down ⌵ <-> up ⌃) */}
         <Pressable
           onPress={() => {
+            if (settingsDisabled)
+              return;
             setArrowDirection(prev => (prev === 'down' ? 'up' : 'down'));
           }}
+          disabled={settingsDisabled}
           style={{ backgroundColor: PILL_BG }}
-          className="h-8 flex-row items-center gap-1.5 rounded-full px-3.5 active:opacity-70"
+          className="h-8 flex-row items-center gap-1.5 rounded-full px-3.5 active:opacity-70 disabled:opacity-40"
         >
           <Text className="text-[12px] font-medium text-white">行星视频</Text>
           {arrowDirection === 'down' ? <ChevronDownIcon size={14} /> : <ChevronUpIcon size={14} />}
@@ -257,15 +295,23 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
         {/* Top-Right: ROI Specs */}
         <Pressable
           onPress={() => setRoiSheetOpen(true)}
-          className="items-end justify-center py-1 active:opacity-70"
+          disabled={settingsDisabled}
+          className="items-end justify-center py-1 active:opacity-70 disabled:opacity-40"
         >
           <Text className="text-[13px] font-medium tracking-wide text-white/90">
-            {`${roiPreset.resolution}  ${roiPreset.fps}fps`}
+            {`${effectiveRoi.width}×${effectiveRoi.height}  ${activeRoiPreset.fps}fps`}
           </Text>
         </Pressable>
       </View>
 
-      {/* 3. Recording Indicator */}
+      {/* 3. Recording / ROI Indicator */}
+      {isApplyingRoi && (
+        <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 58 }}>
+          <View className="rounded-full bg-black/75 px-3.5 py-1">
+            <Text className="text-xs font-medium text-white">正在切换画幅…</Text>
+          </View>
+        </View>
+      )}
       {isRecording && (
         <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 58 }}>
           <View className="flex-row items-center gap-2 rounded-full bg-red-600/90 px-3.5 py-1">
@@ -307,18 +353,21 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                           label="曝光时间"
                           value={formatExposure(exposure)}
                           active={activeParamCard === 'exposure'}
+                          disabled={settingsDisabled}
                           onPress={() => setActiveParamCard('exposure')}
                         />
                         <ParamCard
                           label="增益"
                           value={`${gain}`}
                           active={activeParamCard === 'gain'}
+                          disabled={settingsDisabled}
                           onPress={() => setActiveParamCard('gain')}
                         />
                         <ParamCard
                           label="格式"
                           value={formatCardLabel}
                           active={activeParamCard === 'format'}
+                          disabled={settingsDisabled}
                           onPress={() => setActiveParamCard('format')}
                         />
                       </View>
@@ -338,7 +387,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                                   <Pressable
                                     key={item}
                                     onPress={() => setContainerFormat(item)}
-                                    disabled={isRecording}
+                                    disabled={settingsDisabled}
                                     style={{ backgroundColor: selected ? BRAND : 'transparent' }}
                                     className="h-[34px] min-w-[56px] items-center justify-center rounded-full px-3"
                                   >
@@ -372,7 +421,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                                       if (containerFormat === 'ser')
                                         setBitDepth(depth);
                                     }}
-                                    disabled={isRecording || containerFormat !== 'ser'}
+                                    disabled={settingsDisabled || containerFormat !== 'ser'}
                                     style={{ backgroundColor: selected ? BRAND : 'transparent' }}
                                     className="h-[34px] flex-1 items-center justify-center rounded-full"
                                   >
@@ -398,7 +447,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               value={exposure}
                               formatValue={value => formatExposure(value)}
                               formatTick={(value, index) => (index % 5 === 0 ? formatExposure(value) : null)}
-                              onChange={setExposure}
+                              onChange={(value) => {
+                                if (!settingsDisabled)
+                                  setExposure(value);
+                              }}
                             />
                           </View>
                         )}
@@ -411,7 +463,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               value={gain}
                               formatValue={value => `${value}dB`}
                               formatTick={(value, index) => (index % 5 === 0 ? `${value}` : null)}
-                              onChange={setGain}
+                              onChange={(value) => {
+                                if (!settingsDisabled)
+                                  setGain(value);
+                              }}
                             />
                           </View>
                         )}
@@ -460,10 +515,16 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         {/* Card 1: Aspect Ratio */}
                         <Pressable
                           onPress={() => {
-                            setAspectRatio(prev => (prev === '4:3' ? '16:9' : prev === '16:9' ? 'full' : '4:3'));
+                            countdown.cancel();
+                            dismissError();
+                            const next = aspectRatio === '4:3' ? '16:9' : aspectRatio === '16:9' ? 'full' : '4:3';
+                            if (next === '16:9' && !isNativeSensorAspectRatio(roiPreset, '16:9'))
+                              setRoiPreset(PLANET_ROI_PRESETS[0]);
+                            setAspectRatio(next);
                           }}
+                          disabled={settingsDisabled}
                           style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.12)' }}
-                          className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75"
+                          className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
                           <Text className="text-[18px] font-normal text-white">
                             {aspectRatio === 'full' ? '全幅' : aspectRatio}
@@ -475,8 +536,9 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                           onPress={() => {
                             setCountdownSeconds(prev => (prev === 0 ? 3 : prev === 3 ? 5 : prev === 5 ? 10 : 0));
                           }}
+                          disabled={settingsDisabled}
                           style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.12)' }}
-                          className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75"
+                          className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
                           <CountdownIcon color="#FFF" size={24} disabled={countdownSeconds === 0} />
                           <Text className="mt-1 text-[11px] font-normal text-white/70">
@@ -487,22 +549,24 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         {/* Card 3: Resolution */}
                         <Pressable
                           onPress={() => setRoiSheetOpen(true)}
+                          disabled={settingsDisabled}
                           style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.12)' }}
-                          className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75"
+                          className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
-                          <Text className="text-[18px] font-normal text-white">
-                            {roiPreset.resolution}
+                          <Text className="text-[13px] font-normal text-white">
+                            {`${effectiveRoi.width}×${effectiveRoi.height}`}
                           </Text>
                         </Pressable>
 
                         {/* Card 4: Frame Rate */}
                         <Pressable
                           onPress={() => setRoiSheetOpen(true)}
+                          disabled={settingsDisabled}
                           style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.12)' }}
-                          className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75"
+                          className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
                           <Text className="text-[18px] font-normal text-white">
-                            {`${roiPreset.fps}fps`}
+                            {`${activeRoiPreset.fps}fps`}
                           </Text>
                         </Pressable>
                       </View>
@@ -514,7 +578,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
               <View className="items-center justify-center py-5">
                 <Pressable
                   onPress={handleShutter}
-                  disabled={!isConnected || isCapturing}
+                  disabled={!isConnected || isCapturing || isApplyingRoi || previewState !== 'live'}
                   className="items-center justify-center rounded-full active:opacity-80"
                   style={{
                     width: 76,
@@ -573,7 +637,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
           >
             <Pressable
               onPress={() => handleCaptureModePress('photo')}
-              disabled={isRecording}
+              disabled={isRecording || isCapturing || isApplyingRoi}
               style={{ backgroundColor: captureMode === 'photo' ? BRAND : 'transparent' }}
               className="h-[38px] min-w-[70px] items-center justify-center rounded-full px-4 active:opacity-80"
             >
@@ -588,6 +652,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
 
             <Pressable
               onPress={() => handleCaptureModePress('video')}
+              disabled={isCapturing || isApplyingRoi}
               style={{ backgroundColor: captureMode === 'video' ? BRAND : 'transparent' }}
               className="h-[38px] min-w-[70px] items-center justify-center rounded-full px-4 active:opacity-80"
             >
@@ -639,22 +704,25 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
             </View>
 
             <View className="gap-2.5">
-              {PLANET_ROI_PRESETS.map((preset) => {
-                const selected = roiPreset.key === preset.key;
+              {selectableRoiPresets.map((preset) => {
+                const selected = activeRoiPreset.key === preset.key;
+                const presetRoi = getEffectiveSensorRoi(preset, aspectRatio);
                 return (
                   <Pressable
                     key={preset.key}
                     onPress={() => {
+                      countdown.cancel();
+                      dismissError();
                       setRoiPreset(preset);
                       setRoiSheetOpen(false);
                     }}
-                    disabled={isRecording}
+                    disabled={settingsDisabled}
                     style={{ backgroundColor: selected ? BRAND : CARD_BG }}
                     className="flex-row items-center justify-between rounded-xl px-4 py-3.5 active:opacity-80"
                   >
                     <View>
                       <Text className={`text-sm font-bold ${selected ? 'text-black' : 'text-white'}`}>
-                        {preset.label}
+                        {`${presetRoi.width}×${presetRoi.height}`}
                       </Text>
                       <Text className={`mt-0.5 text-xs ${selected ? 'text-black/70' : 'text-white/50'}`}>
                         {`最高 ${preset.fps} FPS`}
@@ -662,7 +730,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                     </View>
                     <View className={`rounded-full px-2.5 py-1 ${selected ? 'bg-black/20' : 'bg-white/10'}`}>
                       <Text className={`text-xs font-semibold ${selected ? 'text-black' : 'text-white'}`}>
-                        {preset.resolution}
+                        {`${aspectRatio === 'full' ? '全幅' : aspectRatio} · ${preset.fps}fps`}
                       </Text>
                     </View>
                   </Pressable>
