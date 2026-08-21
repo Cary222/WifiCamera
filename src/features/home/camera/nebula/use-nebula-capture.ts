@@ -32,6 +32,8 @@ export function useNebulaCapture({ exposure, gain }: Options) {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const finishPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeRef = useRef(false);
+  /** Latest countdown value, mirrored so the interval can tick without a setState updater side effect. */
+  const countdownValueRef = useRef(0);
   /** True once the board has actually entered exposing/repeating for this job. */
   const observedBoardCaptureRef = useRef(false);
 
@@ -109,29 +111,38 @@ export function useNebulaCapture({ exposure, gain }: Options) {
       return capture(options);
     setCaptureState('countdown');
     setCountdownRemaining(seconds);
+    countdownValueRef.current = seconds;
     countdownRef.current = setInterval(() => {
-      setCountdownRemaining((value) => {
-        if (value > 1)
-          return value - 1;
+      // Read the latest value instead of calling begin() inside the setState
+      // updater: updater side effects are deferred and can double-fire.
+      const current = countdownValueRef.current - 1;
+      countdownValueRef.current = current;
+      setCountdownRemaining(current);
+      if (current <= 0) {
         clearTimers();
         begin(Math.max(1, Math.round(options.count ?? 1)), Math.max(0, Math.round(options.interval ?? 0)));
-        return 0;
-      });
+      }
     }, 1000);
   }, [begin, capture, clearTimers]);
 
   const cancel = useCallback(() => {
     if (!activeRef.current && !countdownRef.current)
       return;
-    if (repeatTotal > 1)
-      stopRepeatExposure();
-    else abortExposure();
+    const captureStarted = activeRef.current;
     clearTimers();
     activeRef.current = false;
     observedBoardCaptureRef.current = false;
     setCountdownRemaining(0);
     setRepeatTotal(0);
     setCaptureState('idle');
+    // Pure countdown cancellation must not touch the board: no exposure has
+    // started yet (mirrors landscape's cancelLandscapeTimerCapture).
+    if (!captureStarted)
+      return;
+    if (repeatTotal > 1)
+      stopRepeatExposure();
+    else
+      abortExposure();
   }, [abortExposure, clearTimers, repeatTotal, stopRepeatExposure]);
 
   return { captureState, countdownRemaining, repeatTotal, capture, startCountdown, cancel };

@@ -13,7 +13,9 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronUpIcon,
+  CloseIcon,
   CountdownIcon,
+  ResetIcon,
   SheetMenuIcon,
   StopwatchIcon,
   WatermarkFlaskIcon,
@@ -98,6 +100,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
 
   const [sheetTarget, setSheetTarget] = useState<'manual' | 'tools'>('manual');
   const [sheetOpen, setSheetOpen] = useState(true);
+  const [burstOpen, setBurstOpen] = useState(false);
   const [activeParam, setActiveParam] = useState<'wb' | 'shutter' | 'gain' | 'ev'>('shutter');
   const [exposure, setExposure] = useState(0.008);
   const [gain, setGain] = useState(6);
@@ -197,7 +200,9 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
           ? '录像中'
           : recordingBusy
             ? '生成视频中'
-            : isCapturing ? (repeatTotal > 1 ? `定时拍摄 ${repeatTotal} 张` : '拍摄中') : null;
+            : isCountdown
+              ? `${countdownRemaining}s`
+              : isCapturing ? (repeatTotal > 1 ? `定时拍摄 ${repeatTotal} 张` : '拍摄中') : null;
 
   return (
     <View className="flex-1 bg-black">
@@ -224,6 +229,13 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
       <Pressable onPress={() => setFocusAssist(value => !value)} style={{ top: previewTop + 56, backgroundColor: focusAssist ? BRAND : PILL_BG }} className="absolute left-4 h-8 flex-row items-center gap-1 rounded-full px-2.5"><Text className={`text-[11px] ${focusAssist ? 'text-black' : 'text-white'}`}>对焦辅助</Text></Pressable>
 
       {(status || notice) && <View className="absolute inset-x-0 items-center" style={{ top: previewTop + 108 }}><View className="rounded-full bg-black/55 px-4 py-1.5"><Text className="text-xs text-white">{notice ?? status}</Text></View></View>}
+
+      {/* Full-screen countdown overlay, same interaction as landscape mode. */}
+      {isCountdown && (
+        <View className="absolute inset-0 items-center justify-center">
+          <Text className="text-[88px] font-light text-white">{countdownRemaining}</Text>
+        </View>
+      )}
 
       {solveResult && (
         <View className="absolute inset-x-4 rounded-2xl p-4" style={{ top: previewTop + 144, backgroundColor: SHEET_BG }}>
@@ -269,16 +281,14 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                 borderRadius: captureMode === 'video' && isRecording ? 8 : shutterInner / 2,
                 backgroundColor: captureMode === 'video' && isRecording ? '#FF3B30' : '#FFFFFF',
               }}
-            >
-              {isCountdown && <Text className="text-[32px] font-semibold text-black">{countdownRemaining}</Text>}
-            </View>
+            />
           </Pressable>
         </View>
       )}
 
       {sheetOpen && (
         <View className="absolute inset-x-0 rounded-t-[26px] p-4" style={{ bottom: insets.bottom + 96, backgroundColor: SHEET_BG }}>
-          {sheetTarget === 'manual'
+          {sheetTarget === 'manual' && !burstOpen
             ? (
                 <View className="gap-4">
                   <View className="flex-row gap-3">
@@ -364,29 +374,70 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                   </View>
                 </View>
               )
-            : (
-                <View className="gap-4">
-                  <View className="flex-row gap-3">
-                    <ToolCard icon={<StopwatchIcon color={timerEnabled ? '#111' : '#FFF'} />} label="定时拍摄" active={timerEnabled} onPress={() => setTimerEnabled(value => !value)} />
-                    <ToolCard icon={<CountdownIcon color={countdownEnabled ? '#111' : '#FFF'} />} label="倒计时" active={countdownEnabled} onPress={() => setCountdownEnabled(value => !value)} />
-                    <ToolCard label={nebulaRatio} active={false} onPress={() => setLandscapeSensorRatio(nebulaRatio === '4:3' ? '16:9' : '4:3')} />
-                    <ToolCard icon={<WatermarkFlaskIcon color={watermark ? '#111' : '#FFF'} />} label="水印" active={watermark} onPress={() => setWatermark(value => !value)} />
-                  </View>
-                  <Pressable onPress={() => setAutoStretch(value => !value)} style={{ backgroundColor: autoStretch ? BRAND : CARD_BG }} className="h-[70px] items-center justify-center rounded-2xl">
-                    <Text className={autoStretch ? 'text-black' : 'text-white'}>
-                      拍照成片自动拉伸：
-                      {autoStretch ? '开启' : '关闭'}
-                    </Text>
-                  </Pressable>
-                  {timerEnabled && (
-                    <>
-                      <LandscapeRuler label="张数" values={COUNT_VALUES} value={timerPlan.count} formatValue={value => `${value}张`} onChange={value => setTimerPlan(plan => ({ ...plan, count: value }))} />
-                      <LandscapeRuler label="间隔" values={INTERVAL_VALUES} value={timerPlan.interval} formatValue={value => `${value}s`} onChange={value => setTimerPlan(plan => ({ ...plan, interval: value }))} />
-                    </>
-                  )}
-                  {countdownEnabled && <LandscapeRuler label="倒计时" values={COUNTDOWN_VALUES} value={countdown} formatValue={value => `${value}s`} onChange={setCountdown} />}
-                </View>
+            : !burstOpen
+                ? (
+                    <View className="gap-4">
+                      <View className="flex-row gap-3">
+                        <ToolCard
+                          icon={<StopwatchIcon color={timerEnabled ? '#111' : '#FFF'} />}
+                          label="定时拍摄"
+                          active={timerEnabled}
+                          onPress={() => {
+                            setTimerEnabled(value => !value);
+                            setBurstOpen(true);
+                          }}
+                        />
+                        <ToolCard
+                          icon={<CountdownIcon color={countdownEnabled ? '#111' : '#FFF'} />}
+                          label="倒计时"
+                          active={countdownEnabled}
+                          onPress={() => {
+                            setCountdownEnabled(value => !value);
+                            setBurstOpen(true);
+                          }}
+                        />
+                        <ToolCard label={nebulaRatio} active={false} onPress={() => setLandscapeSensorRatio(nebulaRatio === '4:3' ? '16:9' : '4:3')} />
+                        <ToolCard icon={<WatermarkFlaskIcon color={watermark ? '#111' : '#FFF'} />} label="水印" active={watermark} onPress={() => setWatermark(value => !value)} />
+                      </View>
+                      <Pressable onPress={() => setAutoStretch(value => !value)} style={{ backgroundColor: autoStretch ? BRAND : CARD_BG }} className="h-[70px] items-center justify-center rounded-2xl">
+                        <Text className={autoStretch ? 'text-black' : 'text-white'}>
+                          拍照成片自动拉伸：
+                          {autoStretch ? '开启' : '关闭'}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  )
+                : null}
+          {burstOpen && (
+            <View className="gap-4">
+              <View className="flex-row items-center justify-between">
+                <Pressable
+                  onPress={() => setBurstOpen(false)}
+                  style={{ backgroundColor: PILL_BG }}
+                  className="size-11 items-center justify-center rounded-full active:opacity-70"
+                >
+                  <CloseIcon />
+                </Pressable>
+                <Text className="text-[16px] text-white">定时拍摄</Text>
+                <Pressable
+                  onPress={() => {
+                    setTimerPlan({ count: 3, interval: 3 });
+                    setCountdown(3);
+                  }}
+                  className="size-11 items-center justify-center rounded-full active:opacity-70"
+                >
+                  <ResetIcon />
+                </Pressable>
+              </View>
+              {timerEnabled && (
+                <>
+                  <LandscapeRuler label="张数" values={COUNT_VALUES} value={timerPlan.count} formatValue={value => `${value}张`} onChange={value => setTimerPlan(plan => ({ ...plan, count: value }))} />
+                  <LandscapeRuler label="间隔" values={INTERVAL_VALUES} value={timerPlan.interval} formatValue={value => `${value}s`} onChange={value => setTimerPlan(plan => ({ ...plan, interval: value }))} />
+                </>
               )}
+              {countdownEnabled && <LandscapeRuler label="倒计时" values={COUNTDOWN_VALUES} value={countdown} formatValue={value => `${value}s`} onChange={setCountdown} />}
+            </View>
+          )}
         </View>
       )}
 
@@ -397,7 +448,17 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
             : <View className="size-[54px] rounded-full bg-white/10" />}
         </Pressable>
         <View className="h-[40px] flex-row items-center rounded-full border border-white/22 px-1">{(['photo', 'video'] as const).map(mode => <Pressable key={mode} onPress={() => setCaptureMode(mode)} style={captureMode === mode ? { backgroundColor: BRAND } : undefined} className="h-[32px] min-w-[60px] items-center justify-center rounded-full"><Text className={`text-[13px] ${captureMode === mode ? 'font-medium text-black' : 'text-white'}`}>{mode === 'photo' ? '拍照' : '视频'}</Text></Pressable>)}</View>
-        <Pressable onPress={() => setSheetOpen(value => !value)} className="size-[54px] items-center justify-center rounded-full border border-white/35"><SheetMenuIcon color={sheetOpen ? BRAND : '#FFFFFF'} /></Pressable>
+        <Pressable
+          onPress={() => setSheetOpen((open) => {
+            if (open)
+              return false;
+            setBurstOpen(false);
+            return true;
+          })}
+          className="size-[54px] items-center justify-center rounded-full border border-white/35"
+        >
+          <SheetMenuIcon color={sheetOpen ? BRAND : '#FFFFFF'} />
+        </Pressable>
       </View>
       {lastCommandError && lastCommandError !== 'see data' && <View className="absolute inset-x-0 items-center" style={{ bottom: insets.bottom + 220 }}><View className="rounded-full bg-black/70 px-4 py-1.5"><Text className="text-xs text-red-300">{lastCommandError}</Text></View></View>}
     </View>
