@@ -362,6 +362,14 @@
         if (retries <= 0) return send({ type: 'target_not_found' });
         return setTimeout(() => focusSkyCultureTarget(target, retries - 1), 50);
       }
+      function forceRender() {
+        if (!stel) return;
+        try {
+          const forward = stel.convertFrame(stel.core.observer, 'VIEW', 'OBSERVED', [0, 0, -1, 0]);
+          stel.lookAt(forward, 0);
+        } catch {}
+      }
+
       function execute(message) {
         switch (message.type) {
           case 'goto_radec': return gotoRaDec(message);
@@ -379,6 +387,7 @@
           }
           case 'toggle_constellations':
             stel.core.constellations.lines_visible = Boolean(message.visible);
+            forceRender();
             return;
           case 'set_sky_layers':
             if (typeof message.landscape === 'boolean')
@@ -393,6 +402,7 @@
             }
             if (typeof message.constellationLines === 'boolean')
               stel.core.constellations.lines_visible = message.constellationLines;
+            forceRender();
             return;
           case 'set_sky_culture': {
             if (typeof message.id !== 'string' || !/^[\w-]+$/.test(message.id)) return reportError('Invalid sky culture.');
@@ -404,12 +414,14 @@
             stel.core.skycultures.current_id = message.id;
             stel.core.constellations.show_only_pointed = false;
             if (message.target) focusSkyCultureTarget(message.target);
+            forceRender();
             return;
           }
           case 'set_time': {
             const date = new Date(message.isoTime);
             if (Number.isNaN(date.getTime())) return reportError('Invalid time command.');
             stel.core.observer.tt = stel.date2MJD(date);
+            forceRender();
             return;
           }
           case 'set_grid_lines': {
@@ -418,6 +430,7 @@
               const module = stel.getModule(`core.lines.${line}`);
               if (module) module.visible = message[line];
             }
+            forceRender();
             return;
           }
           case 'set_location':
@@ -425,6 +438,7 @@
             if (!isFiniteNumber(message.longitudeDeg) || message.longitudeDeg < -180 || message.longitudeDeg > 180) return reportError('Invalid longitude.');
             stel.core.observer.latitude = message.latitudeDeg * stel.D2R;
             stel.core.observer.longitude = message.longitudeDeg * stel.D2R;
+            forceRender();
             return;
           case 'compute_tonight': {
             const payload = computeTonight(message);

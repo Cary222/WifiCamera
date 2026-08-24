@@ -555,7 +555,7 @@ function QuickControlButton({
     setPressing(true);
     progressAnim.setValue(0);
     Animated.timing(progressAnim, {
-      duration: 350,
+      duration: 400,
       easing: Easing.linear,
       toValue: 1,
       useNativeDriver: false,
@@ -590,7 +590,8 @@ function QuickControlButton({
       accessibilityLabel={control.label}
       accessibilityRole="switch"
       accessibilityState={{ checked: control.active }}
-      delayLongPress={350}
+      delayLongPress={400}
+      hitSlop={6}
       key={control.id}
       onLongPress={handleLongPress}
       onPress={handlePress}
