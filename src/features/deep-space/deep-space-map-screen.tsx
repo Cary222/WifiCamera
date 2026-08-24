@@ -117,17 +117,17 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     open: (next: DrawerFeature) => setActive(next),
     selectCity: (city: typeof OBSERVER_CITIES[number]) => {
       setActiveCity(city.name);
-      stellaRef.current?.setLocation(city.latitudeDeg, city.longitudeDeg);
+      stellaRef.current?.setLocation?.(city.latitudeDeg, city.longitudeDeg);
     },
     selectSkyCulture: (id: string, target?: string | null) => {
       setCurrentCulture(id);
-      stellaRef.current?.setSkyCulture(id, target ?? undefined);
+      stellaRef.current?.setSkyCulture?.(id, target ?? undefined);
       close();
     },
     toggleGridLine: (key: GridLineKey) => {
       const value = !gridLines[key];
       setGridLines({ ...gridLines, [key]: value });
-      stellaRef.current?.setGridLines({ [key]: value });
+      stellaRef.current?.setGridLines?.({ [key]: value });
     },
   };
 }
@@ -670,7 +670,7 @@ function useStarMapSearch(stellaRef: React.RefObject<StellariumViewHandle | null
     if (!target)
       return;
     setError(false);
-    stellaRef.current?.searchTarget(target);
+    stellaRef.current?.searchTarget?.(target);
   };
 
   return {
@@ -744,7 +744,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const updateSkyLayers = React.useCallback((patch: Partial<typeof DEFAULT_SKY_LAYERS>) => {
     setSkyLayers((prev) => {
       const next = { ...prev, ...patch };
-      stellaRef.current?.setSkyLayers(patch);
+      stellaRef.current?.setSkyLayers?.(patch);
       return next;
     });
   }, []);
@@ -758,7 +758,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         ref={stellaRef}
         style={styles.webView}
         onBearingChange={setAzimuthDeg}
-        onReady={() => stellaRef.current?.setSkyLayers(skyLayers)}
+        onReady={() => stellaRef.current?.setSkyLayers?.(skyLayers)}
         onCommandError={() => search.setError(true)}
         onTargetFound={search.closeSearch}
         onTargetNotFound={() => search.setError(true)}
@@ -794,7 +794,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         insetsBottom={insets.bottom}
         onRestore={() => {
           setCurrentCulture('western');
-          stellaRef.current?.setSkyCulture('western');
+          stellaRef.current?.setSkyCulture?.('western');
         }}
         showFab={showRestoreFab}
       />
@@ -811,7 +811,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
       <FeaturePanels
         clock={clock}
         feature={drawerFeature}
-        onPreviewCulture={id => stellaRef.current?.setSkyCulture(id)}
+        onPreviewCulture={id => stellaRef.current?.setSkyCulture?.(id)}
         stellaRef={stellaRef}
       />
       {search.open && (

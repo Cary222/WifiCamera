@@ -77,6 +77,9 @@ export function StellariumView({ ref, onBearingChange, onCommandError, onError, 
     }
   }, [clearTimeout, onReady]);
   React.useEffect(() => clearTimeout, [clearTimeout]);
+  if (ref && typeof ref === 'object' && 'current' in ref && !ref.current) {
+    (ref as React.MutableRefObject<StellariumViewHandle | null>).current = bridge.current;
+  }
   React.useImperativeHandle(ref, () => bridge.current, []);
   const onMessage = React.useCallback((event: WebViewMessageEvent) => {
     try {
