@@ -105,6 +105,11 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
   const [gridLines, setGridLines] = React.useState(DEFAULT_GRID_LINES);
   const close = () => setActive(undefined);
 
+  const updateGridLines = React.useCallback((patch: Partial<typeof DEFAULT_GRID_LINES>) => {
+    setGridLines(prev => ({ ...prev, ...patch }));
+    stellaRef.current?.setGridLines?.(patch);
+  }, [stellaRef]);
+
   return {
     active,
     activeCity,
@@ -124,11 +129,8 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
       stellaRef.current?.setSkyCulture?.(id, target ?? undefined);
       close();
     },
-    toggleGridLine: (key: GridLineKey) => {
-      const value = !gridLines[key];
-      setGridLines({ ...gridLines, [key]: value });
-      stellaRef.current?.setGridLines?.({ [key]: value });
-    },
+    toggleGridLine: (key: GridLineKey) => updateGridLines({ [key]: !gridLines[key] }),
+    updateGridLines,
   };
 }
 
@@ -139,13 +141,13 @@ function StarMapOverlayControls({
   insets,
   nightMode,
   onOpenLayers,
-  onToggleNightMode,
-  onUpdateSkyLayers,
-  skyLayers,
   onOpenMenu,
   onOpenSearch,
   onReturnToNow,
-  onToggleGridLine,
+  onToggleNightMode,
+  onUpdateGridLines,
+  onUpdateSkyLayers,
+  skyLayers,
 }: {
   azimuthDeg: number;
   clock: Date;
@@ -156,8 +158,8 @@ function StarMapOverlayControls({
   onOpenMenu: () => void;
   onOpenSearch: () => void;
   onReturnToNow: () => void;
-  onToggleGridLine: (key: GridLineKey) => void;
   onToggleNightMode: () => void;
+  onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
 }) {
@@ -167,8 +169,8 @@ function StarMapOverlayControls({
   const controls = getQuickControls({
     lines: gridLines,
     nightMode,
-    onToggleGridLine,
     onToggleNightMode,
+    onUpdateGridLines,
     onUpdateSkyLayers,
     skyLayers,
   });
@@ -298,16 +300,16 @@ type QuickControlEntry = {
 
 function getGridAndConstellationControls({
   lines,
-  onToggleGridLine,
+  onUpdateGridLines,
   onUpdateSkyLayers,
   skyLayers,
 }: {
   lines: typeof DEFAULT_GRID_LINES;
-  onToggleGridLine: (key: GridLineKey) => void;
+  onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
 }): QuickControlEntry[] {
-  const gridsActive = lines.azimuthal || lines.equatorial_jnow || lines.meridian;
+  const gridsActive = lines.azimuthal && lines.equatorial_jnow;
   const constellationActive = skyLayers.constellationLines || skyLayers.constellationArt;
 
   return [
@@ -319,21 +321,21 @@ function getGridAndConstellationControls({
           hint: '以地平线与天顶为基准的仰角与方位网格',
           id: 'azimuthal',
           label: '地平坐标网格 (Azimuthal)',
-          onToggle: () => onToggleGridLine('azimuthal'),
+          onToggle: () => onUpdateGridLines({ azimuthal: !lines.azimuthal }),
         },
         {
           active: lines.equatorial_jnow,
           hint: '随天球旋转的即时天赤道与赤经赤纬网格',
           id: 'equatorial_jnow',
           label: '赤道坐标网格 (JNow)',
-          onToggle: () => onToggleGridLine('equatorial_jnow'),
+          onToggle: () => onUpdateGridLines({ equatorial_jnow: !lines.equatorial_jnow }),
         },
         {
           active: lines.meridian,
           hint: '连接天顶与正南正北地平圈的天球大圆',
           id: 'meridian',
           label: '子午线 (Meridian)',
-          onToggle: () => onToggleGridLine('meridian'),
+          onToggle: () => onUpdateGridLines({ meridian: !lines.meridian }),
         },
       ],
       detailSubtitle: '天球与地平参考坐标网格',
@@ -342,8 +344,11 @@ function getGridAndConstellationControls({
       id: 'grid-lines',
       label: '网格和线条',
       onPress: () => {
-        onToggleGridLine('azimuthal');
-        onToggleGridLine('equatorial_jnow');
+        const next = !gridsActive;
+        onUpdateGridLines({
+          azimuthal: next,
+          equatorial_jnow: next,
+        });
       },
     },
     {
@@ -477,8 +482,8 @@ function getEnvironmentAndNightControls({
 function getQuickControls(params: {
   lines: typeof DEFAULT_GRID_LINES;
   nightMode: boolean;
-  onToggleGridLine: (key: GridLineKey) => void;
   onToggleNightMode: () => void;
+  onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
 }): QuickControlEntry[] {
@@ -543,12 +548,14 @@ function QuickControlButton({
 }) {
   const [pressing, setPressing] = React.useState(false);
   const progressAnim = React.useRef(new Animated.Value(0)).current;
+  const longPressedRef = React.useRef(false);
 
   const handlePressIn = () => {
+    longPressedRef.current = false;
     setPressing(true);
     progressAnim.setValue(0);
     Animated.timing(progressAnim, {
-      duration: 320,
+      duration: 350,
       easing: Easing.linear,
       toValue: 1,
       useNativeDriver: false,
@@ -564,6 +571,17 @@ function QuickControlButton({
     }).start();
   };
 
+  const handleLongPress = () => {
+    longPressedRef.current = true;
+    onLongPress();
+  };
+
+  const handlePress = () => {
+    if (!longPressedRef.current) {
+      control.onPress();
+    }
+  };
+
   const ringColor = control.id === 'night-mode' ? '#FF5C5C' : '#64A6FF';
 
   return (
@@ -572,10 +590,10 @@ function QuickControlButton({
       accessibilityLabel={control.label}
       accessibilityRole="switch"
       accessibilityState={{ checked: control.active }}
-      delayLongPress={320}
+      delayLongPress={350}
       key={control.id}
-      onLongPress={onLongPress}
-      onPress={control.onPress}
+      onLongPress={handleLongPress}
+      onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       style={({ pressed }) => [
@@ -775,9 +793,6 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
           setDrawerOpen(false);
           setLayersOpen(value => !value);
         }}
-        onToggleNightMode={() => setNightMode(value => !value)}
-        onUpdateSkyLayers={updateSkyLayers}
-        skyLayers={skyLayers}
         onOpenMenu={() => {
           setLayersOpen(false);
           setDrawerOpen(true);
@@ -787,7 +802,10 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
           setLayersOpen(false);
         })}
         onReturnToNow={() => setClock(new Date())}
-        onToggleGridLine={drawerFeature.toggleGridLine}
+        onToggleNightMode={() => setNightMode(value => !value)}
+        onUpdateGridLines={drawerFeature.updateGridLines}
+        onUpdateSkyLayers={updateSkyLayers}
+        skyLayers={skyLayers}
       />
       <RestoreCultureFlow
         currentCulture={currentCulture}

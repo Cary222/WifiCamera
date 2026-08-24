@@ -398,8 +398,7 @@ describe('deep space 3x2 quick controls', () => {
     expect(screen.queryByTestId('deep-space-reference-time')).not.toBeOnTheScreen();
 
     await user.press(screen.getByTestId('deep-space-grid-quick-grid-lines'));
-    expect(mockSetGridLines).toHaveBeenCalledWith({ azimuthal: true });
-    expect(mockSetGridLines).toHaveBeenLastCalledWith({ equatorial_jnow: true });
+    expect(mockSetGridLines).toHaveBeenCalledWith({ azimuthal: true, equatorial_jnow: true });
     await user.press(screen.getByTestId('deep-space-grid-quick-night-mode'));
     expect(screen.getByTestId('deep-space-night-mode-overlay')).toBeOnTheScreen();
   });
