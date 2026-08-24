@@ -51,17 +51,46 @@ export class CameraWebSocketService {
     this.clearReconnectTimer();
     this.clearConnectTimeout();
 
-    if (this.socket?.readyState === WebSocket.OPEN
-      || this.socket?.readyState === WebSocket.CONNECTING) {
-      return;
+    // Detailed state logging for debugging
+    const socketInfo = this.socket
+      ? {
+          readyState: this.socket.readyState,
+          OPEN: WebSocket.OPEN,
+          CONNECTING: WebSocket.CONNECTING,
+          CLOSING: WebSocket.CLOSING,
+          CLOSED: WebSocket.CLOSED,
+        }
+      : null;
+    console.log('[CameraWS] connect() 被调用', {
+      hasSocket: !!this.socket,
+      socketInfo,
+      manuallyClosed: this.manuallyClosed,
+    });
+
+    // Close existing socket if it exists but is not in a good state
+    if (this.socket) {
+      if (this.socket.readyState === WebSocket.OPEN) {
+        console.log('[CameraWS] 连接已存在且正常，无需重连');
+        return;
+      }
+      if (this.socket.readyState === WebSocket.CONNECTING) {
+        console.log('[CameraWS] 连接进行中，等待完成');
+        return;
+      }
+      // For CLOSED, CLOSING, or ERROR states, close and recreate
+      console.log('[CameraWS] 关闭旧连接', { state: this.socket.readyState });
+      try {
+        this.socket.close();
+      }
+      catch {}
+      this.socket = null;
     }
 
+    console.log('[CameraWS] 创建新连接:', this.options.url);
     this.options.onStatusChange?.('connecting');
     appLogger.info('WS', '开始连接控制通道', { url: this.options.url });
 
     // Safety timeout: if the socket doesn't open within 4s, treat it as unreachable.
-    // This handles browsers that fire `onerror` immediately (no onclose) for
-    // cross-origin connection-refused errors.
     this.connectTimeout = setTimeout(() => {
       if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
         this.socket.close();
@@ -79,6 +108,7 @@ export class CameraWebSocketService {
       this.clearConnectTimeout();
       this.reconnectAttempts = 0;
       appLogger.info('WS', '控制通道已连接');
+      console.log('[CameraWS] ✅ 连接成功');
       this.startHeartbeatTimer();
       this.options.onStatusChange?.('open');
     };
@@ -99,24 +129,49 @@ export class CameraWebSocketService {
         }
       }
       catch (error) {
+        console.error('[CameraWS] 消息解析错误:', error);
+        // Parse errors don't kill the connection — just log and ignore
         this.options.onParseError?.(error);
-        this.options.onStatusChange?.('error');
+        // Don't trigger error status for parse errors — it's not a connection problem
       }
     };
-    socket.onerror = () => {
+    socket.onerror = (event) => {
       if (this.socket !== socket)
         return;
+      console.error('[CameraWS] ❌ 连接错误:', this.options.url, {
+        readyState: socket.readyState,
+        OPEN: WebSocket.OPEN,
+        CLOSED: WebSocket.CLOSED,
+      });
       this.clearHeartbeatTimer();
-      appLogger.warn('WS', '控制通道发生错误');
+      appLogger.error('WS', '控制通道发生错误', {
+        url: this.options.url,
+        readyState: socket.readyState,
+        event: event.type,
+      });
+      // Close socket immediately to force reconnect
+      try {
+        socket.close();
+      }
+      catch {}
+      if (this.socket === socket) {
+        this.socket = null;
+      }
       this.options.onStatusChange?.('error');
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (this.socket !== socket)
         return;
       this.clearConnectTimeout();
       this.clearHeartbeatTimer();
       this.socket = null;
-      appLogger.warn('WS', '控制通道已断开');
+      appLogger.warn('WS', '控制通道已断开', {
+        url: this.options.url,
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+      });
+      console.warn('[CameraWS] 连接断开:', this.options.url, event.code, event.reason);
       this.options.onStatusChange?.('closed');
       this.scheduleReconnect();
     };
@@ -151,6 +206,10 @@ export class CameraWebSocketService {
   private handleConnectionFailed(): void {
     if (this.manuallyClosed)
       return;
+    appLogger.error('WS', '连接失败，准备重试', {
+      retryForever: this.options.retryForever,
+      attempts: this.reconnectAttempts,
+    });
     this.options.onStatusChange?.('error');
     if (this.options.retryForever) {
       this.scheduleReconnect();

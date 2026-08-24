@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.wificamera.usb-relay</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{NODE_PATH}}</string>
+        <string>{{ROOT_DIR}}/server.mjs</string>
+    </array>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>RELAY_WEBRTC_ADVERTISE_HOST</key>
+        <string>10.0.2.2</string>
+    </dict>
+    
+    <key>WorkingDirectory</key>
+    <string>{{ROOT_DIR}}</string>
+    
+    <key>StandardOutPath</key>
+    <string>/tmp/wifi-camera-usb/relay.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/tmp/wifi-camera-usb/relay-error.log</string>
+    
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

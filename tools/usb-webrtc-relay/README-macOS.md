@@ -27,18 +27,42 @@
 ### macOS
 
 ```bash
-cd tools/usb-webrtc-relay/mac
-./start-usb-relay.sh           # 自动检测设备
-./start-usb-relay.sh <serial>  # 指定设备
-./restore-usb链路.sh            # 板子重连后一键恢复
+bash tools/usb-webrtc-relay/mac/start-usb-mode.sh
 ```
+
+**自动功能：**
+- ✅ 自动检测 USB 物理设备
+- ✅ 建立 ADB 端口转发
+- ✅ 启动板子服务（net_server_test + board_webrtc_udp_tunnel）
+- ✅ 使用 launchd 启动 relay 服务（自动重启 + 进程托管）
+
+**管理命令：**
+```bash
+# 停止 relay
+bash tools/usb-webrtc-relay/mac/stop-usb-relay.sh
+
+# 查看服务状态
+launchctl print gui/$(id -u)/com.wificamera.usb-relay
+
+# 查看日志
+tail -f /tmp/wifi-camera-usb/relay.log
+tail -f /tmp/wifi-camera-usb/relay-error.log
+```
+
+**优势：**
+- 🔄 relay 崩溃时自动重启（launchd KeepAlive）
+- 💻 关闭 Terminal 后 relay 继续运行
+- 📊 标准化日志输出到 /tmp/wifi-camera-usb/
 
 ### Windows (PowerShell)
 
 ```powershell
 cd tools/usb-webrtc-relay/win
-.\start-usb-relay.ps1           # 自动检测设备
+.\start-usb-relay.ps1              # 自动检测设备
 .\start-usb-relay.ps1 -Serial <serial>  # 指定设备
+
+# 启动监控（自动维护链路）
+.\watch-usb-relay.ps1
 ```
 
 ## 工作原理
@@ -77,19 +101,27 @@ EXPO_PUBLIC_CAMERA_BASE_URL=http://10.0.2.2:18999
 EXPO_PUBLIC_CAMERA_WHEP_URL=http://10.0.2.2:18787/board-webrtc/cam0/whep
 ```
 
-## 监控功能
+## 进程托管
 
-脚本会自动启动一个后台监控进程:
-- 每 5 秒检查设备连接状态
-- 自动维护 ADB 端口转发
-- 自动重启 relay 服务(如果崩溃)
+relay 服务由 macOS launchd 托管，提供：
+- ✅ **自动重启**：进程崩溃时自动恢复（KeepAlive）
+- ✅ **独立运行**：不依赖 Terminal 窗口
+- ✅ **标准日志**：stdout/stderr 输出到 /tmp/wifi-camera-usb/
+
+查看服务状态：
+```bash
+launchctl print gui/$(id -u)/com.wificamera.usb-relay
+```
 
 ## 停止服务
 
-按 `Ctrl+C` 停止,脚本会自动清理:
-- 终止 Node.js 服务器进程
-- 终止监控进程
-- (ADB 端口转发会在设备断开或重启 ADB 时自动清除)
+```bash
+bash tools/usb-webrtc-relay/mac/stop-usb-relay.sh
+```
+
+**说明**：
+- 停止 launchd 服务（不影响 ADB forward 和板子服务）
+- ADB 端口转发会在设备断开或重启 ADB 时自动清除
 
 ## 故障排查
 
@@ -129,21 +161,36 @@ lsof -ti tcp:18189
 kill -9 <PID>
 ```
 
-### 4. 健康检查失败
+### 4. relay 启动失败
 
 ```bash
-# 检查 Node.js 是否安装
-node --version
+# 查看详细错误日志
+tail -f /tmp/wifi-camera-usb/relay-error.log
 
-# 检查 server.mjs 是否存在
-ls -l server.mjs
+# 检查 launchd 服务状态
+launchctl print gui/$(id -u)/com.wificamera.usb-relay
 
+# 手动重启服务
+launchctl kickstart gui/$(id -u)/com.wificamera.usb-relay
+```
+
+常见原因：
+- Node.js 未安装或版本过低（需要 v16+）
+- relay 脚本路径错误（检查 plist 中的 ProgramArguments）
+- 环境变量缺失（RELAY_WEBRTC_ADVERTISE_HOST）
+
+### 5. 健康检查超时
+
+```bash
 # 手动测试端口转发
 curl http://127.0.0.1:18999/camera/v1/status
 curl http://127.0.0.1:18889/cam0/whep
+
+# 检查 relay 健康端点
+curl http://127.0.0.1:18787/stream-health
 ```
 
-### 5. WebRTC 连接失败
+### 6. WebRTC 连接失败
 
 检查物理设备上的 UDP 桥接服务是否运行:
 
@@ -154,27 +201,34 @@ adb -s <serial> shell "busybox netstat -ln | grep ':18190'"
 
 ## 日志查看
 
-启动脚本会输出关键信息:
+**启动脚本输出**：
 - 设备序列号
 - ADB 端口转发状态
 - Relay 服务器状态
 - 健康检查结果
 
-监控脚本日志前缀: `[usb-relay-watch]`
+**launchd 服务日志**：
+```bash
+# relay 标准输出
+tail -f /tmp/wifi-camera-usb/relay.log
 
-## 与 Windows 版本的区别
+# relay 错误输出
+tail -f /tmp/wifi-camera-usb/relay-error.log
 
-| 功能 | Windows (PowerShell) | macOS (Bash) |
-|-----|---------------------|--------------|
-| 互斥锁 | Threading.Mutex | flock 文件锁 |
-| 端口检查 | Get-NetTCPConnection | lsof |
-| 进程管理 | Start-Process | nohup / & |
-| 路径分隔符 | \ | / |
-| ADB 路径 | adb.exe | adb |
+# 查看历史日志
+cat /tmp/wifi-camera-usb/relay.log
+```
+
+## 架构变更
+
+| 方案 | 进程托管 | 重启机制 | Terminal 依赖 | 日志管理 |
+|-----|---------|---------|--------------|---------|
+| **旧方案** | 手动 & 后台 | watchdog 脚本 | ❌ 必须保持 | stdout 重定向 |
+| **新方案** | launchd | KeepAlive | ✅ 无需保持 | StandardOut/ErrorPath |
 
 ## 参考
 
-- macOS Scripts: `mac/start-usb-relay.sh`, `mac/watch-usb-relay.sh`, `mac/restore-usb链路.sh`
+- macOS Scripts: `mac/start-usb-mode.sh`, `mac/stop-usb-relay.sh`
 - Windows Scripts: `win/start-usb-relay.ps1`, `win/watch-usb-relay.ps1`
 - Relay Server: `server.mjs`
 - 项目配置: `../../.env`

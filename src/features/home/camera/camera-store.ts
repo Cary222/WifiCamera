@@ -169,6 +169,10 @@ type CameraState = {
     timeoutMs?: number,
   ) => Promise<CommandWaitResult>;
   requestCameraStatus: () => void;
+  /** Request battery status from the camera. */
+  requestBattery: () => void;
+  /** Request storage info from the camera. */
+  requestDisk: () => void;
   setGain: (gain: number) => void;
   setStretch: (enabled: boolean) => void;
   startExposure: () => void;
@@ -293,11 +297,15 @@ function maybeFallbackTransport(): void {
  * the previous link.
  */
 function applyTransport(transport: CameraTransport): void {
+  console.log('[CONN]', '=== applyTransport 被调用 ===', { transport });
   const state = _useCameraStore.getState();
+  console.log('[CONN]', '断开旧连接', { hasSocket: !!cameraWebSocket });
   state.disconnect();
+  console.log('[CONN]', '设置新传输方式', { transport });
   setActiveTransport(transport);
   disconnectedSince = null;
   _useCameraStore.setState({ transport });
+  console.log('[CONN]', '连接新传输', { newWsUrl: getCameraWebSocketUrl() });
   state.connect();
 }
 
@@ -518,11 +526,15 @@ const _useCameraStore = create<CameraState>(set => ({
   landscapeLatestVideoName: '',
 
   connect: () => {
+    const wsUrl = getCameraWebSocketUrl();
+    console.log('[CONN]', '=== connect 被调用 ===', { wsUrl, hasSocket: !!cameraWebSocket });
     if (!cameraWebSocket) {
+      console.log('[CONN]', '创建新的 CameraWebSocketService', { wsUrl });
       cameraWebSocket = new CameraWebSocketService({
-        url: getCameraWebSocketUrl(),
+        url: wsUrl,
         retryForever: true,
         onStatusChange: (status) => {
+          console.log('[CONN]', 'WebSocket 状态变化', { status });
           set(status === 'open'
             ? { connectionStatus: status, isMockMode: false }
             : { connectionStatus: status });
@@ -539,17 +551,21 @@ const _useCameraStore = create<CameraState>(set => ({
         },
         onMessage: message => handleCameraMessage(message, set),
         /** Camera is unreachable — switch to mock mode. */
-        onGiveUp: () => set({
-          connectionStatus: 'error',
-          isMockMode: true,
-          // Provide reasonable mock values so the UI renders correctly.
-          powerLevel: null,
-          inCharge: false,
-          usedSpace: 15 * 1024 * 1024 * 1024,
-          allSpace: 32 * 1024 * 1024 * 1024,
-        }),
+        onGiveUp: () => {
+          console.log('[CONN]', 'WebSocket 连接放弃，切换到 Mock 模式');
+          set({
+            connectionStatus: 'error',
+            isMockMode: true,
+            // Provide reasonable mock values so the UI renders correctly.
+            powerLevel: null,
+            inCharge: false,
+            usedSpace: 15 * 1024 * 1024 * 1024,
+            allSpace: 32 * 1024 * 1024 * 1024,
+          });
+        },
       });
     }
+    console.log('[CONN]', '调用 cameraWebSocket.connect()', { wsUrl });
     cameraWebSocket.connect();
   },
   disconnect: () => {
@@ -560,20 +576,35 @@ const _useCameraStore = create<CameraState>(set => ({
   },
   initTransport: () => {
     const preference = getTransportPreference();
-    set({ transportPreference: preference, transport: getActiveTransport() });
+    const activeTransport = getActiveTransport();
+    console.log('[CONN]', '=== initTransport 开始 ===', { preference, activeTransport, wsUrl: getCameraWebSocketUrl() });
+    set({ transportPreference: preference, transport: activeTransport });
     if (preference !== 'auto') {
       setActiveTransport(preference);
       set({ transport: preference });
+      console.log('[CONN]', '非 auto 模式，直接连接', { transport: preference });
+      _useCameraStore.getState().connect();
       return;
     }
     lastProbeAt = Date.now();
     set({ transportProbing: true });
-    void probeTransports(getActiveTransport())
+    console.log('[CONN]', 'auto 模式，开始探测传输方式', { preferredTransport: activeTransport });
+    void probeTransports(activeTransport)
       .then((reachable) => {
-        if (reachable && reachable !== _useCameraStore.getState().transport)
+        console.log('[CONN]', '探测结果', { reachable, currentTransport: _useCameraStore.getState().transport });
+        if (reachable && reachable !== _useCameraStore.getState().transport) {
+          console.log('[CONN]', '传输方式改变，应用新传输', { from: _useCameraStore.getState().transport, to: reachable });
           applyTransport(reachable);
+        }
+        else {
+          console.log('[CONN]', '传输方式不变，连接', { transport: reachable ?? activeTransport });
+          _useCameraStore.getState().connect();
+        }
       })
-      .finally(() => set({ transportProbing: false }));
+      .finally(() => {
+        console.log('[CONN]', '探测完成');
+        set({ transportProbing: false });
+      });
   },
   switchTransport: (preference) => {
     setTransportPreference(preference);
@@ -808,6 +839,14 @@ const _useCameraStore = create<CameraState>(set => ({
   },
 
   requestCameraStatus: () => sendCameraCommand('get_camera_status', []),
+  requestBattery: () => {
+    console.log('[WS] 请求电池信息');
+    sendCameraCommand('get_battery', []);
+  },
+  requestDisk: () => {
+    console.log('[WS] 请求磁盘信息');
+    sendCameraCommand('get_disk', []);
+  },
   setGain: gain => sendCameraCommand('set_gain', [gain]),
   setStretch: enabled => sendCameraCommand('set_stretch', [enabled]),
   startExposure: () => {
@@ -989,7 +1028,7 @@ function handleCameraMessage(
       break;
     case 'battery':
       if (typeof message.power === 'number') {
-        // The board reports -1 when no battery gauge is present (USB powered).
+        console.log('[WS] 收到电池信息:', message.power, message.in_charging);
         set({
           powerLevel: message.power < 0 ? null : message.power,
           inCharge: message.in_charging === 1,
@@ -998,6 +1037,7 @@ function handleCameraMessage(
       break;
     case 'disk':
       if (typeof message.used_space === 'number' && typeof message.all_space === 'number') {
+        console.log('[WS] 收到磁盘信息:', message.used_space, message.all_space);
         set({ usedSpace: message.used_space, allSpace: message.all_space });
       }
       break;

@@ -1,12 +1,14 @@
 /* eslint-disable perfectionist/sort-imports, max-lines-per-function */
 import { Image } from 'expo-image';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { Modal, Text, useModal } from '@/components/ui';
 import { WifiBandSelector } from '@/features/settings/components/wifi-band-selector';
+import { useCameraStore } from '@/features/home/camera/camera-store';
 import { translate } from '@/lib/i18n';
-import { storage } from '@/lib/storage';
+import { getItem, setItem, storage } from '@/lib/storage';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 const cameraEquipment = require('@/assets/icons/index/CameraEquipment.png');
 const powerIcon = require('@/assets/common/Power.png');
@@ -15,12 +17,14 @@ type HistoryDevice = {
   id: string;
   name: string;
   lastConnected: number;
+  ip?: string;
 };
 
 type WifiDevice = {
   id: string;
   name: string;
   signalStrength: number;
+  ip?: string;
 };
 
 const HISTORY_KEY = 'wifi_camera_history';
@@ -36,6 +40,80 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
   const [scanning, setScanning] = useState(false);
   const [availableDevices, setAvailableDevices] = useState<WifiDevice[]>([]);
   const [historyDevices, setHistoryDevices] = useState<HistoryDevice[]>([]);
+  const [cameraIp, setCameraIp] = useState('');
+  const [showIpInput, setShowIpInput] = useState(false);
+
+  const initTransport = useCameraStore.use.initTransport();
+  const connectionStatus = useCameraStore.use.connectionStatus();
+  const connectingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load saved WiFi camera IP on mount
+  useEffect(() => {
+    const savedIp = getItem<string>(STORAGE_KEYS.WIFI_CAMERA_IP);
+    if (savedIp) {
+      setCameraIp(savedIp);
+    }
+  }, []);
+
+  // Keep onClose ref updated
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  // Auto-close modal when connection is established, with timeout fallback
+  useEffect(() => {
+    if (!visible || !connectingRef.current)
+      return;
+
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+
+    if (connectionStatus === 'open') {
+      // Connection successful
+      connectingRef.current = false;
+      setConnecting(false);
+      onCloseRef.current();
+      return;
+    }
+
+    // Timeout fallback: if still not connected after 15s, give up
+    timeoutRef.current = setTimeout(() => {
+      if (connectingRef.current) {
+        connectingRef.current = false;
+        setConnecting(false);
+      }
+    }, 15_000);
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
+  }, [connectionStatus, visible]);
+
+  const startScan = () => {
+    setScanning(true);
+    setAvailableDevices([]);
+
+    // Save the camera IP before initiating transport
+    if (cameraIp.trim()) {
+      setItem(STORAGE_KEYS.WIFI_CAMERA_IP, cameraIp.trim());
+    }
+
+    void initTransport();
+    setTimeout(() => {
+      setAvailableDevices([
+        { id: 'wifi-camera-1', name: 'Wi-Fi Camera', signalStrength: 85 },
+      ]);
+      setScanning(false);
+    }, 2000);
+  };
 
   useEffect(() => {
     const loadHistory = () => {
@@ -49,17 +127,6 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
           setHistoryDevices([]);
         }
       }
-    };
-
-    const startScan = () => {
-      setScanning(true);
-      setAvailableDevices([]);
-      setTimeout(() => {
-        setAvailableDevices([
-          { id: 'wifi-camera-1', name: 'Wi-Fi Camera', signalStrength: 85 },
-        ]);
-        setScanning(false);
-      }, 2000);
     };
 
     if (visible) {
@@ -97,24 +164,19 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
     setHistoryDevices(updatedHistory.sort((a, b) => b.lastConnected - a.lastConnected).slice(0, 3));
   }, []);
 
-  const startScan = () => {
-    setScanning(true);
-    setAvailableDevices([]);
-    setTimeout(() => {
-      setAvailableDevices([
-        { id: 'wifi-camera-1', name: 'Wi-Fi Camera', signalStrength: 85 },
-      ]);
-      setScanning(false);
-    }, 2000);
-  };
-
   const handleConnect = (deviceId: string, deviceName: string) => {
+    console.log('[MODAL]', '=== handleConnect 被调用 ===', { deviceId, deviceName, cameraIp });
     setConnecting(true);
+    connectingRef.current = true;
     saveToHistory(deviceId, deviceName);
-    setTimeout(() => {
-      setConnecting(false);
-      onClose();
-    }, 2000);
+
+    // Save the camera IP before connecting
+    if (cameraIp.trim()) {
+      setItem(STORAGE_KEYS.WIFI_CAMERA_IP, cameraIp.trim());
+    }
+
+    console.log('[MODAL]', '调用 initTransport 开始连接');
+    void initTransport();
   };
 
   return (
@@ -129,6 +191,43 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
           <Text className="mb-6 text-center text-[15px] text-white/50">
             {translate('home.connect_hint')}
           </Text>
+
+          {/* WiFi Camera IP Input */}
+          <View className="mb-6">
+            <Text className="mb-2 text-[14px] text-white/70">
+              WiFi Camera IP
+            </Text>
+            <View className="flex-row items-center gap-2">
+              <TextInput
+                className="flex-1 rounded-[12px] border border-neutral-200 bg-transparent px-4 py-3 text-[16px] text-white dark:border-[#48484880]"
+                placeholder="192.168.1.1"
+                placeholderTextColor="rgba(255,255,255,0.3)"
+                value={cameraIp}
+                onChangeText={setCameraIp}
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Pressable
+                onPress={() => {
+                  setShowIpInput(!showIpInput);
+                  if (!showIpInput && cameraIp.trim()) {
+                    setItem(STORAGE_KEYS.WIFI_CAMERA_IP, cameraIp.trim());
+                  }
+                }}
+                className="rounded-[12px] bg-[#c8e733] px-4 py-3"
+              >
+                <Text className="text-[14px] font-semibold text-[#2a3319]">
+                  {showIpInput ? 'Save' : 'Edit'}
+                </Text>
+              </Pressable>
+            </View>
+            {showIpInput && (
+              <Text className="mt-2 text-[12px] text-white/50">
+                Enter the IP address shown on your camera display
+              </Text>
+            )}
+          </View>
 
           {/* WiFi Band Switcher */}
           <View className="mb-6">

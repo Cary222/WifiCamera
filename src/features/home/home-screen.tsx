@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { FocusAwareStatusBar, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera/camera-store';
@@ -22,25 +22,19 @@ export function HomeScreen() {
   const isConnected = connectionStatus === 'open';
   const storageRemaining = useStorageInfo(isConnected);
 
-  // Show connection modal when triggered by Wi-Fi switch (using ref to avoid setState in effect)
-  const showModalRef = useRef(false);
-  if (showConnectionModal && !showModalRef.current) {
-    showModalRef.current = true;
-    setModalVisible(true);
-    setShowConnectionModal(false);
-  }
-  if (!showConnectionModal) {
-    showModalRef.current = false;
-  }
+  // Show connection modal when triggered by Wi-Fi switch
+  useLayoutEffect(() => {
+    if (showConnectionModal) {
+      setModalVisible(true);
+      setShowConnectionModal(false);
+    }
+  }, [showConnectionModal, setShowConnectionModal]);
 
   useEffect(() => {
-    let active = true;
-    if (!isConnected) {
-      return () => {
-        active = false;
-      };
-    }
+    if (!isConnected)
+      return;
 
+    let active = true;
     void getPower()
       .then(({ power, in_charging }) => {
         if (active)

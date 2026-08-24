@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, useColorScheme } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
+  runOnJS,
 } from 'react-native-reanimated';
 
 import { Text, View } from '@/components/ui';
@@ -46,7 +47,28 @@ export function WifiBandSelector({ standalone = false, onSwitch, allowDisconnect
 
   const indicatorPosition = useSharedValue(is5G ? 1 : 0);
 
-  const handleSwitch = (to5G: boolean) => {
+  // Sync indicator position when wifiBand changes externally (including null)
+  useEffect(() => {
+    const targetValue = is5G ? 1 : 0;
+    indicatorPosition.value = withTiming(targetValue, {
+      duration: 200,
+      easing: Easing.inOut(Easing.quad),
+    });
+  }, [is5G]);
+
+  // Cleanup switching state after timeout
+  useEffect(() => {
+    if (!switching)
+      return;
+
+    const timer = setTimeout(() => {
+      setSwitching(false);
+    }, 8000);
+
+    return () => clearTimeout(timer);
+  }, [switching]);
+
+  const handleSwitch = useCallback((to5G: boolean) => {
     if (isDisabled || is5G === to5G)
       return;
 
@@ -61,13 +83,10 @@ export function WifiBandSelector({ standalone = false, onSwitch, allowDisconnect
       sendInstruction('switch_wifi_band', [to5G ? 1 : 0]);
       setShowConnectionModal(true);
       setSwitching(true);
-      setTimeout(() => {
-        setSwitching(false);
-      }, 8000);
     }
 
     onSwitch?.(to5G);
-  };
+  }, [isDisabled, is5G, isConnected, onSwitch, sendInstruction, setShowConnectionModal, setWifiBand, indicatorPosition]);
 
   const indicatorStyle = useAnimatedStyle(() => {
     'worklet';
