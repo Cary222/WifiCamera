@@ -19,15 +19,6 @@ export function Text({
   children,
   ...props
 }: Props) {
-  const textStyle = React.useMemo(
-    () =>
-      twMerge(
-        'font-inter text-base font-normal text-black dark:text-white',
-        className,
-      ),
-    [className],
-  );
-
   const nStyle = React.useMemo(
     () =>
       StyleSheet.flatten([
@@ -37,6 +28,17 @@ export function Text({
         style,
       ]) as TextStyle,
     [style],
+  );
+
+  const textStyle = React.useMemo(
+    () =>
+      twMerge(
+        nStyle.fontSize === undefined
+          ? 'font-inter text-base font-normal text-black dark:text-white'
+          : 'font-inter font-normal text-black dark:text-white',
+        className,
+      ),
+    [className, nStyle.fontSize],
   );
   return (
     <NNText className={textStyle} style={nStyle} {...props}>

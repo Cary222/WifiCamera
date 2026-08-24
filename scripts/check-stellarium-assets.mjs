@@ -11,6 +11,8 @@ const required = [
   'data/stars/properties',
   'data/dso/properties',
   'data/skycultures/western/index.json',
+  'data/meteor-showers.json',
+  'data/landscapes/guereins/Norder2/Dir0/Npix0.webp',
 ];
 const missing = [];
 for (const relativePath of required) {

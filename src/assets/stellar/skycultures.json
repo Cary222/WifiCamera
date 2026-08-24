@@ -1,0 +1,315 @@
+{
+  "regionsZh": {
+    "Middle East": "中东",
+    "Asia": "亚洲",
+    "Europe": "欧洲",
+    "America": "美洲",
+    "Oceania": "大洋洲"
+  },
+  "regionOrder": [
+    "Middle East",
+    "Asia",
+    "Europe",
+    "America",
+    "Oceania"
+  ],
+  "cultures": [
+    {
+      "id": "arabic_al-sufi",
+      "region": "Middle East",
+      "title": "Arabic (Al-Sufi)",
+      "titleZh": "阿拉伯语（Al-Sufi）",
+      "intro": "This sky culture reflects _Book Of The Stars_ (Arabic:كتاب الكواكب), \nwritten by the astronomer: Al-Ṣūfī in the 10th century. The book describes \nthe 1025 stars of the 48 classical Greek constellations of Ptolemy Almagest, \nmap to them the indigenous Arab star names and asterisms, and identify 44 stars as stars of the astrolabe.",
+      "introZh": "这种天空文化反映了 10 世纪天文学家 Al-Ṣūfī 所著的《星之书》（阿拉伯语：كتاب الكواكب）。这本书描述了托勒密天文学 48 个古典希腊星座的 1025 颗恒星，将当地的阿拉伯恒星名称和星群映射到它们，并将 44 颗恒星识别为星盘中的恒星。",
+      "thumbnail": "illustrations/Peg.webp"
+    },
+    {
+      "id": "arabic_ancient",
+      "region": "Middle East",
+      "title": "Arabic (Ancient)",
+      "titleZh": "阿拉伯语（古）",
+      "intro": "This Arabic sky culture contains the indigenous stars knowledge of the ancient \nArabs living in the Arabian Peninsula prior to the Greek astronomy influence in \nthe ninth century.",
+      "introZh": "这种阿拉伯天空文化包含了在九世纪希腊天文学影响之前生活在阿拉伯半岛的古代阿拉伯人的本土恒星知识。",
+      "thumbnail": null
+    },
+    {
+      "id": "arabic_lunar_stations",
+      "region": "Middle East",
+      "title": "Arabic (Lunar Stations)",
+      "titleZh": "阿拉伯语（月球站）",
+      "intro": "The Arabic lunar stations describes the 28 sky areas chosen in ancient Arabia\nto define the daily location of the moon during its monthly trip around the\nsky.",
+      "introZh": "阿拉伯月球站描述了在古代阿拉伯选择的 28 个天空区域，以定义月球在每月绕天运行期间的每日位置。",
+      "thumbnail": null
+    },
+    {
+      "id": "egyptian",
+      "region": "Middle East",
+      "title": "Egyptian",
+      "titleZh": "埃及",
+      "intro": "The late Egyptian sky culture was influenced by Babylonian and Greco-Roman\nastronomy. Constellations are depicted on the famous astronomical ceiling from\nDenderah.",
+      "introZh": "埃及晚期的天空文化受到巴比伦和希腊罗马天文学的影响。在著名的丹德尔（Denderah）天文天花板上描绘了星座。",
+      "thumbnail": "dendera_zodiac.webp"
+    },
+    {
+      "id": "bugis",
+      "region": "Asia",
+      "title": "Bugis",
+      "titleZh": "武吉士",
+      "intro": "The Bugis are an ethnic group on the island of Sulawesi in Indonesia, with a\nstrong seafaring and trading tradition. This sky culture has 12 constellation\nline figures. It also has names for four stars and five other sky objects (the\nPleiades, the Coalsack Nebula, the Magellanic Cloud(s), the Milky Way, and\nVenus). Many of the constellations reflect the seafaring tradition; the others\nare of agricultural origin.",
+      "introZh": "武吉士是印度尼西亚苏拉威西岛上的一个民族，有着深厚的航海和贸易传统。这个天空文化有12个星座线图。它还有四颗恒星和其他五个天体（昴宿星、煤袋星云、麦哲伦星云、银河系和金星）的名称。许多星座反映了航海传统；其他的是农业来源。",
+      "thumbnail": null
+    },
+    {
+      "id": "chinese",
+      "region": "Asia",
+      "title": "Chinese",
+      "titleZh": "中国",
+      "intro": "Chinese astronomy was developed independently and use its own system to connect\nthe stars. The traditional Chinese Sky Culture has far-reaching implications in\nEast Asia. In ancient China, constellations and planets were associated with\nastrology.",
+      "introZh": "中国天文学是独立发展的，并使用其自身的系统来连接恒星。中国传统的天空文化在东亚具有深远的影响。在中国古代，星座和行星与占星术有关。",
+      "thumbnail": "suzhouskxt.webp"
+    },
+    {
+      "id": "chinese_contemporary",
+      "region": "Asia",
+      "title": "Chinese Contemporary",
+      "titleZh": "中国当代",
+      "intro": "The Chinese Contemporary Sky Culture is a combination of traditional Chinese\nstar names and modern constellations. This is the sky culture that the Chinese\nactually use now, with a great practical value.",
+      "introZh": "中国当代天空文化是中国传统星名和现代星座的结合。这是中国人现在实际使用的天空文化，具有很大的实用价值。",
+      "thumbnail": "illustrations/draco.webp"
+    },
+    {
+      "id": "indian",
+      "region": "Asia",
+      "title": "Indian Vedic",
+      "titleZh": "印度吠陀",
+      "intro": "Indian astronomy has a long history stretching from pre-historic to modern\ntimes. Some of the earliest roots of Indian astronomy can be dated to the\nperiod of Indus Valley Civilization or earlier.",
+      "introZh": "印度天文学有着悠久的历史，从史前到现代。印度天文学的一些最早起源可以追溯到印度河流域文明时期或更早。",
+      "thumbnail": null
+    },
+    {
+      "id": "japanese_moon_stations",
+      "region": "Asia",
+      "title": "Japanese Lunar Stations",
+      "titleZh": "日本登月台",
+      "intro": "The Japanese astronomy adopted the Chinese concepts and constellations, i.e.\nthe asterisms as well as the division of the path of the Moon into 28\n\"stations\" (lunar mansions) as a frame of reference in right ascension.",
+      "introZh": "日本天文学采用中国的概念和星座，即星空以及将月球的路径划分为28个“月台”（月球大厦），作为右升中的参照系。",
+      "thumbnail": "chart.webp"
+    },
+    {
+      "id": "korean",
+      "region": "Asia",
+      "title": "Korean",
+      "titleZh": "朝鲜",
+      "intro": "The Chinese, Korean, and Japanese constellations have the same origin and look\nvery similar in shape. They are represented respectively in the Dun Huang\nstarmap from the 8th century, the _Cheon-Sang-Yeol-Cha-Bun-Ya-Ji-Do_ map and in\nthe Kitora skymap painted in the 7th to 8th century CE. Their positions and\ntheir names are similar in the Chinese alphabet. The name of the constellations\nfirst appear in the Records of the Grand Historian (史記) in Han dynasty\ndescribing Xia dynasty in about 2000 BCE.",
+      "introZh": "中国，韩国和日本星座具有相同的起源，并且外观非常相似。它们分别在公元8世纪的敦煌星图，天上尚乐，查邦·雅·吉多地图和公元7至8世纪绘制的Kitora天空图中表示。它们的位置和名称在中文字母中相似。星座的名称最早出现在公元前2000年的汉朝记载夏朝的史记大史中。",
+      "thumbnail": null
+    },
+    {
+      "id": "mandar",
+      "region": "Asia",
+      "title": "Mandar",
+      "titleZh": "曼达尔",
+      "intro": "The Mandar are an ethnic group on the island of Sulawesi in Indonesia, with a\nstrong seafaring and trading tradition. The sailors used stars and asterisms to\npinpoint the cardinal directions.",
+      "introZh": "曼达尔人是印度尼西亚苏拉威西岛上的一个民族，有着深厚的航海和贸易传统。水手们使用星星和星座来确定主要方向。",
+      "thumbnail": null
+    },
+    {
+      "id": "mongolian",
+      "region": "Asia",
+      "title": "Mongolian",
+      "titleZh": "蒙古",
+      "intro": "Mongolian are nomads living on a large territory of central Asia. Their culture\nis influenced by the Far Eastern (Chinese) and the Near Eastern (Persian,\nBabylonian, Greek) cultures.",
+      "introZh": "蒙古人是游牧民族，生活在中亚大片地区。他们的文化受到远东（中国）和近东（波斯，巴比伦，希腊）文化的影响。",
+      "thumbnail": "doloon_burkhan.webp"
+    },
+    {
+      "id": "siberian",
+      "region": "Asia",
+      "title": "Siberian",
+      "titleZh": "西伯利亚",
+      "intro": "Siberia is the Asian part of Russia, i.e. the northern third of the Asian\ncontinent. As it belongs to Russia, the modern constellations are used there\nsince many centuries.",
+      "introZh": "西伯利亚是俄罗斯的亚洲部分，即亚洲大陆的北部三分之一。由于它属于俄罗斯，因此已有数百年的历史了。",
+      "thumbnail": null
+    },
+    {
+      "id": "belarusian",
+      "region": "Europe",
+      "title": "Belarusian",
+      "titleZh": "白罗斯",
+      "intro": "Astronomy constellations found in Belarus, a country in Eastern Europe bordered\r\nby Russia to the northeast, Ukraine to the south, Poland to the west, and\r\nLithuania and Latvia to the northwest.",
+      "introZh": "白俄罗斯是东欧的一个国家，东北与俄罗斯接壤，南与乌克兰接壤，西与波兰接壤，西北与立陶宛和拉脱维亚接壤，因此在天文星座中发现了天文学星座。",
+      "thumbnail": "illustrations/elias_s-cart.webp"
+    },
+    {
+      "id": "norse",
+      "region": "Europe",
+      "title": "Norse",
+      "titleZh": "挪威 (北欧)",
+      "intro": "The norse culture is considered as originally North Germanic. The pre-Christian\nScandinavian folklore with Odin as main god was transformed into a Christian\nculture.",
+      "introZh": "北欧文化最初被认为是北日耳曼语。以奥丁为主要神灵的前基督教斯堪的纳维亚民间传说被转变为基督教文化。",
+      "thumbnail": null
+    },
+    {
+      "id": "romanian",
+      "region": "Europe",
+      "title": "Romanian",
+      "titleZh": "罗马尼亚",
+      "intro": "Romania is a land in southeast Europe. Romanian popular stellar mythology is a\nmixture of several historical epochs from pre-Christian to modern.",
+      "introZh": "罗马尼亚是东南欧的土地。罗马尼亚流行的恒星神话是从前基督教到现代的几个历史时期的混合。",
+      "thumbnail": "illustrations/crapii.webp"
+    },
+    {
+      "id": "ruelle",
+      "region": "Europe",
+      "title": "Ruelle",
+      "titleZh": "鲁尔",
+      "intro": "_Alexandre Ruelle_ was an astronomy professor at the Paris Observatory. In\n1786, he drew a star chart for the general public (in the service of\neducation), titled `Nouvelle Uranographie ou méthode très facile pour apprendre\nles constellations`. This chart shows 70 constellation line figures for the\nentire sky.",
+      "introZh": "_Alexandre Ruelle_ 是巴黎天文台的天文学教授。 1786 年，他为大众绘制了一张星图（为教育服务），标题为“Nouvelle Uranographie ou methode très facile pour apprendre les constellations”。这张图表显示了整个天空的 70 个星座线图。",
+      "thumbnail": null
+    },
+    {
+      "id": "sami",
+      "region": "Europe",
+      "title": "Sami",
+      "titleZh": "萨米",
+      "intro": "The Sami people are considered to be the native population of northern Norway,\nSweden, Finland and West Russia (the Kola Peninsula).",
+      "introZh": "萨米人被认为是挪威北部，瑞典，芬兰和俄罗斯西部（可拉半岛）的原住民。",
+      "thumbnail": null
+    },
+    {
+      "id": "sardinian",
+      "region": "Europe",
+      "title": "Sardinian",
+      "titleZh": "撒丁",
+      "intro": "Sardinia is one of the two big islands west of Italy in the Mediterranian Sea\nand south of the French island of Corsica.",
+      "introZh": "撒丁岛是意大利以西的地中海和意大利的科西嘉岛以南的两个大岛之一。",
+      "thumbnail": null
+    },
+    {
+      "id": "western",
+      "region": "Europe",
+      "title": "Western",
+      "titleZh": "西方",
+      "intro": "The Western sky culture is used internationally by modern astronomers, and is\r\nthe official scheme of The International Astronomical Union. It has historical\r\nroots in Ancient Greek astronomy, with influences from Islamic astronomy.",
+      "introZh": "西方的天空文化被现代天文学家国际使用，并且是国际天文学联合会的官方计划。它起源于古希腊天文学的历史根源，受到伊斯兰天文学的影响。",
+      "thumbnail": "illustrations/andromeda.webp"
+    },
+    {
+      "id": "western_hlad",
+      "region": "Europe",
+      "title": "Western (O.Hlad)",
+      "titleZh": "西方 (O.Hlad)",
+      "intro": "A variation of the Western sky culture with lines reproducing the 1988 Czech\nprinted atlas _Hvězdná obloha 2000.0_ by Hlad et al.",
+      "introZh": "西方天空文化的一种变体，其线条再现了 Hlad 等人 1988 年在捷克印刷的地图集 Hvězdná obloha 2000.0。",
+      "thumbnail": null
+    },
+    {
+      "id": "western_rey",
+      "region": "Europe",
+      "title": "Western (H.A.Rey)",
+      "titleZh": "西方 (H.A.Rey)",
+      "intro": "A variation of the Western sky culture with lines reproducing the 1952 book\n_The Stars - A New Way To See Them_ by H. A. Rey.",
+      "introZh": "西方天空文化的一种变体，其中的线条再现了 1952 年 H. A. Rey 所著的《星星——观看它们的新方式》一书。",
+      "thumbnail": null
+    },
+    {
+      "id": "western_SnT",
+      "region": "Europe",
+      "title": "Western (Sky & Telescope)",
+      "titleZh": "西方 (天空与望远镜杂志)",
+      "intro": "A variation of the Western sky culture with constellation figures and star\nnames from the popular American magazine _Sky & Telescope_.",
+      "introZh": "美国著名杂志《天空与望远镜》（Sky＆Telescope）中的星座图和星星名称代表西方天空文化的变种。",
+      "thumbnail": null
+    },
+    {
+      "id": "blackfoot",
+      "region": "America",
+      "title": "Blackfoot",
+      "titleZh": "黑脚",
+      "intro": "The Blackfoot is an Algonquian-speaking tribe living in the northern Great\nPlains of North America.",
+      "introZh": "黑脚人是生活在北美大平原北部的一个讲阿尔冈昆语的部落。",
+      "thumbnail": null
+    },
+    {
+      "id": "inuit",
+      "region": "America",
+      "title": "Inuit",
+      "titleZh": "因纽特",
+      "intro": "The Inuit are the indigenous peoples in the arctic areas of America, i.e.\ncentral and northeast Canada and Greenland. Their culture is part of the\nvarious arctic and subarctic cultures but the term \"Eskimo\" refers to a much\nlarger group (also including peoples from Alaska and on both sides of the\nBehring Strait).",
+      "introZh": "因纽特人是美国北极地区的土著人民，即加拿大中部和东北部以及格陵兰。他们的文化是北极和亚北极文化的一部分，但“爱斯基摩人”一词是指更大的群体（也包括阿拉斯加和贝林海峡两岸的人）。",
+      "thumbnail": "illustrations/caribou.webp"
+    },
+    {
+      "id": "navajo",
+      "region": "America",
+      "title": "Navajo",
+      "titleZh": "纳瓦霍",
+      "intro": "The Navajo are the largest Native American tribe in the United States; the\nNavajo Nation extends across northeastern Arizona, southeastern Utah, and\nnorthwestern New Mexico.",
+      "introZh": "纳瓦霍人是美国最大的美洲原住民部落。纳瓦霍族国家横跨亚利桑那州东北部，犹他州东南部和新墨西哥州西北部。",
+      "thumbnail": null
+    },
+    {
+      "id": "tukano",
+      "region": "America",
+      "title": "Tukano",
+      "titleZh": "图卡诺",
+      "intro": "Tukano is the common name for a group of indigenous tribes who live around the\nnorthwestern region of Brazil, near Colombia and Venezuela. The group shown in\nthis work live on the banks of the Rio Tiquié within the Rio Negro bay in the\nAmazonas State, Brazil.",
+      "introZh": "图卡诺是一群居住在巴西西北部，哥伦比亚和委内瑞拉附近的土著部落的统称。这项工作中显示的小组居住在巴西亚马逊州里约内格罗湾内的里约蒂奎河岸上。",
+      "thumbnail": "Calendario_Tukano.webp"
+    },
+    {
+      "id": "tupi",
+      "region": "America",
+      "title": "Tupi-Guarani",
+      "titleZh": "图皮-瓜拉尼",
+      "intro": "Tupi-Guarani is a name given to a family of languages spoken by the indigenous\npeoples of Brazil and other South American countries.",
+      "introZh": "图皮瓜拉尼语（Tupi-Guarani）是巴西和其他南美国家的土著人民所说的一族语言的名称。",
+      "thumbnail": null
+    },
+    {
+      "id": "anutan",
+      "region": "Oceania",
+      "title": "Anutan",
+      "titleZh": "阿努坦",
+      "intro": "Anuta is a small island in the SE of Solomon Islands in Melanesia, inhabited by\na culturally Polynesian society. As for most Oceanic seafarers, the stars are\nthe most important tool for long-range navigation. The major guiding stars and\nconstellations are known as `carriers` (_kaavenga_), and have proper names. A\n`star path` or sequence of stars (_kau panonga porau_) is followed from one\nisland to the next.",
+      "introZh": "阿努塔是美拉尼西亚所罗门群岛东南部的一个小岛，居住着一个文化上的波利尼西亚社会。对于大多数远洋海员来说，星空是远程导航最重要的工具。主要的引导星和星座被称为“载体”（kaavenga），并有专有名称。一个\n`star path` 或星序列 (kau panonga porau) 从一个岛屿到下一个岛屿。",
+      "thumbnail": null
+    },
+    {
+      "id": "hawaiian_starlines",
+      "region": "Oceania",
+      "title": "Hawaiian",
+      "titleZh": "夏威夷人",
+      "intro": "These are the star lines developed by Nainoa Thompson and used by the\nPolynesian Voyaging Society to navigate Polynesian sailing canoes using\ntraditional techniques of non instrument navigation across thousands of miles\nof open ocean.",
+      "introZh": "这些是纳伊诺阿·汤普森（Nainoa Thompson）开发的星线，波利尼西亚航海学会使用这些星线使用传统的非仪器导航技术在数千英里的远洋中导航波利尼西亚帆船。",
+      "thumbnail": "illustrations/lu1d.webp"
+    },
+    {
+      "id": "kamilaroi",
+      "region": "Oceania",
+      "title": "Kamilaroi/Euahlayi",
+      "titleZh": "卡米勒罗伊/尤阿拉伊",
+      "intro": "The Kamilaroi (also known as Gomeroi) and Euahlayi peoples are Australian\nAboriginal cultural groups located in the northern part of New South Wales.\nThey have survived European invasion and loss of much of their country. Their\nculture and connection to country remains strong, including an extensive\ncultural astronomy first recorded in the 1860s.",
+      "introZh": "卡米拉罗伊人（又称戈梅罗瓦人）和Euahlayi人是位于新南威尔士州北部的澳大利亚土著文化群体。他们在欧洲的入侵和大部分国家的灭亡中幸免于难。他们的文化和与国家的联系仍然很牢固，包括1860年代首次记录的广泛的文化天文学。",
+      "thumbnail": "illustrations/OldWiringin.webp"
+    },
+    {
+      "id": "maori",
+      "region": "Oceania",
+      "title": "Maori",
+      "titleZh": "毛利",
+      "intro": "The Maori (New Zealand) night sky is similar to the Polynesian night sky, but\ndiffers enough to warrant its own sky culture. Maritime themes are central to\nthe Maori sky culture and were used extensively in nautical navigation. Like\nfor most other sky cultures, the rising and setting of prominent stars were\nused to signal planting and harvesting seasons.",
+      "introZh": "毛利人（新西兰）的夜空与波利尼西亚的夜空相似，但差异足以保证其自身的天空文化。海上主题是毛利人天空文化的中心，在航海中得到了广泛的应用。与大多数其他天空文化一样，突出的恒星的升起和落下被用来指示播种和收获季节。",
+      "thumbnail": null
+    },
+    {
+      "id": "tongan",
+      "region": "Oceania",
+      "title": "Tongan",
+      "titleZh": "汤加",
+      "intro": "As in all Polynesian star lore, Tongan sky culture descends from the practical\napplication of nautical navigation.",
+      "introZh": "像所有波利尼西亚的星际传说一样，汤加的天空文化源于航海的实际应用。",
+      "thumbnail": null
+    }
+  ]
+}

@@ -4,9 +4,12 @@ import * as React from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Text } from '@/components/ui';
+import { getLanguage, translate } from '@/lib/i18n';
 import { createStellariumBridge } from './stellarium-service';
 
 const READY_TIMEOUT_MS = 15_000;
+// The engine resolves names during init, so the language must exist before the document runs.
+const LANGUAGE_SCRIPT = `window.__STEL_LANG = ${JSON.stringify(getLanguage() === 'zh' ? 'zh' : 'en')}; true;`;
 const STELLARIUM_SOURCE = Platform.select({
   android: { uri: 'https://appassets.androidplatform.net/assets/stellar/index.html' },
   ios: { uri: 'stellar/index.html' },
@@ -15,12 +18,16 @@ const STELLARIUM_SOURCE = Platform.select({
 
 export type StellariumViewHandle = StellariumBridge;
 export type StellariumViewProps = {
+  onBearingChange?: (azimuthDeg: number) => void;
   onReady?: () => void;
   onError?: (message: string) => void;
+  onCommandError?: (message: string) => void;
+  onTargetFound?: () => void;
+  onTargetNotFound?: () => void;
   style?: WebViewProps['style'];
 };
 
-export function StellariumView({ ref, onError, onReady, style }: StellariumViewProps & { ref?: React.RefObject<StellariumViewHandle | null> }) {
+export function StellariumView({ ref, onBearingChange, onCommandError, onError, onReady, onTargetFound, onTargetNotFound, style }: StellariumViewProps & { ref?: React.RefObject<StellariumViewHandle | null> }) {
   const webViewRef = React.useRef<WebView>(null);
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const readyRef = React.useRef(false);
@@ -35,11 +42,17 @@ export function StellariumView({ ref, onError, onReady, style }: StellariumViewP
     clearTimeout();
     bridge.current.setReady(false);
     setLoading(false);
-    setError(message);
+    setError(translate('deep_space.map_error'));
     onError?.(message);
   }, [clearTimeout, onError]);
   const bridge = React.useRef(createStellariumBridge(webViewRef, {
-    onError: message => reportError(message),
+    onError: (message) => {
+      // After the map is up, a rejected command must not tear down the whole view.
+      if (readyRef.current)
+        onCommandError?.(message);
+      else
+        reportError(message);
+    },
     onReload: () => webViewRef.current?.reload(),
   }));
   const beginLoading = React.useCallback(() => {
@@ -67,16 +80,19 @@ export function StellariumView({ ref, onError, onReady, style }: StellariumViewP
   React.useImperativeHandle(ref, () => bridge.current, []);
   const onMessage = React.useCallback((event: WebViewMessageEvent) => {
     try {
-      const message = JSON.parse(event.nativeEvent.data);
-      if (message.type === 'ready' || message.type === 'engine_ready') {
-        markReady();
-      }
-      else if (message.type === 'error') {
-        reportError(message.message || 'Stellarium failed to start.');
-      }
+      dispatchSceneMessage(JSON.parse(event.nativeEvent.data), {
+        markReady,
+        onBearingChange,
+        onCommandError,
+        onTargetFound,
+        onTargetNotFound,
+        reportError,
+        resolveRequest: (requestId, payload) => bridge.current.resolveRequest(requestId, payload),
+        wasReady: () => readyRef.current,
+      });
     }
     catch { reportError('Received an unreadable Stellarium message.'); }
-  }, [markReady, reportError]);
+  }, [markReady, onBearingChange, onCommandError, onTargetFound, onTargetNotFound, reportError]);
   return (
     <View style={styles.root}>
       <WebView
@@ -85,6 +101,7 @@ export function StellariumView({ ref, onError, onReady, style }: StellariumViewP
         style={[styles.webView, style]}
         javaScriptEnabled
         domStorageEnabled
+        injectedJavaScriptBeforeContentLoaded={LANGUAGE_SCRIPT}
         scrollEnabled={false}
         bounces={false}
         overScrollMode="never"
@@ -98,22 +115,79 @@ export function StellariumView({ ref, onError, onReady, style }: StellariumViewP
             markReady();
         }}
         onMessage={onMessage}
-        onError={() => reportError('WebView failed to load Stellarium.')}
+        onError={() => {
+          // Sky-culture tiles 404 on demand; only a failure before ready means the map is dead.
+          if (!readyRef.current)
+            reportError('WebView failed to load Stellarium.');
+        }}
       />
-      {loading && (
-        <View style={styles.status}>
-          <ActivityIndicator />
-          <Text className="text-sm text-white">Loading star map...</Text>
-        </View>
-      )}
-      {error && (
-        <View style={styles.status}>
-          <Text className="text-center text-sm text-white">{error}</Text>
-          <Text className="mt-2 text-xs text-white/70" onPress={() => bridge.current.reload()}>Tap to retry</Text>
-        </View>
-      )}
+      {loading && <LoadingOverlay />}
+      {error && <ErrorOverlay message={error} onRetry={() => bridge.current.reload()} />}
     </View>
   );
 }
 
-const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: '#05070b' }, webView: { flex: 1, backgroundColor: 'transparent' }, status: { ...StyleSheet.absoluteFillObject, alignItems: 'center', backgroundColor: '#05070bcc', justifyContent: 'center', padding: 24 } });
+type SceneMessageHandlers = {
+  markReady: () => void;
+  onBearingChange?: (azimuthDeg: number) => void;
+  onCommandError?: (message: string) => void;
+  onTargetFound?: () => void;
+  onTargetNotFound?: () => void;
+  reportError: (message: string) => void;
+  resolveRequest: (requestId: number, payload: unknown) => void;
+  wasReady: () => boolean;
+};
+
+function dispatchSceneMessage(message: { type: string; [key: string]: unknown }, handlers: SceneMessageHandlers) {
+  switch (message.type) {
+    case 'ready':
+    case 'engine_ready':
+      return handlers.markReady();
+    case 'view_bearing':
+      return handlers.onBearingChange?.(message.azimuthDeg as number);
+    case 'target_found':
+      return handlers.onTargetFound?.();
+    case 'target_not_found':
+      return handlers.onTargetNotFound?.();
+    case 'tonight':
+    case 'events':
+      return handlers.resolveRequest(message.requestId as number, message.payload);
+    case 'error': {
+      const errorMessage = (message.message as string) || 'Stellarium failed to start.';
+      // Before ready the map is dead; afterwards only that one command failed.
+      if (handlers.wasReady())
+        return handlers.onCommandError?.(errorMessage);
+      return handlers.reportError(errorMessage);
+    }
+  }
+}
+
+function LoadingOverlay() {
+  return (
+    <View style={styles.status}>
+      <ActivityIndicator color="#9EC5FF" />
+      <Text className="mt-3 text-sm text-white">{translate('deep_space.map_loading')}</Text>
+    </View>
+  );
+}
+
+function ErrorOverlay({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View style={styles.status}>
+      <Text className="text-center text-sm text-white">{message}</Text>
+      <Text className="mt-3 text-xs text-[#9EC5FF]" onPress={onRetry}>{translate('deep_space.map_retry')}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#050A14' },
+  webView: { flex: 1, backgroundColor: 'transparent' },
+  status: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    backgroundColor: '#071020EE',
+    justifyContent: 'center',
+    padding: 24,
+  },
+});

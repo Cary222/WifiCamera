@@ -31,6 +31,10 @@ export const STORAGE_KEYS = {
   AUTH_TOKEN: 'token',
   /** Camera link preference: 'auto' | 'usb' | 'wifi'. */
   CAMERA_TRANSPORT: 'CAMERA_TRANSPORT',
+  /** Serialised CelesTrak visual-group OMM records. */
+  SATELLITE_VISUAL_OMM: 'SATELLITE_VISUAL_OMM',
+  /** Unix milliseconds when the visual OMM cache was last refreshed. */
+  SATELLITE_VISUAL_FETCHED_AT: 'SATELLITE_VISUAL_FETCHED_AT',
 } as const;
 
 /** Union of every key string. Useful for type-safe helpers. */

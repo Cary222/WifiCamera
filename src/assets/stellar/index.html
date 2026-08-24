@@ -17,6 +17,7 @@
       let stel = null;
       const pendingCommands = [];
       const pendingMessages = [];
+      const loadedSkyCultures = new Set(['western']);
       let flushTimer = null;
       function flushMessages() {
         if (!window.ReactNativeWebView?.postMessage) return false;
@@ -34,6 +35,308 @@
       const assetUrl = path => new URL(path, document.baseURI).href;
       const isFiniteNumber = value => typeof value === 'number' && Number.isFinite(value);
 
+      let NAMES_ZH = {};
+      let lastAzimuthDeg = null;
+
+      // Constellation labels are drawn from the sky-culture JSON, never through translateFn,
+      // so Chinese names have to be swapped into the payload before the engine parses it.
+      (() => {
+        const proto = XMLHttpRequest.prototype;
+        const responseDescriptor = Object.getOwnPropertyDescriptor(proto, 'response');
+        const open = proto.open;
+        proto.open = function (method, url) {
+          this.__isSkyCultureIndex = /skycultures\/[^/]+\/index\.json/.test(String(url));
+          return open.apply(this, arguments);
+        };
+        Object.defineProperty(proto, 'response', {
+          configurable: true,
+          get() {
+            const raw = responseDescriptor.get.call(this);
+            if (!this.__isSkyCultureIndex || window.__STEL_LANG !== 'zh' || !(raw instanceof ArrayBuffer)) return raw;
+            try {
+              const culture = JSON.parse(new TextDecoder().decode(new Uint8Array(raw)));
+              for (const constellation of culture.constellations ?? []) {
+                const name = constellation.common_name;
+                if (!name) continue;
+                const chinese = NAMES_ZH[name.native] ?? NAMES_ZH[name.english];
+                if (!chinese) continue;
+                name.native = chinese;
+                name.english = chinese;
+              }
+              return new TextEncoder().encode(JSON.stringify(culture)).buffer;
+            } catch { return raw; }
+          },
+        });
+      })();
+      // --- Calendar astronomy -------------------------------------------------
+      // The bundled wasm strips the calendar_* symbols, so stel.calendar() is dead code.
+      // Everything below is derived by sampling object altitude across observer.tt instead.
+      const PLANETS = [
+        { id: 'NAME Mercury', key: 'mercury' },
+        { id: 'NAME Venus', key: 'venus' },
+        { id: 'NAME Mars', key: 'mars' },
+        { id: 'NAME Jupiter', key: 'jupiter' },
+        { id: 'NAME Saturn', key: 'saturn' },
+        { id: 'NAME Uranus', key: 'uranus' },
+        { id: 'NAME Neptune', key: 'neptune' },
+      ];
+      const DAY_MS = 86400000;
+      const SUNSET_ALT = -0.833;
+      const NIGHT_ALT = -18;
+      let METEOR_SHOWERS = [];
+
+      const toMJD = date => stel.date2MJD(date);
+      const fromMJD = mjd => stel.MJD2date(mjd);
+
+      /** Runs `body` with the observer moved to `location`, always restoring the live state. */
+      function withObserver(latitudeDeg, longitudeDeg, body) {
+        const observer = stel.core.observer;
+        const tt = observer.tt;
+        const latitude = observer.latitude;
+        const longitude = observer.longitude;
+        try {
+          if (isFiniteNumber(latitudeDeg)) observer.latitude = latitudeDeg * stel.D2R;
+          if (isFiniteNumber(longitudeDeg)) observer.longitude = longitudeDeg * stel.D2R;
+          return body();
+        } finally {
+          observer.tt = tt;
+          observer.latitude = latitude;
+          observer.longitude = longitude;
+        }
+      }
+
+      function altitudeAt(object, mjd) {
+        const observer = stel.core.observer;
+        observer.tt = mjd;
+        const equatorial = object.getInfo('radec');
+        const horizontal = stel.convertFrame(observer, 'ICRF', 'OBSERVED', equatorial);
+        return stel.c2s(horizontal)[1] * stel.R2D;
+      }
+
+      /** Bisects a bracketed altitude crossing down to ~1 second. */
+      function refineCrossing(object, threshold, lowMjd, highMjd) {
+        let low = lowMjd;
+        let high = highMjd;
+        const lowAbove = altitudeAt(object, low) > threshold;
+        for (let step = 0; step < 20; step += 1) {
+          const middle = (low + high) / 2;
+          if ((altitudeAt(object, middle) > threshold) === lowAbove) low = middle;
+          else high = middle;
+        }
+        return (low + high) / 2;
+      }
+
+      /** Scans [startMjd, endMjd] and returns every threshold crossing in order. */
+      function findCrossings(object, threshold, startMjd, endMjd, stepMinutes) {
+        const step = stepMinutes / 1440;
+        const crossings = [];
+        let previousMjd = startMjd;
+        let previousAbove = altitudeAt(object, startMjd) > threshold;
+        for (let mjd = startMjd + step; mjd <= endMjd; mjd += step) {
+          const above = altitudeAt(object, mjd) > threshold;
+          if (above !== previousAbove) {
+            crossings.push({ mjd: refineCrossing(object, threshold, previousMjd, mjd), rising: above });
+          }
+          previousMjd = mjd;
+          previousAbove = above;
+        }
+        return crossings;
+      }
+
+      function phaseName(illumination, waxing) {
+        if (illumination < 0.02) return 'new_moon';
+        if (illumination > 0.98) return 'full_moon';
+        if (Math.abs(illumination - 0.5) < 0.03) return waxing ? 'first_quarter' : 'last_quarter';
+        if (illumination < 0.5) return waxing ? 'waxing_crescent' : 'waning_crescent';
+        return waxing ? 'waxing_gibbous' : 'waning_gibbous';
+      }
+
+      function moonIllumination(mjd) {
+        const observer = stel.core.observer;
+        observer.tt = mjd;
+        return stel.getObj('NAME Moon').getInfo('phase');
+      }
+
+      function computeTonight(message) {
+        const base = new Date(message.isoDate);
+        if (Number.isNaN(base.getTime())) return reportError('Invalid calendar date.');
+        return withObserver(message.latitudeDeg, message.longitudeDeg, () => {
+          // Anchor on local noon so the window always spans the coming night.
+          const noon = new Date(base);
+          noon.setHours(12, 0, 0, 0);
+          const startMjd = toMJD(noon);
+          const endMjd = startMjd + 1;
+          const sun = stel.getObj('NAME Sun');
+          const moon = stel.getObj('NAME Moon');
+
+          const sunCrossings = findCrossings(sun, SUNSET_ALT, startMjd, endMjd, 6);
+          const sunset = sunCrossings.find(crossing => !crossing.rising);
+          const sunrise = sunCrossings.find(crossing => crossing.rising);
+          const nightCrossings = findCrossings(sun, NIGHT_ALT, startMjd, endMjd, 6);
+          const duskEnd = nightCrossings.find(crossing => !crossing.rising);
+          const dawnStart = nightCrossings.find(crossing => crossing.rising);
+
+          const nightStart = sunset ? sunset.mjd : startMjd + 0.25;
+          const nightEnd = sunrise ? sunrise.mjd : endMjd;
+
+          const moonCrossings = findCrossings(moon, 0, startMjd, endMjd, 6);
+          const moonRise = moonCrossings.find(crossing => crossing.rising);
+          const moonSet = moonCrossings.find(crossing => !crossing.rising);
+          const illumination = moonIllumination(nightStart);
+          const waxing = moonIllumination(nightStart + 0.02) > illumination;
+
+          const planets = [];
+          for (const planet of PLANETS) {
+            const object = stel.getObj(planet.id);
+            if (!object) continue;
+            // Sample the night in 10 minute slices and keep the longest above-horizon run.
+            const step = 10 / 1440;
+            let bestStart = null;
+            let bestEnd = null;
+            let bestAltitude = -90;
+            let runStart = null;
+            let runPeak = -90;
+            for (let mjd = nightStart; mjd <= nightEnd; mjd += step) {
+              const altitude = altitudeAt(object, mjd);
+              if (altitude > 0) {
+                if (runStart === null) runStart = mjd;
+                runPeak = Math.max(runPeak, altitude);
+              } else if (runStart !== null) {
+                if (bestStart === null || mjd - runStart > bestEnd - bestStart) {
+                  bestStart = runStart;
+                  bestEnd = mjd;
+                  bestAltitude = runPeak;
+                }
+                runStart = null;
+                runPeak = -90;
+              }
+            }
+            if (runStart !== null && (bestStart === null || nightEnd - runStart > bestEnd - bestStart)) {
+              bestStart = runStart;
+              bestEnd = nightEnd;
+              bestAltitude = runPeak;
+            }
+            if (bestStart === null) continue;
+            planets.push({
+              key: planet.key,
+              from: fromMJD(bestStart).toISOString(),
+              to: fromMJD(bestEnd).toISOString(),
+              peakAltitudeDeg: Math.round(bestAltitude),
+              magnitude: object.getInfo('vmag'),
+            });
+          }
+
+          return {
+            sunset: sunset ? fromMJD(sunset.mjd).toISOString() : null,
+            sunrise: sunrise ? fromMJD(sunrise.mjd).toISOString() : null,
+            duskEnd: duskEnd ? fromMJD(duskEnd.mjd).toISOString() : null,
+            dawnStart: dawnStart ? fromMJD(dawnStart.mjd).toISOString() : null,
+            moon: {
+              illumination,
+              phase: phaseName(illumination, waxing),
+              rise: moonRise ? fromMJD(moonRise.mjd).toISOString() : null,
+              set: moonSet ? fromMJD(moonSet.mjd).toISOString() : null,
+            },
+            planets,
+          };
+        });
+      }
+
+      /**
+       * Geocentric right-ascension separation in [-180, 180).  The compact wasm build
+       * aborts when converting ICRF -> ECLIPTIC, so this intentionally uses radec.
+       * It is sufficient for an almanac-level conjunction/opposition notice.
+       */
+      function elongationAt(object, sun, mjd) {
+        const observer = stel.core.observer;
+        observer.tt = mjd;
+        const planetRa = stel.c2s(object.getInfo('radec'))[0];
+        const sunRa = stel.c2s(sun.getInfo('radec'))[0];
+        return stel.anpm(planetRa - sunRa) * stel.R2D;
+      }
+
+      function computeEvents(message) {
+        const start = new Date(message.isoStart);
+        if (Number.isNaN(start.getTime())) return reportError('Invalid calendar range.');
+        const days = isFiniteNumber(message.days) ? Math.min(Math.max(message.days, 1), 400) : 60;
+        return withObserver(message.latitudeDeg, message.longitudeDeg, () => {
+          const startMjd = toMJD(start);
+          const endMjd = startMjd + days;
+          const events = [];
+          const sun = stel.getObj('NAME Sun');
+          const moon = stel.getObj('NAME Moon');
+
+          // Lunar quarters: the illuminated fraction hits 0, 0.5 and 1 four times a month.
+          const quarterStep = 0.25;
+          let previousMjd = startMjd;
+          let previousIllumination = moonIllumination(startMjd);
+          let previousWaxing = moonIllumination(startMjd + 0.02) > previousIllumination;
+          for (let mjd = startMjd + quarterStep; mjd <= endMjd; mjd += quarterStep) {
+            const illumination = moonIllumination(mjd);
+            const waxing = illumination > previousIllumination;
+            for (const target of [0.5]) {
+              if ((previousIllumination - target) * (illumination - target) < 0) {
+                events.push({
+                  type: waxing ? 'first_quarter' : 'last_quarter',
+                  time: fromMJD((previousMjd + mjd) / 2).toISOString(),
+                });
+              }
+            }
+            if (previousWaxing && !waxing) events.push({ type: 'full_moon', time: fromMJD(previousMjd).toISOString() });
+            if (!previousWaxing && waxing) events.push({ type: 'new_moon', time: fromMJD(previousMjd).toISOString() });
+            previousMjd = mjd;
+            previousIllumination = illumination;
+            previousWaxing = waxing;
+          }
+
+          // Oppositions (elongation crosses 180) and conjunctions (crosses 0).
+          for (const planet of PLANETS) {
+            const object = stel.getObj(planet.id);
+            if (!object) continue;
+            let previousElongation = elongationAt(object, sun, startMjd);
+            let previousSampleMjd = startMjd;
+            for (let mjd = startMjd + 1; mjd <= endMjd; mjd += 1) {
+              const elongation = elongationAt(object, sun, mjd);
+              // anpm wraps at ±180, so an opposition shows up as a sign flip with a large gap.
+              const wrapped = Math.abs(elongation - previousElongation) > 180;
+              if (wrapped) {
+                events.push({ type: 'opposition', target: planet.key, time: fromMJD((previousSampleMjd + mjd) / 2).toISOString() });
+              } else if (previousElongation * elongation < 0) {
+                events.push({ type: 'conjunction', target: planet.key, time: fromMJD((previousSampleMjd + mjd) / 2).toISOString() });
+              }
+              previousElongation = elongation;
+              previousSampleMjd = mjd;
+            }
+          }
+
+          // Meteor showers are a static almanac; just pick the peaks inside the window.
+          const startDate = fromMJD(startMjd);
+          const endDate = fromMJD(endMjd);
+          for (const shower of METEOR_SHOWERS) {
+            const [month, day] = String(shower.peak).split('-').map(Number);
+            if (!month || !day) continue;
+            for (let year = startDate.getFullYear(); year <= endDate.getFullYear(); year += 1) {
+              const peak = new Date(year, month - 1, day, 22, 0, 0);
+              if (peak >= startDate && peak <= endDate) {
+                events.push({ type: 'meteor_shower', name: shower.designation, zhr: shower.zhr, time: peak.toISOString() });
+              }
+            }
+          }
+
+          events.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+          return { events };
+        });
+      }
+
+      function publishBearing() {
+        if (!stel) return;
+        const forward = stel.convertFrame(stel.core.observer, 'VIEW', 'OBSERVED', [0, 0, -1, 0]);
+        const azimuthDeg = (stel.c2s(forward)[0] * stel.R2D % 360 + 360) % 360;
+        if (lastAzimuthDeg !== null && Math.abs(azimuthDeg - lastAzimuthDeg) < 0.5) return;
+        lastAzimuthDeg = azimuthDeg;
+        send({ type: 'view_bearing', azimuthDeg });
+      }
+
       function reportError(message) { send({ type: 'error', message: String(message) }); }
       function gotoRaDec(message) {
         const raDeg = message.raDeg ?? message.ra;
@@ -47,17 +350,92 @@
         if (!isFiniteNumber(fovDeg) || fovDeg <= 0 || fovDeg > 360) return reportError('Invalid FOV command.');
         stel.zoomTo(fovDeg * Math.PI / 180, message.duration ?? 0.3);
       }
+      // Sky-culture data sources load asynchronously. Wait until the featured
+      // constellation enters the search index before moving the view to it.
+      function focusSkyCultureTarget(target, retries = 80) {
+        const object = stel.getObj(target);
+        if (object) {
+          stel.core.selection = object;
+          stel.pointAndLock(object, 0.5);
+          return send({ type: 'target_found' });
+        }
+        if (retries <= 0) return send({ type: 'target_not_found' });
+        return setTimeout(() => focusSkyCultureTarget(target, retries - 1), 50);
+      }
       function execute(message) {
         switch (message.type) {
           case 'goto_radec': return gotoRaDec(message);
           case 'zoom_to': return zoomTo(message);
           case 'search_target': {
-            const object = stel.getObj(message.name);
-            return object ? object.pointAndLock(0.5) : reportError(`Target not found: ${message.name}`);
+            try {
+              const object = stel.getObj(message.name);
+              if (!object) return send({ type: 'target_not_found' });
+              stel.core.selection = object;
+              stel.pointAndLock(object, 0.5);
+              return send({ type: 'target_found' });
+            } catch {
+              return send({ type: 'target_not_found' });
+            }
           }
           case 'toggle_constellations':
             stel.core.constellations.lines_visible = Boolean(message.visible);
             return;
+          case 'set_sky_layers':
+            if (typeof message.landscape === 'boolean')
+              stel.core.landscapes.visible = message.landscape;
+            if (typeof message.atmosphere === 'boolean')
+              stel.core.atmosphere.visible = message.atmosphere;
+            if (typeof message.constellationArt === 'boolean')
+              stel.core.constellations.images_visible = message.constellationArt;
+            if (typeof message.constellationLabels === 'boolean') {
+              stel.core.constellations.show_only_pointed = false;
+              stel.core.constellations.labels_visible = message.constellationLabels;
+            }
+            if (typeof message.constellationLines === 'boolean')
+              stel.core.constellations.lines_visible = message.constellationLines;
+            return;
+          case 'set_sky_culture': {
+            if (typeof message.id !== 'string' || !/^[\w-]+$/.test(message.id)) return reportError('Invalid sky culture.');
+            if (message.target !== undefined && (typeof message.target !== 'string' || !/^[\w .-]+$/.test(message.target))) return reportError('Invalid sky culture target.');
+            if (!loadedSkyCultures.has(message.id)) {
+              stel.core.skycultures.addDataSource({ url: assetUrl(`data/skycultures/${message.id}`), key: message.id });
+              loadedSkyCultures.add(message.id);
+            }
+            stel.core.skycultures.current_id = message.id;
+            stel.core.constellations.show_only_pointed = false;
+            if (message.target) focusSkyCultureTarget(message.target);
+            return;
+          }
+          case 'set_time': {
+            const date = new Date(message.isoTime);
+            if (Number.isNaN(date.getTime())) return reportError('Invalid time command.');
+            stel.core.observer.tt = stel.date2MJD(date);
+            return;
+          }
+          case 'set_grid_lines': {
+            for (const line of ['azimuthal', 'meridian', 'equatorial_jnow']) {
+              if (typeof message[line] !== 'boolean') continue;
+              const module = stel.getModule(`core.lines.${line}`);
+              if (module) module.visible = message[line];
+            }
+            return;
+          }
+          case 'set_location':
+            if (!isFiniteNumber(message.latitudeDeg) || message.latitudeDeg < -90 || message.latitudeDeg > 90) return reportError('Invalid latitude.');
+            if (!isFiniteNumber(message.longitudeDeg) || message.longitudeDeg < -180 || message.longitudeDeg > 180) return reportError('Invalid longitude.');
+            stel.core.observer.latitude = message.latitudeDeg * stel.D2R;
+            stel.core.observer.longitude = message.longitudeDeg * stel.D2R;
+            return;
+          case 'compute_tonight': {
+            const payload = computeTonight(message);
+            if (payload) send({ type: 'tonight', requestId: message.requestId, payload });
+            return;
+          }
+          case 'compute_events': {
+            const payload = computeEvents(message);
+            if (payload) send({ type: 'events', requestId: message.requestId, payload });
+            return;
+          }
           case 'set_fov_frame':
             // The engine has no overlay-frame API; preserve the old command by setting its FOV.
             return zoomTo({ fovDeg: message.fovDeg ?? message.fov });
@@ -77,24 +455,54 @@
       document.getElementById('sky').addEventListener('webglcontextrestored', () => send({ type: 'context_restored' }));
 
       if (typeof StelWebEngine !== 'function') return reportError('Stellarium engine was not found.');
+      // The app injects __STEL_LANG before this document loads; it restarts on language change.
+      window.__STEL_LANG = window.__STEL_LANG || 'en';
+      // Names must resolve before the engine boots, because translateFn runs during init.
+      Promise.all([
+        fetch(assetUrl('names-zh.json')).then(response => response.json()).catch(() => ({})),
+        fetch(assetUrl('data/meteor-showers.json')).then(response => response.json()).catch(() => ({ showers: [] })),
+      ]).then(([names, meteors]) => {
+        NAMES_ZH = names;
+        METEOR_SHOWERS = meteors.showers ?? [];
+      }).then(startEngine);
+
+      function startEngine() {
       StelWebEngine({
         wasmFile: assetUrl('stellarium-web-engine.wasm'),
         canvas: document.getElementById('sky'),
+        translateFn: (domain, str) => (window.__STEL_LANG === 'zh' ? NAMES_ZH[str] ?? str : str),
         onReady(engine) {
           stel = engine;
-          stel.core.stars.addDataSource({ url: assetUrl('data/stars') });
-          stel.core.dsos.addDataSource({ url: assetUrl('data/dso') });
-          stel.core.skycultures.addDataSource({ url: assetUrl('data/skycultures/western'), key: 'western' });
-          stel.core.milkyway.addDataSource({ url: assetUrl('data/surveys/milkyway') });
-          stel.core.atmosphere.visible = false;
-          stel.core.landscapes.visible = false;
-          stel.setFont('regular', assetUrl('fonts/Roboto-Regular.ttf'), 1.38);
-          stel.setFont('bold', assetUrl('fonts/Roboto-Bold.ttf'), 1.38);
+          const core = stel.core;
+          // Fonts must be in place before any label is rasterised, or CJK names render as tofu.
+          // Roboto has no CJK glyphs, so Chinese needs the bundled Noto subset.
+          const uiFont = window.__STEL_LANG === 'zh' ? 'fonts/NotoSansSC-Subset.ttf' : 'fonts/Roboto-Regular.ttf';
+          const uiFontBold = window.__STEL_LANG === 'zh' ? 'fonts/NotoSansSC-Subset.ttf' : 'fonts/Roboto-Bold.ttf';
+          stel.setFont('regular', assetUrl(uiFont), 1.38);
+          stel.setFont('bold', assetUrl(uiFontBold), 1.38);
+          core.stars.addDataSource({ url: assetUrl('data/stars') });
+          core.dsos.addDataSource({ url: assetUrl('data/dso') });
+          core.skycultures.addDataSource({ url: assetUrl('data/skycultures/western'), key: 'western' });
+          core.milkyway.addDataSource({ url: assetUrl('data/surveys/milkyway') });
+          core.landscapes.addDataSource({ url: assetUrl('data/landscapes/guereins'), key: 'guereins' });
+          core.atmosphere.visible = true;
+          core.landscapes.visible = true;
+          core.constellations.images_visible = true;
+          core.constellations.lines_visible = true;
+          // Desktop Stellarium labels every constellation, not just the selected one.
+          core.constellations.show_only_pointed = false;
+          core.constellations.labels_visible = true;
+          // Start looking just above the horizon so the landscape stays in frame.
+          const horizonDirection = stel.s2c(0, 20 * stel.D2R);
+          stel.lookAt(horizonDirection, 0);
           send({ type: 'ready' });
+          publishBearing();
+          setInterval(publishBearing, 250);
           while (pendingCommands.length) execute(pendingCommands.shift());
         },
         onError: reportError,
       }).catch?.(reportError);
+      }
     })();
   </script>
 </body>

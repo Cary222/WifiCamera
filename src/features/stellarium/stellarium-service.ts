@@ -2,12 +2,60 @@ import type { RefObject } from 'react';
 import type { WebView } from 'react-native-webview';
 
 /** The v1 protocol uses degrees for RA, Dec, and FOV. */
+export type StellariumSkyLayers = {
+  atmosphere?: boolean;
+  constellationArt?: boolean;
+  constellationLabels?: boolean;
+  constellationLines?: boolean;
+  landscape?: boolean;
+};
+
+export type StellariumGridLines = {
+  azimuthal?: boolean;
+  equatorial_jnow?: boolean;
+  meridian?: boolean;
+};
+
 export type StellariumCommand
   = | { type: 'goto_radec'; raDeg: number; decDeg: number; duration?: number }
     | { type: 'zoom_to'; fovDeg: number; duration?: number }
     | { type: 'search_target'; name: string }
     | { type: 'toggle_constellations'; visible: boolean }
-    | { type: 'set_fov_frame'; fovDeg: number; sensorW: number; sensorH: number };
+    | { type: 'set_sky_layers' } & StellariumSkyLayers
+    | { type: 'set_sky_culture'; id: string; target?: string }
+    | { type: 'set_time'; isoTime: string }
+    | { type: 'set_grid_lines' } & StellariumGridLines
+    | { type: 'set_location'; latitudeDeg: number; longitudeDeg: number }
+    | { type: 'set_fov_frame'; fovDeg: number; sensorW: number; sensorH: number }
+    | { type: 'compute_tonight'; isoDate: string; latitudeDeg: number; longitudeDeg: number; requestId: number }
+    | { type: 'compute_events'; isoStart: string; days: number; latitudeDeg: number; longitudeDeg: number; requestId: number };
+
+export type ObserverLocation = { latitudeDeg: number; longitudeDeg: number };
+
+export type TonightPlanet = {
+  key: string;
+  from: string;
+  to: string;
+  peakAltitudeDeg: number;
+  magnitude: number;
+};
+
+export type TonightReport = {
+  sunset: string | null;
+  sunrise: string | null;
+  duskEnd: string | null;
+  dawnStart: string | null;
+  moon: { illumination: number; phase: string; rise: string | null; set: string | null };
+  planets: TonightPlanet[];
+};
+
+export type SkyEvent = {
+  type: string;
+  time: string;
+  target?: string;
+  name?: string;
+  zhr?: number;
+};
 
 type BridgeOptions = {
   onError?: (message: string) => void;
@@ -19,18 +67,34 @@ export type StellariumBridge = {
   zoomTo: (fovDeg: number, duration?: number) => void;
   searchTarget: (name: string) => void;
   toggleConstellations: (visible: boolean) => void;
+  setSkyLayers: (layers: StellariumSkyLayers) => void;
+  setSkyCulture: (id: string, target?: string) => void;
+  setTime: (date: Date) => void;
+  setGridLines: (lines: StellariumGridLines) => void;
+  setLocation: (latitudeDeg: number, longitudeDeg: number) => void;
   setFovFrame: (fovDeg: number, sensorW: number, sensorH: number) => void;
+  computeTonight: (date: Date, observer: ObserverLocation) => Promise<TonightReport>;
+  computeEvents: (start: Date, days: number, observer: ObserverLocation) => Promise<SkyEvent[]>;
   reload: () => void;
 };
 
 export type StellariumBridgeInternal = StellariumBridge & {
   setReady: (ready: boolean) => void;
+  resolveRequest: (requestId: number, payload: unknown) => void;
 };
 
 const MAX_QUEUED_COMMANDS = 50;
+const REQUEST_TIMEOUT_MS = 20_000;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function validateObserver(latitudeDeg: number, longitudeDeg: number): string | undefined {
+  if (!isFiniteNumber(latitudeDeg) || latitudeDeg < -90 || latitudeDeg > 90)
+    return 'Latitude must be between -90 and 90 degrees.';
+  if (!isFiniteNumber(longitudeDeg) || longitudeDeg < -180 || longitudeDeg > 180)
+    return 'Longitude must be between -180 and 180 degrees.';
 }
 
 function validate(command: StellariumCommand): string | undefined {
@@ -53,10 +117,44 @@ function validate(command: StellariumCommand): string | undefined {
       if (typeof command.visible !== 'boolean')
         return 'Constellation visibility must be a boolean.';
       break;
+    case 'set_sky_layers':
+      if ([command.atmosphere, command.constellationArt, command.constellationLabels, command.constellationLines, command.landscape].some(value => value !== undefined && typeof value !== 'boolean'))
+        return 'Sky layer values must be booleans.';
+      break;
+    case 'set_sky_culture':
+      if (typeof command.id !== 'string' || !/^[\w-]+$/.test(command.id))
+        return 'Sky culture id must be a simple identifier.';
+      if (command.target !== undefined && (typeof command.target !== 'string' || !/^[\w .-]+$/.test(command.target)))
+        return 'Sky culture target must be a simple designation.';
+      break;
+    case 'set_time':
+      if (typeof command.isoTime !== 'string' || Number.isNaN(Date.parse(command.isoTime)))
+        return 'Time must be a valid ISO timestamp.';
+      break;
+    case 'set_grid_lines':
+      if ([command.azimuthal, command.equatorial_jnow, command.meridian].some(value => value !== undefined && typeof value !== 'boolean'))
+        return 'Grid line values must be booleans.';
+      break;
+    case 'set_location':
+      if (!isFiniteNumber(command.latitudeDeg) || command.latitudeDeg < -90 || command.latitudeDeg > 90)
+        return 'Latitude must be between -90 and 90 degrees.';
+      if (!isFiniteNumber(command.longitudeDeg) || command.longitudeDeg < -180 || command.longitudeDeg > 180)
+        return 'Longitude must be between -180 and 180 degrees.';
+      break;
     case 'set_fov_frame':
       if (!isFiniteNumber(command.fovDeg) || command.fovDeg <= 0 || !isFiniteNumber(command.sensorW) || command.sensorW <= 0 || !isFiniteNumber(command.sensorH) || command.sensorH <= 0)
         return 'FOV frame values must be positive numbers.';
       break;
+    case 'compute_tonight':
+      if (typeof command.isoDate !== 'string' || Number.isNaN(Date.parse(command.isoDate)))
+        return 'Calendar date must be a valid ISO timestamp.';
+      return validateObserver(command.latitudeDeg, command.longitudeDeg);
+    case 'compute_events':
+      if (typeof command.isoStart !== 'string' || Number.isNaN(Date.parse(command.isoStart)))
+        return 'Calendar range must start at a valid ISO timestamp.';
+      if (!isFiniteNumber(command.days) || command.days < 1 || command.days > 400)
+        return 'Calendar range must span between 1 and 400 days.';
+      return validateObserver(command.latitudeDeg, command.longitudeDeg);
   }
   if ('duration' in command && command.duration !== undefined && (!isFiniteNumber(command.duration) || command.duration < 0))
     return 'Animation duration must be a non-negative number.';
@@ -73,7 +171,20 @@ function postCommand(webViewRef: RefObject<WebView | null>, command: StellariumC
 /** Queues commands until either `ready` or legacy `engine_ready` arrives. */
 export function createStellariumBridge(webViewRef: RefObject<WebView | null>, options: BridgeOptions = {}): StellariumBridgeInternal {
   let ready = false;
+  let nextRequestId = 0;
   const queued: StellariumCommand[] = [];
+  const pending = new Map<number, { resolve: (payload: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+  const request = <T>(build: (requestId: number) => StellariumCommand): Promise<T> => {
+    const requestId = ++nextRequestId;
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(requestId);
+        reject(new Error('Stellarium calculation timed out.'));
+      }, REQUEST_TIMEOUT_MS);
+      pending.set(requestId, { reject, resolve: resolve as (payload: unknown) => void, timer });
+      send(build(requestId));
+    });
+  };
   const send = (command: StellariumCommand) => {
     const error = validate(command);
     if (error)
@@ -103,7 +214,27 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
     zoomTo: (fovDeg, duration = 0.3) => send({ type: 'zoom_to', fovDeg, duration }),
     searchTarget: name => send({ type: 'search_target', name }),
     toggleConstellations: visible => send({ type: 'toggle_constellations', visible }),
+    setSkyLayers: layers => send({ type: 'set_sky_layers', ...layers }),
+    setSkyCulture: (id, target) => send({ type: 'set_sky_culture', id, ...(target ? { target } : {}) }),
+    setTime: date => send({ type: 'set_time', isoTime: date.toISOString() }),
+    setGridLines: lines => send({ type: 'set_grid_lines', ...lines }),
+    setLocation: (latitudeDeg, longitudeDeg) => send({ type: 'set_location', latitudeDeg, longitudeDeg }),
     setFovFrame: (fovDeg, sensorW, sensorH) => send({ type: 'set_fov_frame', fovDeg, sensorW, sensorH }),
+    computeTonight: (date, observer) => request<TonightReport>(requestId => ({
+      type: 'compute_tonight',
+      isoDate: date.toISOString(),
+      latitudeDeg: observer.latitudeDeg,
+      longitudeDeg: observer.longitudeDeg,
+      requestId,
+    })),
+    computeEvents: (start, days, observer) => request<{ events: SkyEvent[] }>(requestId => ({
+      type: 'compute_events',
+      isoStart: start.toISOString(),
+      days,
+      latitudeDeg: observer.latitudeDeg,
+      longitudeDeg: observer.longitudeDeg,
+      requestId,
+    })).then(payload => payload.events),
     reload: () => {
       ready = false;
       options.onReload?.();
@@ -112,6 +243,14 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
       ready = nextReady;
       if (ready)
         flush();
+    },
+    resolveRequest: (requestId, payload) => {
+      const entry = pending.get(requestId);
+      if (!entry)
+        return;
+      clearTimeout(entry.timer);
+      pending.delete(requestId);
+      entry.resolve(payload);
     },
   };
 }
