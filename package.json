@@ -10,7 +10,9 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "prebuild": "pnpm expo prebuild",
+    "prebuild": "pnpm run sync:stellar && pnpm expo prebuild",
+    "prebuild:android": "pnpm run sync:stellar && cross-env EXPO_PUBLIC_APP_ENV=development STRICT_ENV_VALIDATION=1 pnpm expo prebuild --platform android",
+    "sync:stellar": "node scripts/sync-stellar-assets.mjs",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",

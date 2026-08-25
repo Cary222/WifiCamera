@@ -431,6 +431,21 @@ describe('deep space 3x2 quick controls', () => {
     expect(screen.getByText('星座古典艺术画')).toBeOnTheScreen();
     expect(screen.getByText('星座名称注记')).toBeOnTheScreen();
   });
+
+  it('sends alternating sky-layer commands when the same switch is tapped twice in a row', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-constellation'));
+
+    // Regression: the toggle handler read skyLayers from a stale render closure,
+    // so two rapid taps sent { false } then { false } instead of false then true.
+    // Call 1 is the initial full state pushed on engine ready.
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-constellationLabels'));
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-constellationLabels'));
+
+    expect(mockSetSkyLayers).toHaveBeenNthCalledWith(2, { constellationLabels: false });
+    expect(mockSetSkyLayers).toHaveBeenNthCalledWith(3, { constellationLabels: true });
+  });
 });
 
 describe('deep space observation tools and search', () => {

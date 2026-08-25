@@ -129,7 +129,11 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
       stellaRef.current?.setSkyCulture?.(id, target ?? undefined);
       close();
     },
-    toggleGridLine: (key: GridLineKey) => updateGridLines({ [key]: !gridLines[key] }),
+    toggleGridLine: (key: GridLineKey) => setGridLines((prev) => {
+      const patch = { [key]: !prev[key] } as Partial<typeof DEFAULT_GRID_LINES>;
+      stellaRef.current?.setGridLines?.(patch);
+      return { ...prev, ...patch };
+    }),
     updateGridLines,
   };
 }
@@ -144,7 +148,9 @@ function StarMapOverlayControls({
   onOpenMenu,
   onOpenSearch,
   onReturnToNow,
+  onToggleGridLine,
   onToggleNightMode,
+  onToggleSkyLayer,
   onUpdateGridLines,
   onUpdateSkyLayers,
   skyLayers,
@@ -158,7 +164,9 @@ function StarMapOverlayControls({
   onOpenMenu: () => void;
   onOpenSearch: () => void;
   onReturnToNow: () => void;
+  onToggleGridLine: (key: GridLineKey) => void;
   onToggleNightMode: () => void;
+  onToggleSkyLayer: (key: SkyLayerKey) => void;
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
@@ -169,7 +177,9 @@ function StarMapOverlayControls({
   const controls = getQuickControls({
     lines: gridLines,
     nightMode,
+    onToggleGridLine,
     onToggleNightMode,
+    onToggleSkyLayer,
     onUpdateGridLines,
     onUpdateSkyLayers,
     skyLayers,
@@ -300,15 +310,12 @@ type QuickControlEntry = {
 
 function getGridAndConstellationControls({
   lines,
+  onToggleGridLine,
+  onToggleSkyLayer,
   onUpdateGridLines,
   onUpdateSkyLayers,
   skyLayers,
-}: {
-  lines: typeof DEFAULT_GRID_LINES;
-  onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
-  onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
-  skyLayers: typeof DEFAULT_SKY_LAYERS;
-}): QuickControlEntry[] {
+}: Pick<QuickControlParams, 'lines' | 'onToggleGridLine' | 'onToggleSkyLayer' | 'onUpdateGridLines' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry[] {
   const gridsActive = lines.azimuthal && lines.equatorial_jnow;
   const constellationActive = skyLayers.constellationLines || skyLayers.constellationArt;
 
@@ -321,21 +328,21 @@ function getGridAndConstellationControls({
           hint: '以地平线与天顶为基准的仰角与方位网格',
           id: 'azimuthal',
           label: '地平坐标网格 (Azimuthal)',
-          onToggle: () => onUpdateGridLines({ azimuthal: !lines.azimuthal }),
+          onToggle: () => onToggleGridLine('azimuthal'),
         },
         {
           active: lines.equatorial_jnow,
           hint: '随天球旋转的即时天赤道与赤经赤纬网格',
           id: 'equatorial_jnow',
           label: '赤道坐标网格 (JNow)',
-          onToggle: () => onUpdateGridLines({ equatorial_jnow: !lines.equatorial_jnow }),
+          onToggle: () => onToggleGridLine('equatorial_jnow'),
         },
         {
           active: lines.meridian,
           hint: '连接天顶与正南正北地平圈的天球大圆',
           id: 'meridian',
           label: '子午线 (Meridian)',
-          onToggle: () => onUpdateGridLines({ meridian: !lines.meridian }),
+          onToggle: () => onToggleGridLine('meridian'),
         },
       ],
       detailSubtitle: '天球与地平参考坐标网格',
@@ -359,21 +366,21 @@ function getGridAndConstellationControls({
           hint: '连接主要明亮恒星的几何线条骨架',
           id: 'constellationLines',
           label: '星座连线',
-          onToggle: () => onUpdateSkyLayers({ constellationLines: !skyLayers.constellationLines }),
+          onToggle: () => onToggleSkyLayer('constellationLines'),
         },
         {
           active: skyLayers.constellationArt,
           hint: '古典神话星图的手绘形象画像',
           id: 'constellationArt',
           label: '星座古典艺术画',
-          onToggle: () => onUpdateSkyLayers({ constellationArt: !skyLayers.constellationArt }),
+          onToggle: () => onToggleSkyLayer('constellationArt'),
         },
         {
           active: skyLayers.constellationLabels,
           hint: '在星空中标注所有星座的名称',
           id: 'constellationLabels',
           label: '星座名称注记',
-          onToggle: () => onUpdateSkyLayers({ constellationLabels: !skyLayers.constellationLabels }),
+          onToggle: () => onToggleSkyLayer('constellationLabels'),
         },
       ],
       detailSubtitle: '星座几何连线、艺术图画与名称',
@@ -395,14 +402,9 @@ function getGridAndConstellationControls({
 function getEnvironmentAndNightControls({
   nightMode,
   onToggleNightMode,
-  onUpdateSkyLayers,
+  onToggleSkyLayer,
   skyLayers,
-}: {
-  nightMode: boolean;
-  onToggleNightMode: () => void;
-  onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
-  skyLayers: typeof DEFAULT_SKY_LAYERS;
-}): QuickControlEntry[] {
+}: Pick<QuickControlParams, 'nightMode' | 'onToggleNightMode' | 'onToggleSkyLayer' | 'skyLayers'>): QuickControlEntry[] {
   return [
     {
       active: skyLayers.landscape,
@@ -412,7 +414,7 @@ function getEnvironmentAndNightControls({
           hint: '显示观测地点周围的真实地表全景与遮挡',
           id: 'landscape',
           label: '地面全景景观',
-          onToggle: () => onUpdateSkyLayers({ landscape: !skyLayers.landscape }),
+          onToggle: () => onToggleSkyLayer('landscape'),
         },
       ],
       detailSubtitle: '真实地面地景与地平线模拟',
@@ -420,7 +422,7 @@ function getEnvironmentAndNightControls({
       icon: 'landscape',
       id: 'landscape',
       label: '地景',
-      onPress: () => onUpdateSkyLayers({ landscape: !skyLayers.landscape }),
+      onPress: () => onToggleSkyLayer('landscape'),
     },
     {
       active: skyLayers.atmosphere,
@@ -430,7 +432,7 @@ function getEnvironmentAndNightControls({
           hint: '模拟日光散射、晨昏蒙影与天光消光',
           id: 'atmosphere',
           label: '大气散射光',
-          onToggle: () => onUpdateSkyLayers({ atmosphere: !skyLayers.atmosphere }),
+          onToggle: () => onToggleSkyLayer('atmosphere'),
         },
       ],
       detailSubtitle: '日照散射与大气环境模拟',
@@ -438,7 +440,7 @@ function getEnvironmentAndNightControls({
       icon: 'atmosphere',
       id: 'atmosphere',
       label: '大气层',
-      onPress: () => onUpdateSkyLayers({ atmosphere: !skyLayers.atmosphere }),
+      onPress: () => onToggleSkyLayer('atmosphere'),
     },
     {
       active: skyLayers.constellationLabels,
@@ -448,7 +450,7 @@ function getEnvironmentAndNightControls({
           hint: '标注星空中各星座的中文与英文名称',
           id: 'constellationLabels',
           label: '星座标签',
-          onToggle: () => onUpdateSkyLayers({ constellationLabels: !skyLayers.constellationLabels }),
+          onToggle: () => onToggleSkyLayer('constellationLabels'),
         },
       ],
       detailSubtitle: '天体与星座标识注记',
@@ -456,7 +458,7 @@ function getEnvironmentAndNightControls({
       icon: 'labels',
       id: 'labels',
       label: '标签',
-      onPress: () => onUpdateSkyLayers({ constellationLabels: !skyLayers.constellationLabels }),
+      onPress: () => onToggleSkyLayer('constellationLabels'),
     },
     {
       active: nightMode,
@@ -479,14 +481,18 @@ function getEnvironmentAndNightControls({
   ];
 }
 
-function getQuickControls(params: {
+type QuickControlParams = {
   lines: typeof DEFAULT_GRID_LINES;
   nightMode: boolean;
   onToggleNightMode: () => void;
+  onToggleGridLine: (key: GridLineKey) => void;
+  onToggleSkyLayer: (key: SkyLayerKey) => void;
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
-}): QuickControlEntry[] {
+};
+
+function getQuickControls(params: QuickControlParams): QuickControlEntry[] {
   return [
     ...getGridAndConstellationControls(params),
     ...getEnvironmentAndNightControls(params),
@@ -742,6 +748,34 @@ function RestoreCultureFlow({
   );
 }
 
+/**
+ * Sky-layer state with engine mirroring. Both the patch update and the key
+ * toggle compute from the LATEST state via the functional setState form: with
+ * rapid taps a render-closure snapshot can be one render stale, which would
+ * send the engine the wrong value and desync the switch UI from the sky.
+ */
+function useSkyLayers(stellaRef: React.RefObject<StellariumViewHandle | null>) {
+  const [skyLayers, setSkyLayers] = React.useState(DEFAULT_SKY_LAYERS);
+
+  const updateSkyLayers = React.useCallback((patch: Partial<typeof DEFAULT_SKY_LAYERS>) => {
+    setSkyLayers((prev) => {
+      const next = { ...prev, ...patch };
+      stellaRef.current?.setSkyLayers?.(patch);
+      return next;
+    });
+  }, [stellaRef]);
+
+  const toggleSkyLayer = React.useCallback((key: SkyLayerKey) => {
+    setSkyLayers((prev) => {
+      const patch = { [key]: !prev[key] } as Partial<typeof DEFAULT_SKY_LAYERS>;
+      stellaRef.current?.setSkyLayers?.(patch);
+      return { ...prev, ...patch };
+    });
+  }, [stellaRef]);
+
+  return { skyLayers, toggleSkyLayer, updateSkyLayers };
+}
+
 export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const stellaRef = React.useRef<StellariumViewHandle>(null);
@@ -752,23 +786,13 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [layersOpen, setLayersOpen] = React.useState(false);
   const [nightMode, setNightMode] = React.useState(false);
-  const [skyLayers, setSkyLayers] = React.useState(DEFAULT_SKY_LAYERS);
+  const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(stellaRef);
   const search = useStarMapSearch(stellaRef);
 
   React.useEffect(() => {
     const interval = globalThis.setInterval(() => setClock(new Date()), 60_000);
     return () => globalThis.clearInterval(interval);
   }, []);
-
-  const updateSkyLayers = React.useCallback((patch: Partial<typeof DEFAULT_SKY_LAYERS>) => {
-    setSkyLayers((prev) => {
-      const next = { ...prev, ...patch };
-      stellaRef.current?.setSkyLayers?.(patch);
-      return next;
-    });
-  }, []);
-
-  const toggleLayer = (key: SkyLayerKey) => updateSkyLayers({ [key]: !skyLayers[key] });
   const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !layersOpen;
 
   return (
@@ -803,7 +827,9 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
           setLayersOpen(false);
         })}
         onReturnToNow={() => setClock(new Date())}
+        onToggleGridLine={drawerFeature.toggleGridLine}
         onToggleNightMode={() => setNightMode(value => !value)}
+        onToggleSkyLayer={toggleSkyLayer}
         onUpdateGridLines={drawerFeature.updateGridLines}
         onUpdateSkyLayers={updateSkyLayers}
         skyLayers={skyLayers}
@@ -817,7 +843,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         }}
         showFab={showRestoreFab}
       />
-      {layersOpen && <LayerPanel layers={skyLayers} onToggle={toggleLayer} />}
+      {layersOpen && <LayerPanel layers={skyLayers} onToggle={toggleSkyLayer} />}
       {drawerOpen && (
         <ReferenceDrawer
           onClose={() => setDrawerOpen(false)}
