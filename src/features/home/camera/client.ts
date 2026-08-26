@@ -26,8 +26,19 @@ cameraClient.interceptors.request.use((config) => {
     const transport = getActiveTransport();
     const baseUrl = getCameraBaseUrl();
 
-    // Build proxy URL with transport and camera IP
-    let proxyUrl = `/camera-proxy/?transport=${transport}&path=${config.url}`;
+    let requestPath = config.url || '/';
+    if (/^https?:\/\//.test(requestPath)) {
+      try {
+        const endpoint = new URL(requestPath);
+        requestPath = `${endpoint.pathname}${endpoint.search}`;
+      }
+      catch {
+        requestPath = '/';
+      }
+    }
+
+    // Encode the endpoint so its own query string cannot leak into proxy params.
+    let proxyUrl = `/camera-proxy/?transport=${transport}&path=${encodeURIComponent(requestPath)}`;
 
     if (transport === 'wifi') {
       // Extract IP from stored WiFi camera address

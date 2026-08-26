@@ -13,6 +13,7 @@ disable-model-invocation: true
 
 领域判断：
 ├── RN / Expo 开发      → § A React Native & Expo
+│                            （先读 expo-overview 再路由到具体 expo-* skill）
 ├── 前端 / UI / 样式    → § B 前端 & UI
 ├── FSD 架构            → § C 架构 & 设计模式
 ├── 测试                → § D 测试 & 质量
@@ -124,6 +125,39 @@ disable-model-invocation: true
 
 ## Skill 安装状态
 
+### Expo / RN Skills（`.cursor/skills/`）
+
+| Skill | 状态 | 路径 |
+|-------|------|------|
+| expo-overview | ✅ 已安装 | `.cursor/skills/` |
+| expo-router | ✅ 已安装 | `.cursor/skills/` |
+| expo-native-ui | ✅ 已安装 | `.cursor/skills/` |
+| expo-ui | ✅ 已安装 | `.cursor/skills/` |
+| expo-animation | ✅ 已安装 | `.cursor/skills/` |
+| expo-design-system | ✅ 已安装 | `.cursor/skills/` |
+| expo-data-fetching | ✅ 已安装 | `.cursor/skills/` |
+| expo-tailwind-setup | ✅ 已安装 | `.cursor/skills/` |
+| expo-dev-client | ✅ 已安装 | `.cursor/skills/` |
+| expo-module | ✅ 已安装 | `.cursor/skills/` |
+| expo-brownfield | ✅ 已安装 | `.cursor/skills/` |
+| expo-app-clip | ✅ 已安装 | `.cursor/skills/` |
+| expo-dom | ✅ 已安装 | `.cursor/skills/` |
+| expo-web-to-native | ✅ 已安装 | `.cursor/skills/` |
+| expo-project-structure | ✅ 已安装 | `.cursor/skills/` |
+| expo-examples | ✅ 已安装 | `.cursor/skills/` |
+| expo-upgrade | ✅ 已安装 | `.cursor/skills/` |
+| expo-skill-eval | ✅ 已安装 | `.cursor/skills/` |
+| expo-skill-feedback | ✅ 已安装 | `.cursor/skills/` |
+| expo-migrate-module | ✅ 已安装 | `.cursor/skills/` |
+| eas-app-stores | ✅ 已安装 | `.cursor/skills/` |
+| eas-hosting | ✅ 已安装 | `.cursor/skills/` |
+| eas-workflows | ✅ 已安装 | `.cursor/skills/` |
+| eas-simulator | ✅ 已安装 | `.cursor/skills/` |
+| eas-update-insights | ✅ 已安装 | `.cursor/skills/` |
+| eas-observe | ✅ 已安装 | `.cursor/skills/` |
+
+### 本项目 / 全局 Skills
+
 | Skill | 状态 | 路径 |
 |-------|------|------|
 | wifi-camera-app-conventions | ✅ 已安装 | `.cursor/skills/` |
@@ -149,9 +183,9 @@ disable-model-invocation: true
 | dev-to-doc-recap | ✅ 已安装 | `~/.cursor/skills/` |
 | feature-first | ✅ 已安装 | `~/.cursor/skills/` |
 | skill-router | ✅ 已安装 | `.cursor/skills/skill-router/` |
-| expo-native-ui | ✅ 已安装 | `.cursor/skills/` |
 | react-native-best-practices | ✅ 已安装 | `.cursor/skills/` |
 | react-native-testing | ✅ 已安装 | `.cursor/skills/` |
 | feature-sliced-design | ✅ 已安装 | `.cursor/skills/` |
 | react-native-mmkv | ✅ 已安装 | `.cursor/skills/` |
+| start-wifi-camera | ✅ 已安装 | `.cursor/skills/` |
 | tanstack-form | ⏳ 待安装 | — |

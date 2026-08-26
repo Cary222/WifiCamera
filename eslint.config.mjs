@@ -37,6 +37,8 @@ export default antfu(
       'ios',
       '.vscode',
       '.cursor',
+      '.agents',
+      '.agents/**',
       'docs/',
       'cli/',
       'expo-env.d.ts',

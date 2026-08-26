@@ -85,7 +85,10 @@ export function getCameraWebSocketUrl(): string {
 
     return wsUrl;
   }
-  return getTransportEndpoints(getActiveTransport()).base.replace(/^http/, 'ws') + CAMERA_WEBSOCKET_PATH;
+  return (
+    getTransportEndpoints(getActiveTransport()).base.replace(/^http/, 'ws')
+    + CAMERA_WEBSOCKET_PATH
+  );
 }
 
 /**
@@ -93,9 +96,17 @@ export function getCameraWebSocketUrl(): string {
  * the host relay instead, because ADB forward only carries TCP signaling while
  * WebRTC media is UDP.
  *
- * Note: WHEP proxying for web is not yet implemented; this URL is primarily
- * used by native apps. Web may fall back to mock mode for video preview.
+ * On web the browser cannot reach `10.0.2.2`, so WHEP signaling goes through
+ * the Metro dev server's `/camera-proxy/` middleware, which forwards to the
+ * USB relay (or the camera over WiFi) and rewrites Location headers.
  */
 export function getCameraWhepUrl(): string {
+  if (isWebPlatform()) {
+    if (getActiveTransport() === 'wifi') {
+      const ip = getWifiCameraIp();
+      return `/camera-proxy/?transport=wifi&ip=${ip}&port=8889&path=${encodeURIComponent('/cam0/whep')}`;
+    }
+    return `/camera-proxy/?transport=whep&path=${encodeURIComponent('/board-webrtc/cam0/whep')}`;
+  }
   return getTransportEndpoints(getActiveTransport()).whep;
 }

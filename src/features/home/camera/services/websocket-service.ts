@@ -1,3 +1,5 @@
+/* eslint-disable max-lines-per-function */
+
 import type {
   CameraJsonMessage,
   CameraWebSocketMessage,
@@ -82,7 +84,9 @@ export class CameraWebSocketService {
       try {
         this.socket.close();
       }
-      catch {}
+      catch (e) {
+        console.debug('[CameraWS] 关闭旧连接异常（可忽略）:', e);
+      }
       this.socket = null;
     }
 
@@ -147,17 +151,19 @@ export class CameraWebSocketService {
       appLogger.error('WS', '控制通道发生错误', {
         url: this.options.url,
         readyState: socket.readyState,
-        event: event.type,
+        event: event?.type,
       });
+      this.options.onStatusChange?.('error');
       // Close socket immediately to force reconnect
       try {
         socket.close();
       }
-      catch {}
+      catch (e) {
+        console.debug('[CameraWS] 关闭错误套接字异常（可忽略）:', e);
+      }
       if (this.socket === socket) {
         this.socket = null;
       }
-      this.options.onStatusChange?.('error');
     };
     socket.onclose = (event) => {
       if (this.socket !== socket)
@@ -167,11 +173,11 @@ export class CameraWebSocketService {
       this.socket = null;
       appLogger.warn('WS', '控制通道已断开', {
         url: this.options.url,
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean,
+        code: event?.code,
+        reason: event?.reason,
+        wasClean: event?.wasClean,
       });
-      console.warn('[CameraWS] 连接断开:', this.options.url, event.code, event.reason);
+      console.warn('[CameraWS] 连接断开:', this.options.url, event?.code, event?.reason);
       this.options.onStatusChange?.('closed');
       this.scheduleReconnect();
     };
@@ -250,7 +256,9 @@ export class CameraWebSocketService {
         try {
           this.socket.send(serializeCameraJsonMessage({ device_name: 'StartUp', instruction: 'HeartBeat' }));
         }
-        catch {}
+        catch (e) {
+          console.debug('[CameraWS] 心跳发送失败（可忽略）:', e);
+        }
       }
     }, this.options.heartbeatIntervalMs);
   }
