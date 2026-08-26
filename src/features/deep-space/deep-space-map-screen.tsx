@@ -8,6 +8,8 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Polygon, RadialGradient,
 import SKY_CULTURES_DATA from '@/assets/stellar/skycultures-full.json';
 import { Text } from '@/components/ui';
 import { CalendarPanel } from '@/features/deep-space/calendar/calendar-panel';
+import { DEFAULT_LANDSCAPE_ID } from '@/features/deep-space/landscape/landscape-catalog';
+import { LandscapePanel } from '@/features/deep-space/landscape/landscape-panel';
 import { FieldOfViewOverlay } from '@/features/deep-space/tools/field-of-view-overlay';
 import { FieldOfViewPanel } from '@/features/deep-space/tools/field-of-view-panel';
 import { TelescopeControlPanel } from '@/features/deep-space/tools/telescope-control-panel';
@@ -37,8 +39,11 @@ const DEFAULT_SKY_LAYERS: Required<StellariumSkyLayers> = {
   landscape: true,
 };
 
-const DEFAULT_GRID_LINES: Record<'azimuthal' | 'equatorial_jnow' | 'meridian', boolean> = {
+const DEFAULT_GRID_LINES: Record<'azimuthal' | 'ecliptic' | 'equator' | 'equatorial_j2000' | 'equatorial_jnow' | 'meridian', boolean> = {
   azimuthal: false,
+  ecliptic: false,
+  equator: false,
+  equatorial_j2000: false,
   equatorial_jnow: false,
   meridian: false,
 };
@@ -75,7 +80,7 @@ type IconButtonProps = {
   testID: string;
 };
 
-type DrawerFeature = 'calendar' | 'glossary' | 'settings' | 'tools';
+type DrawerFeature = 'calendar' | 'glossary' | 'landscape' | 'settings' | 'tools';
 
 type ReferenceDrawerProps = {
   onClose: () => void;
@@ -102,11 +107,23 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
   const [activeCity, setActiveCity] = React.useState(OBSERVER_CITIES[0].name);
   const [fieldOfView, setFieldOfView] = React.useState<FieldOfViewInput>();
   const [gridLines, setGridLines] = React.useState(DEFAULT_GRID_LINES);
+  const [landscapeId, setLandscapeId] = React.useState(DEFAULT_LANDSCAPE_ID);
+  const [environment, setEnvironment] = React.useState({ cardinals: true, fog: true, turbidity: 3 });
   const close = () => setActive(undefined);
 
   const updateGridLines = React.useCallback((patch: Partial<typeof DEFAULT_GRID_LINES>) => {
     setGridLines(prev => ({ ...prev, ...patch }));
     stellaRef.current?.setGridLines?.(patch);
+  }, [stellaRef]);
+
+  const selectLandscape = React.useCallback((id: string) => {
+    setLandscapeId(id);
+    stellaRef.current?.setLandscape?.(id);
+  }, [stellaRef]);
+
+  const updateEnvironment = React.useCallback((patch: Partial<typeof environment>) => {
+    setEnvironment(prev => ({ ...prev, ...patch }));
+    stellaRef.current?.setEnvironment?.(patch);
   }, [stellaRef]);
 
   return {
@@ -116,13 +133,16 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     clearFieldOfView: () => setFieldOfView(undefined),
     close,
     currentCulture,
+    environment,
     fieldOfView,
     gridLines,
+    landscapeId,
     open: (next: DrawerFeature) => setActive(next),
     selectCity: (city: typeof OBSERVER_CITIES[number]) => {
       setActiveCity(city.name);
       stellaRef.current?.setLocation?.(city.latitudeDeg, city.longitudeDeg);
     },
+    selectLandscape,
     selectSkyCulture: (id: string, target?: string | null) => {
       setCurrentCulture(id);
       stellaRef.current?.setSkyCulture?.(id, target ?? undefined);
@@ -133,6 +153,7 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
       stellaRef.current?.setGridLines?.(patch);
       return { ...prev, ...patch };
     }),
+    updateEnvironment,
     updateGridLines,
   };
 }
@@ -143,6 +164,7 @@ function StarMapOverlayControls({
   gridLines,
   insets,
   nightMode,
+  onOpenLandscape,
   onOpenMenu,
   onOpenSearch,
   onReturnToNow,
@@ -158,6 +180,7 @@ function StarMapOverlayControls({
   gridLines: typeof DEFAULT_GRID_LINES;
   insets: { bottom: number; top: number };
   nightMode: boolean;
+  onOpenLandscape: () => void;
   onOpenMenu: () => void;
   onOpenSearch: () => void;
   onReturnToNow: () => void;
@@ -194,7 +217,15 @@ function StarMapOverlayControls({
         <View style={styles.leftQuickBar}>
           <GridQuickBar
             controls={controls}
-            onLongPressControl={setActiveDetail}
+            onLongPressControl={(id) => {
+              if (id === 'landscape') {
+                setActiveDetail(null);
+                setQuickPanelOpen(false);
+                onOpenLandscape();
+                return;
+              }
+              setActiveDetail(id);
+            }}
             onOpenChange={(next) => {
               if (!next)
                 setActiveDetail(null);
@@ -306,109 +337,144 @@ type QuickControlEntry = {
   onPress: () => void;
 };
 
-function getGridAndConstellationControls({
+function getGridControls({
   lines,
   onToggleGridLine,
-  onToggleSkyLayer,
   onUpdateGridLines,
+}: Pick<QuickControlParams, 'lines' | 'onToggleGridLine' | 'onUpdateGridLines'>): QuickControlEntry {
+  const gridsActive = lines.azimuthal || lines.equatorial_jnow || lines.equatorial_j2000 || lines.ecliptic || lines.equator || lines.meridian;
+
+  return {
+    active: gridsActive,
+    detailItems: [
+      {
+        active: lines.azimuthal,
+        hint: '以地平线与天顶为基准的仰角与方位网格',
+        id: 'azimuthal',
+        label: '地平坐标网格 (Azimuthal)',
+        onToggle: () => onToggleGridLine('azimuthal'),
+      },
+      {
+        active: lines.equatorial_jnow,
+        hint: '随天球旋转的即时天赤道与赤经赤纬网格',
+        id: 'equatorial_jnow',
+        label: '赤道坐标网格 (JNow)',
+        onToggle: () => onToggleGridLine('equatorial_jnow'),
+      },
+      {
+        active: lines.equatorial_j2000,
+        hint: '基于 J2000.0 标准固定参考系的赤经赤纬网格',
+        id: 'equatorial_j2000',
+        label: '赤道坐标网格 (J2000)',
+        onToggle: () => onToggleGridLine('equatorial_j2000'),
+      },
+      {
+        active: lines.ecliptic,
+        hint: '太阳在天球上的视周年运动轨迹（黄道大圆）',
+        id: 'ecliptic',
+        label: '黄道线 (Ecliptic)',
+        onToggle: () => onToggleGridLine('ecliptic'),
+      },
+      {
+        active: lines.equator,
+        hint: '地球赤道面延伸至天球的投影（赤纬 0° 线）',
+        id: 'equator',
+        label: '天赤道 (Celestial Equator)',
+        onToggle: () => onToggleGridLine('equator'),
+      },
+      {
+        active: lines.meridian,
+        hint: '连接天顶与正南正北地平圈点的天球大圆',
+        id: 'meridian',
+        label: '子午线 (Meridian)',
+        onToggle: () => onToggleGridLine('meridian'),
+      },
+    ],
+    detailSubtitle: '天球与地平参考坐标网格与基准线',
+    detailTitle: '网格和线条设置',
+    icon: 'grid-lines',
+    id: 'grid-lines',
+    label: '网格和线条',
+    onPress: () => {
+      if (gridsActive) {
+        onUpdateGridLines({
+          azimuthal: false,
+          ecliptic: false,
+          equator: false,
+          equatorial_j2000: false,
+          equatorial_jnow: false,
+          meridian: false,
+        });
+      }
+      else {
+        onUpdateGridLines({
+          azimuthal: true,
+          equatorial_jnow: true,
+        });
+      }
+    },
+  };
+}
+
+function getConstellationControls({
+  onToggleSkyLayer,
   onUpdateSkyLayers,
   skyLayers,
-}: Pick<QuickControlParams, 'lines' | 'onToggleGridLine' | 'onToggleSkyLayer' | 'onUpdateGridLines' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry[] {
-  const gridsActive = lines.azimuthal && lines.equatorial_jnow;
+}: Pick<QuickControlParams, 'onToggleSkyLayer' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry {
   const constellationActive = skyLayers.constellationLines || skyLayers.constellationArt;
 
-  return [
-    {
-      active: gridsActive,
-      detailItems: [
-        {
-          active: lines.azimuthal,
-          hint: '以地平线与天顶为基准的仰角与方位网格',
-          id: 'azimuthal',
-          label: '地平坐标网格 (Azimuthal)',
-          onToggle: () => onToggleGridLine('azimuthal'),
-        },
-        {
-          active: lines.equatorial_jnow,
-          hint: '随天球旋转的即时天赤道与赤经赤纬网格',
-          id: 'equatorial_jnow',
-          label: '赤道坐标网格 (JNow)',
-          onToggle: () => onToggleGridLine('equatorial_jnow'),
-        },
-        {
-          active: lines.meridian,
-          hint: '连接天顶与正南正北地平圈的天球大圆',
-          id: 'meridian',
-          label: '子午线 (Meridian)',
-          onToggle: () => onToggleGridLine('meridian'),
-        },
-      ],
-      detailSubtitle: '天球与地平参考坐标网格',
-      detailTitle: '网格和线条设置',
-      icon: 'grid-lines',
-      id: 'grid-lines',
-      label: '网格和线条',
-      onPress: () => {
-        const next = !gridsActive;
-        onUpdateGridLines({
-          azimuthal: next,
-          equatorial_jnow: next,
-        });
+  return {
+    active: constellationActive,
+    detailItems: [
+      {
+        active: skyLayers.constellationLines,
+        hint: '连接主要明亮恒星的几何线条骨架',
+        id: 'constellationLines',
+        label: '星座连线',
+        onToggle: () => onToggleSkyLayer('constellationLines'),
       },
-    },
-    {
-      active: constellationActive,
-      detailItems: [
-        {
-          active: skyLayers.constellationLines,
-          hint: '连接主要明亮恒星的几何线条骨架',
-          id: 'constellationLines',
-          label: '星座连线',
-          onToggle: () => onToggleSkyLayer('constellationLines'),
-        },
-        {
-          active: skyLayers.constellationArt,
-          hint: '古典神话星图的手绘形象画像',
-          id: 'constellationArt',
-          label: '星座古典艺术画',
-          onToggle: () => onToggleSkyLayer('constellationArt'),
-        },
-        {
-          active: skyLayers.constellationLabels,
-          hint: '在星空中标注所有星座的名称',
-          id: 'constellationLabels',
-          label: '星座名称注记',
-          onToggle: () => onToggleSkyLayer('constellationLabels'),
-        },
-        {
-          active: skyLayers.constellationBoundaries,
-          hint: '国际天文联合会 1928 年划定的 88 星座天区界线',
-          id: 'constellationBoundaries',
-          label: '星座边界',
-          onToggle: () => onToggleSkyLayer('constellationBoundaries'),
-        },
-        {
-          active: skyLayers.constellationOnlyPointed,
-          hint: '只绘制视野中心指向的那个星座，其余星座隐藏',
-          id: 'constellationOnlyPointed',
-          label: '仅显示指向星座',
-          onToggle: () => onToggleSkyLayer('constellationOnlyPointed'),
-        },
-      ],
-      detailSubtitle: '星座连线、艺术图画、名称、边界与聚焦',
-      detailTitle: '星座显示设置',
-      icon: 'constellation',
-      id: 'constellation',
-      label: '星座',
-      onPress: () => {
-        const next = !constellationActive;
-        onUpdateSkyLayers({
-          constellationArt: next,
-          constellationLines: next,
-        });
+      {
+        active: skyLayers.constellationArt,
+        hint: '古典神话星图的手绘形象画像',
+        id: 'constellationArt',
+        label: '星座古典艺术画',
+        onToggle: () => onToggleSkyLayer('constellationArt'),
       },
+      {
+        active: skyLayers.constellationLabels,
+        hint: '在星空中标注所有星座的名称',
+        id: 'constellationLabels',
+        label: '星座名称注记',
+        onToggle: () => onToggleSkyLayer('constellationLabels'),
+      },
+      {
+        active: skyLayers.constellationBoundaries,
+        hint: '国际天文联合会 1928 年划定的 88 星座天区界线',
+        id: 'constellationBoundaries',
+        label: '星座边界',
+        onToggle: () => onToggleSkyLayer('constellationBoundaries'),
+      },
+      {
+        active: skyLayers.constellationOnlyPointed,
+        hint: '只绘制视野中心指向的那个星座，其余星座隐藏',
+        id: 'constellationOnlyPointed',
+        label: '仅显示指向星座',
+        onToggle: () => onToggleSkyLayer('constellationOnlyPointed'),
+      },
+    ],
+    detailSubtitle: '星座连线、艺术图画、名称、边界与聚焦',
+    detailTitle: '星座显示设置',
+    icon: 'constellation',
+    id: 'constellation',
+    label: '星座',
+    onPress: () => {
+      const next = !constellationActive;
+      onUpdateSkyLayers({
+        constellationArt: next,
+        constellationLines: next,
+      });
     },
-  ];
+  };
 }
 
 function getEnvironmentAndNightControls({
@@ -506,7 +572,8 @@ type QuickControlParams = {
 
 function getQuickControls(params: QuickControlParams): QuickControlEntry[] {
   return [
-    ...getGridAndConstellationControls(params),
+    getGridControls(params),
+    getConstellationControls(params),
     ...getEnvironmentAndNightControls(params),
   ];
 }
@@ -825,6 +892,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         gridLines={drawerFeature.gridLines}
         insets={insets}
         nightMode={nightMode}
+        onOpenLandscape={() => drawerFeature.open('landscape')}
         onOpenMenu={() => setDrawerOpen(true)}
         onOpenSearch={() => search.openSearch(() => setDrawerOpen(false))}
         onReturnToNow={() => setClock(new Date())}
@@ -966,6 +1034,16 @@ function FeaturePanels({
           onSelect={feature.selectSkyCulture}
         />
       );
+    case 'landscape':
+      return (
+        <LandscapePanel
+          activeId={feature.landscapeId}
+          environment={feature.environment}
+          onClose={feature.close}
+          onSelect={feature.selectLandscape}
+          onUpdateEnvironment={feature.updateEnvironment}
+        />
+      );
     case 'settings':
       return <SettingsPanel activeCity={feature.activeCity} onClose={feature.close} onSelect={feature.selectCity} />;
     case 'tools':
@@ -1016,6 +1094,7 @@ function ReferenceDrawer({ onClose, onOpen }: ReferenceDrawerProps) {
           <Text style={styles.drawerTitle}>{translate('deep_space.menu')}</Text>
         </View>
         <ReferenceDrawerRow icon={<GlossaryIcon />} label="星空述语" onPress={() => onOpen('glossary')} />
+        <ReferenceDrawerRow icon={<LandscapeIcon active={true} />} label="地景与环境" onPress={() => onOpen('landscape')} />
         <ReferenceDrawerRow icon={<CalendarIcon />} label="日历" onPress={() => onOpen('calendar')} />
         <ReferenceDrawerRow icon={<ObservationIcon />} label="观测工具" onPress={() => onOpen('tools')} />
         <ReferenceDrawerRow icon={<SettingsIcon />} label="设置" onPress={() => onOpen('settings')} />

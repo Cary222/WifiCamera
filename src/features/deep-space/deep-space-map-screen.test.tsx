@@ -24,7 +24,9 @@ const mockComputeEvents = jest.fn(async () => EVENTS_FIXTURE);
 const mockComputeTonight = jest.fn(async () => TONIGHT_FIXTURE);
 const mockReload = jest.fn();
 const mockSearchTarget = jest.fn();
+const mockSetEnvironment = jest.fn();
 const mockSetGridLines = jest.fn();
+const mockSetLandscape = jest.fn();
 const mockSetLocation = jest.fn();
 const mockSetSkyCulture = jest.fn();
 const mockSetSkyLayers = jest.fn();
@@ -123,8 +125,10 @@ jest.mock('@/features/stellarium/stellarium-view', () => {
         gotoRaDec: mockGotoRaDec,
         reload: mockReload,
         searchTarget: mockSearchTarget,
+        setEnvironment: mockSetEnvironment,
         setFovFrame: mockSetFovFrame,
         setGridLines: mockSetGridLines,
+        setLandscape: mockSetLandscape,
         setLocation: mockSetLocation,
         setSkyCulture: mockSetSkyCulture,
         setSkyLayers: mockSetSkyLayers,
@@ -419,15 +423,20 @@ describe('deep space 3x2 quick controls', () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
 
-    // 长按网格和线条按钮
+    // 长按网格和线条按钮，展现 6 项完整网格和线条选项
     await user.longPress(screen.getByTestId('deep-space-grid-quick-grid-lines'));
     expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
     expect(screen.getByText('网格和线条设置')).toBeOnTheScreen();
     expect(screen.getByText('地平坐标网格 (Azimuthal)')).toBeOnTheScreen();
     expect(screen.getByText('赤道坐标网格 (JNow)')).toBeOnTheScreen();
+    expect(screen.getByText('赤道坐标网格 (J2000)')).toBeOnTheScreen();
+    expect(screen.getByText('黄道线 (Ecliptic)')).toBeOnTheScreen();
+    expect(screen.getByText('天赤道 (Celestial Equator)')).toBeOnTheScreen();
     expect(screen.getByText('子午线 (Meridian)')).toBeOnTheScreen();
 
-    // 细粒度切换子午线
+    // 细粒度切换黄道线与子午线
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-ecliptic'));
+    expect(mockSetGridLines).toHaveBeenLastCalledWith({ ecliptic: true });
     await user.press(screen.getByTestId('deep-space-quick-detail-toggle-meridian'));
     expect(mockSetGridLines).toHaveBeenLastCalledWith({ meridian: true });
 
@@ -555,5 +564,42 @@ describe('deep space observation tools and search', () => {
     act(() => mockOnCommandError?.());
     expect(screen.getByTestId('deep-space-map-shell')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-map-search-error')).toHaveTextContent('未找到该天体，请改用标准名称或编号');
+  });
+});
+
+describe('deep space landscape and environment integration', () => {
+  it('opens the landscape panel from the reference drawer', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('地景与环境'));
+
+    expect(await screen.findByTestId('deep-space-landscape-panel')).toBeOnTheScreen();
+  });
+
+  it('sends the chosen landscape to the engine', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('地景与环境'));
+    await user.press(await screen.findByTestId('deep-space-landscape-option-ocean'));
+
+    expect(mockSetLandscape).toHaveBeenCalledWith('ocean');
+  });
+
+  it('sends environment changes to the engine', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('地景与环境'));
+    await user.press(await screen.findByTestId('deep-space-landscape-toggle-cardinals'));
+
+    expect(mockSetEnvironment).toHaveBeenCalledWith({ cardinals: false });
+  });
+
+  it('escapes the quick detail sheet and opens the landscape panel on long pressing the quick landscape control', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-landscape'));
+
+    expect(await screen.findByTestId('deep-space-landscape-panel')).toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-quick-detail-sheet')).not.toBeOnTheScreen();
   });
 });
