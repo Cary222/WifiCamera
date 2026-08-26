@@ -68,9 +68,24 @@ describe('stellarium service', () => {
     const { bridge, postMessage } = createBridgeHarness();
     bridge.setReady(true);
 
-    bridge.setGridLines({ azimuthal: true, meridian: false });
+    bridge.setGridLines({
+      azimuthal: true,
+      ecliptic: true,
+      equator: true,
+      equatorial_j2000: false,
+      equatorial_jnow: true,
+      meridian: false,
+    });
 
-    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'set_grid_lines', azimuthal: true, meridian: false }));
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({
+      type: 'set_grid_lines',
+      azimuthal: true,
+      ecliptic: true,
+      equator: true,
+      equatorial_j2000: false,
+      equatorial_jnow: true,
+      meridian: false,
+    }));
   });
 
   it('posts the observer location chosen in settings', () => {
@@ -92,6 +107,57 @@ describe('stellarium service', () => {
     bridge.setLocation(120, 0);
 
     expect(onError).toHaveBeenCalledWith('Latitude must be between -90 and 90 degrees.');
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('stellarium landscape and environment bridge', () => {
+  it('posts the landscape chosen from the landscape panel', () => {
+    const { bridge, postMessage } = createBridgeHarness();
+    bridge.setReady(true);
+
+    bridge.setLandscape('winterfield');
+
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'set_landscape', id: 'winterfield' }));
+  });
+
+  it('rejects a landscape id that is not a simple identifier', () => {
+    const onError = jest.fn();
+    const postMessage = jest.fn();
+    const webViewRef = { current: { postMessage } } as unknown as RefObject<WebView | null>;
+    const bridge = createStellariumBridge(webViewRef, { onError });
+    bridge.setReady(true);
+
+    bridge.setLandscape('../../etc/passwd');
+
+    expect(onError).toHaveBeenCalledWith('Landscape id must be a simple identifier.');
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('posts environment knobs from the landscape panel', () => {
+    const { bridge, postMessage } = createBridgeHarness();
+    bridge.setReady(true);
+
+    bridge.setEnvironment({ cardinals: false, fog: false, turbidity: 6 });
+
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({
+      type: 'set_environment',
+      cardinals: false,
+      fog: false,
+      turbidity: 6,
+    }));
+  });
+
+  it('rejects a turbidity outside the range the atmosphere model accepts', () => {
+    const onError = jest.fn();
+    const postMessage = jest.fn();
+    const webViewRef = { current: { postMessage } } as unknown as RefObject<WebView | null>;
+    const bridge = createStellariumBridge(webViewRef, { onError });
+    bridge.setReady(true);
+
+    bridge.setEnvironment({ turbidity: 40 });
+
+    expect(onError).toHaveBeenCalledWith('Turbidity must be between 1 and 10.');
     expect(postMessage).not.toHaveBeenCalled();
   });
 });

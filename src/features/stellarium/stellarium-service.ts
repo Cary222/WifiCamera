@@ -14,8 +14,18 @@ export type StellariumSkyLayers = {
 
 export type StellariumGridLines = {
   azimuthal?: boolean;
+  ecliptic?: boolean;
+  equator?: boolean;
+  equatorial_j2000?: boolean;
   equatorial_jnow?: boolean;
   meridian?: boolean;
+};
+
+export type StellariumEnvironment = {
+  cardinals?: boolean;
+  fog?: boolean;
+  landscapeTint?: [number, number, number, number];
+  turbidity?: number;
 };
 
 export type StellariumCommand
@@ -24,6 +34,8 @@ export type StellariumCommand
     | { type: 'search_target'; name: string }
     | { type: 'toggle_constellations'; visible: boolean }
     | { type: 'set_sky_layers' } & StellariumSkyLayers
+    | { type: 'set_landscape'; id: string }
+    | { type: 'set_environment' } & StellariumEnvironment
     | { type: 'set_sky_culture'; id: string; target?: string }
     | { type: 'set_time'; isoTime: string }
     | { type: 'set_grid_lines' } & StellariumGridLines
@@ -70,6 +82,8 @@ export type StellariumBridge = {
   searchTarget: (name: string) => void;
   toggleConstellations: (visible: boolean) => void;
   setSkyLayers: (layers: StellariumSkyLayers) => void;
+  setLandscape: (id: string) => void;
+  setEnvironment: (patch: StellariumEnvironment) => void;
   setSkyCulture: (id: string, target?: string) => void;
   setTime: (date: Date) => void;
   setGridLines: (lines: StellariumGridLines) => void;
@@ -123,6 +137,22 @@ function validate(command: StellariumCommand): string | undefined {
       if ([command.atmosphere, command.constellationArt, command.constellationBoundaries, command.constellationLabels, command.constellationLines, command.constellationOnlyPointed, command.landscape].some(value => value !== undefined && typeof value !== 'boolean'))
         return 'Sky layer values must be booleans.';
       break;
+    case 'set_landscape':
+      if (typeof command.id !== 'string' || !/^[\w-]+$/.test(command.id))
+        return 'Landscape id must be a simple identifier.';
+      break;
+    case 'set_environment':
+      if ([command.cardinals, command.fog].some(value => value !== undefined && typeof value !== 'boolean'))
+        return 'Environment toggles must be booleans.';
+      if (command.turbidity !== undefined && (!isFiniteNumber(command.turbidity) || command.turbidity < 1 || command.turbidity > 10))
+        return 'Turbidity must be between 1 and 10.';
+      if (command.landscapeTint !== undefined
+        && (!Array.isArray(command.landscapeTint)
+          || command.landscapeTint.length !== 4
+          || command.landscapeTint.some(value => !isFiniteNumber(value) || value < 0 || value > 1))) {
+        return 'Landscape tint must be four values between 0 and 1.';
+      }
+      break;
     case 'set_sky_culture':
       if (typeof command.id !== 'string' || !/^[\w-]+$/.test(command.id))
         return 'Sky culture id must be a simple identifier.';
@@ -134,8 +164,16 @@ function validate(command: StellariumCommand): string | undefined {
         return 'Time must be a valid ISO timestamp.';
       break;
     case 'set_grid_lines':
-      if ([command.azimuthal, command.equatorial_jnow, command.meridian].some(value => value !== undefined && typeof value !== 'boolean'))
+      if ([
+        command.azimuthal,
+        command.ecliptic,
+        command.equator,
+        command.equatorial_j2000,
+        command.equatorial_jnow,
+        command.meridian,
+      ].some(value => value !== undefined && typeof value !== 'boolean')) {
         return 'Grid line values must be booleans.';
+      }
       break;
     case 'set_location':
       if (!isFiniteNumber(command.latitudeDeg) || command.latitudeDeg < -90 || command.latitudeDeg > 90)
@@ -220,6 +258,8 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
     setSkyCulture: (id, target) => send({ type: 'set_sky_culture', id, ...(target ? { target } : {}) }),
     setTime: date => send({ type: 'set_time', isoTime: date.toISOString() }),
     setGridLines: lines => send({ type: 'set_grid_lines', ...lines }),
+    setLandscape: id => send({ type: 'set_landscape', id }),
+    setEnvironment: patch => send({ type: 'set_environment', ...patch }),
     setLocation: (latitudeDeg, longitudeDeg) => send({ type: 'set_location', latitudeDeg, longitudeDeg }),
     setFovFrame: (fovDeg, sensorW, sensorH) => send({ type: 'set_fov_frame', fovDeg, sensorW, sensorH }),
     computeTonight: (date, observer) => request<TonightReport>(requestId => ({
