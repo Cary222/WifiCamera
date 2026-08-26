@@ -15,6 +15,7 @@ import { CameraWebSocketService } from './services/websocket-service';
 import {
   getActiveTransport,
   getTransportPreference,
+  probeTransportReachability,
   probeTransports,
   setActiveTransport,
   setTransportPreference,
@@ -111,6 +112,11 @@ type CameraState = {
   transportPreference: CameraTransportPreference;
   /** True while a probe is in flight, preventing re-entrant probes. */
   transportProbing: boolean;
+  /**
+   * Per-link reachability from the last probe, for the connection UI.
+   * `null` means "not probed yet", which must not be shown as "unreachable".
+   */
+  transportReachability: Record<CameraTransport, boolean> | null;
 
   landscapeShutterMode: LandscapeShutterMode;
   landscapeCaptureMode: LandscapeCaptureMode;
@@ -162,6 +168,8 @@ type CameraState = {
   disconnect: () => void;
   initTransport: () => void;
   switchTransport: (preference: CameraTransportPreference) => void;
+  /** Refresh per-link reachability for the connection UI. */
+  refreshTransportReachability: () => Promise<void>;
   sendCommand: (message: CameraJsonMessage) => void;
   sendCommandWait: (
     instruction: string,
@@ -501,6 +509,7 @@ const _useCameraStore = create<CameraState>(set => ({
   transport: getActiveTransport(),
   transportPreference: getTransportPreference(),
   transportProbing: false,
+  transportReachability: null,
   showConnectionModal: false,
 
   landscapeShutterMode: 'auto',
@@ -589,6 +598,9 @@ const _useCameraStore = create<CameraState>(set => ({
     lastProbeAt = Date.now();
     set({ transportProbing: true });
     console.log('[CONN]', 'auto 模式，开始探测传输方式', { preferredTransport: activeTransport });
+    // Refresh the per-link view alongside the probe that picks the transport,
+    // so the UI never shows reachability that contradicts the active link.
+    void _useCameraStore.getState().refreshTransportReachability();
     void probeTransports(activeTransport)
       .then((reachable) => {
         console.log('[CONN]', '探测结果', { reachable, currentTransport: _useCameraStore.getState().transport });
@@ -605,6 +617,10 @@ const _useCameraStore = create<CameraState>(set => ({
         console.log('[CONN]', '探测完成');
         set({ transportProbing: false });
       });
+  },
+  refreshTransportReachability: async () => {
+    const reachability = await probeTransportReachability();
+    set({ transportReachability: reachability });
   },
   switchTransport: (preference) => {
     setTransportPreference(preference);

@@ -26,7 +26,7 @@ const SEGMENT_WIDTH = 62;
  * Pinning matters during debugging — auto mode can legitimately land on either
  * link, which makes it ambiguous which path a failure came from.
  */
-export function TransportSelector() {
+export function TransportSelector({ standalone = false }: { standalone?: boolean } = {}) {
   const preference = useCameraStore.use.transportPreference();
   const transport = useCameraStore.use.transport();
   const probing = useCameraStore.use.transportProbing();
@@ -61,6 +61,37 @@ export function TransportSelector() {
       ? translate('settings.transport_wifi')
       : translate('settings.transport_usb');
 
+  const segments = (
+    <View style={[styles.container, { borderColor }]}>
+      <Animated.View style={[styles.indicator, indicatorStyle]} />
+      {OPTIONS.map(option => (
+        <Pressable
+          key={option.value}
+          style={styles.button}
+          onPress={() => handleSelect(option.value)}
+        >
+          <Text style={styles.text} tx={option.label as Parameters<typeof translate>[0]} />
+        </Pressable>
+      ))}
+    </View>
+  );
+
+  // Inside the connection modal the label sits above the control, and each
+  // link's reachability is shown so a failure points at the right cable.
+  if (standalone) {
+    return (
+      <View>
+        <View className="flex-row items-center justify-between">
+          {segments}
+          <TransportReachability />
+        </View>
+        <Text className="mt-2 text-[12px] text-white/50">
+          {`${translate('settings.transport_hint')} · ${activeLabel}`}
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View className="mx-4 mb-5 flex-row items-center justify-between rounded-[15px] border border-neutral-200 bg-white px-5 py-4 dark:border-[#48484880] dark:bg-[#111113]">
       <View>
@@ -69,18 +100,47 @@ export function TransportSelector() {
           {`${translate('settings.transport_hint')} · ${activeLabel}`}
         </Text>
       </View>
-      <View style={[styles.container, { borderColor }]}>
-        <Animated.View style={[styles.indicator, indicatorStyle]} />
-        {OPTIONS.map(option => (
-          <Pressable
-            key={option.value}
-            style={styles.button}
-            onPress={() => handleSelect(option.value)}
-          >
-            <Text style={styles.text} tx={option.label as Parameters<typeof translate>[0]} />
-          </Pressable>
-        ))}
-      </View>
+      {segments}
+    </View>
+  );
+}
+
+/**
+ * Live per-link reachability dots.
+ *
+ * Renders nothing until the first probe finishes: an unprobed link must not
+ * be shown as unreachable, or the UI would blame a cable that is actually fine.
+ */
+function TransportReachability() {
+  const reachability = useCameraStore.use.transportReachability();
+  const probing = useCameraStore.use.transportProbing();
+
+  if (probing) {
+    return (
+      <Text className="text-[12px] text-white/50">
+        {translate('settings.transport_probing')}
+      </Text>
+    );
+  }
+
+  if (!reachability)
+    return null;
+
+  return (
+    <View className="flex-row items-center gap-3">
+      {(['usb', 'wifi'] as const).map(link => (
+        <View key={link} className="flex-row items-center gap-1.5">
+          <View
+            style={[
+              styles.dot,
+              { backgroundColor: reachability[link] ? '#C8E733' : '#6B7280' },
+            ]}
+          />
+          <Text className="text-[12px] text-white/60">
+            {translate(link === 'usb' ? 'settings.transport_usb' : 'settings.transport_wifi')}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
@@ -114,5 +174,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
 });

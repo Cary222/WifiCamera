@@ -5,8 +5,10 @@ import type { WebView } from 'react-native-webview';
 export type StellariumSkyLayers = {
   atmosphere?: boolean;
   constellationArt?: boolean;
+  constellationBoundaries?: boolean;
   constellationLabels?: boolean;
   constellationLines?: boolean;
+  constellationOnlyPointed?: boolean;
   landscape?: boolean;
 };
 
@@ -118,7 +120,7 @@ function validate(command: StellariumCommand): string | undefined {
         return 'Constellation visibility must be a boolean.';
       break;
     case 'set_sky_layers':
-      if ([command.atmosphere, command.constellationArt, command.constellationLabels, command.constellationLines, command.landscape].some(value => value !== undefined && typeof value !== 'boolean'))
+      if ([command.atmosphere, command.constellationArt, command.constellationBoundaries, command.constellationLabels, command.constellationLines, command.constellationOnlyPointed, command.landscape].some(value => value !== undefined && typeof value !== 'boolean'))
         return 'Sky layer values must be booleans.';
       break;
     case 'set_sky_culture':

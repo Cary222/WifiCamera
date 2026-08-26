@@ -369,6 +369,11 @@
           stel.lookAt(forward, 0);
         } catch {}
       }
+      /** Some builds omit optional module flags; a throw here must not skip the rest of a layer batch. */
+      function setModuleFlag(module, key, value) {
+        if (!module) return;
+        try { module[key] = value; } catch {}
+      }
 
       function execute(message) {
         switch (message.type) {
@@ -391,17 +396,19 @@
             return;
           case 'set_sky_layers':
             if (typeof message.landscape === 'boolean')
-              stel.core.landscapes.visible = message.landscape;
+              setModuleFlag(stel.core.landscapes, 'visible', message.landscape);
             if (typeof message.atmosphere === 'boolean')
-              stel.core.atmosphere.visible = message.atmosphere;
+              setModuleFlag(stel.core.atmosphere, 'visible', message.atmosphere);
             if (typeof message.constellationArt === 'boolean')
-              stel.core.constellations.images_visible = message.constellationArt;
-            if (typeof message.constellationLabels === 'boolean') {
-              stel.core.constellations.show_only_pointed = false;
-              stel.core.constellations.labels_visible = message.constellationLabels;
-            }
+              setModuleFlag(stel.core.constellations, 'images_visible', message.constellationArt);
+            if (typeof message.constellationBoundaries === 'boolean')
+              setModuleFlag(stel.core.constellations, 'bounds_visible', message.constellationBoundaries);
+            if (typeof message.constellationLabels === 'boolean')
+              setModuleFlag(stel.core.constellations, 'labels_visible', message.constellationLabels);
+            if (typeof message.constellationOnlyPointed === 'boolean')
+              setModuleFlag(stel.core.constellations, 'show_only_pointed', message.constellationOnlyPointed);
             if (typeof message.constellationLines === 'boolean')
-              stel.core.constellations.lines_visible = message.constellationLines;
+              setModuleFlag(stel.core.constellations, 'lines_visible', message.constellationLines);
             forceRender();
             return;
           case 'set_sky_culture': {
@@ -492,8 +499,10 @@
           // Roboto has no CJK glyphs, so Chinese needs the bundled Noto subset.
           const uiFont = window.__STEL_LANG === 'zh' ? 'fonts/NotoSansSC-Subset.ttf' : 'fonts/Roboto-Regular.ttf';
           const uiFontBold = window.__STEL_LANG === 'zh' ? 'fonts/NotoSansSC-Subset.ttf' : 'fonts/Roboto-Bold.ttf';
-          stel.setFont('regular', assetUrl(uiFont), 1.38);
-          stel.setFont('bold', assetUrl(uiFontBold), 1.38);
+          // Font loading is asynchronous. A malformed font must report its error
+          // without becoming an unhandled rejection that obscures skyculture failures.
+          void stel.setFont('regular', assetUrl(uiFont)).catch(reportError);
+          void stel.setFont('bold', assetUrl(uiFontBold)).catch(reportError);
           core.stars.addDataSource({ url: assetUrl('data/stars') });
           core.dsos.addDataSource({ url: assetUrl('data/dso') });
           core.skycultures.addDataSource({ url: assetUrl('data/skycultures/western'), key: 'western' });
@@ -503,6 +512,7 @@
           core.landscapes.visible = true;
           core.constellations.images_visible = true;
           core.constellations.lines_visible = true;
+          core.constellations.bounds_visible = false;
           // Desktop Stellarium labels every constellation, not just the selected one.
           core.constellations.show_only_pointed = false;
           core.constellations.labels_visible = true;

@@ -171,8 +171,10 @@ describe('deep space map screen', () => {
     expect(screen.getByTestId('stellarium-canvas')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-reference-menu')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-reference-search')).toBeOnTheScreen();
-    expect(screen.getByTestId('deep-space-reference-layers')).toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-reference-layers')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-reference-layers-panel')).not.toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-reference-compass')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-reference-compass-instrument')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-reference-time')).toBeOnTheScreen();
     expect(screen.queryByTestId('deep-space-map-title-pill')).not.toBeOnTheScreen();
   });
@@ -182,20 +184,30 @@ describe('deep space map screen', () => {
 
     act(() => mockOnBearingChange?.(90));
     expect(screen.getByTestId('deep-space-reference-compass-rose')).toHaveStyle({ transform: [{ rotate: '-90deg' }] });
+    expect(screen.getByTestId('deep-space-reference-compass-azimuth')).toHaveTextContent('90°');
     expect(screen.getByTestId('deep-space-horizon-bearing')).toHaveTextContent('东');
   });
 
-  it('keeps the compass pointing north until the engine reports a bearing', () => {
+  it('keeps the compass pointing north and absolutely centered until the engine reports a bearing', () => {
     setup(<DeepSpaceMapScreen />);
+    expect(screen.getByTestId('deep-space-reference-compass-center')).toHaveStyle({
+      alignItems: 'center',
+      left: 0,
+      position: 'absolute',
+      right: 0,
+    });
     expect(screen.getByTestId('deep-space-reference-compass-rose')).toHaveStyle({ transform: [{ rotate: '-0deg' }] });
+    expect(screen.getByTestId('deep-space-reference-compass-azimuth')).toHaveTextContent('0°');
     expect(screen.getByTestId('deep-space-horizon-bearing')).toHaveTextContent('北');
   });
 
-  it('opens a layer panel and toggles the native landscape layer', async () => {
+  it('keeps layer switching in the quick control panel without the redundant layer button', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
-    await user.press(screen.getByTestId('deep-space-reference-layers'));
-    expect(screen.getByTestId('deep-space-reference-layers-panel')).toBeOnTheScreen();
-    await user.press(screen.getByTestId('deep-space-layer-landscape'));
+    expect(screen.queryByTestId('deep-space-reference-layers')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-reference-layers-panel')).not.toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.press(screen.getByTestId('deep-space-grid-quick-landscape'));
     expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ landscape: false });
   });
 
@@ -430,6 +442,8 @@ describe('deep space 3x2 quick controls', () => {
     expect(screen.getByText('星座连线')).toBeOnTheScreen();
     expect(screen.getByText('星座古典艺术画')).toBeOnTheScreen();
     expect(screen.getByText('星座名称注记')).toBeOnTheScreen();
+    expect(screen.getByText('星座边界')).toBeOnTheScreen();
+    expect(screen.getByText('仅显示指向星座')).toBeOnTheScreen();
   });
 
   it('sends alternating sky-layer commands when the same switch is tapped twice in a row', async () => {
@@ -445,6 +459,18 @@ describe('deep space 3x2 quick controls', () => {
 
     expect(mockSetSkyLayers).toHaveBeenNthCalledWith(2, { constellationLabels: false });
     expect(mockSetSkyLayers).toHaveBeenNthCalledWith(3, { constellationLabels: true });
+  });
+
+  it('sends the two advanced constellation display switches to the engine', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-constellation'));
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-constellationBoundaries'));
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-constellationOnlyPointed'));
+
+    expect(mockSetSkyLayers).toHaveBeenNthCalledWith(2, { constellationBoundaries: true });
+    expect(mockSetSkyLayers).toHaveBeenNthCalledWith(3, { constellationOnlyPointed: true });
   });
 });
 
