@@ -14,6 +14,12 @@ const required = [
   'data/skycultures/western/index.json',
   'data/meteor-showers.json',
   'data/landscapes/guereins/Norder2/Dir0/Npix0.webp',
+  'landscapes.json',
+  'data/landscapes/winterfield/properties',
+  'data/landscapes/champagne_castle/properties',
+  'data/landscapes/kloppenheim/properties',
+  'data/landscapes/garching/properties',
+  'data/landscapes/ocean/properties',
 ];
 const missing = [];
 for (const relativePath of required) {
