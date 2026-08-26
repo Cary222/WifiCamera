@@ -6,11 +6,13 @@
   <title>Stellarium</title>
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none;position:fixed;background:#05070b}
-    canvas{display:block;width:100%;height:100%;touch-action:none;user-select:none}
+    canvas#sky{display:block;width:100%;height:100%;touch-action:none;user-select:none}
+    canvas#overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10;transform:translateZ(0)}
   </style>
 </head>
 <body>
   <canvas id="sky"></canvas>
+  <canvas id="overlay"></canvas>
   <script src="stellarium-web-engine.js"></script>
   <script>
     (() => {
@@ -18,6 +20,7 @@
       const pendingCommands = [];
       const pendingMessages = [];
       const loadedSkyCultures = new Set(['western']);
+      const loadedLandscapes = new Set(['guereins']);
       let flushTimer = null;
       function flushMessages() {
         if (!window.ReactNativeWebView?.postMessage) return false;
@@ -37,6 +40,149 @@
 
       let NAMES_ZH = {};
       let lastAzimuthDeg = null;
+
+      const overlayCanvas = document.getElementById('overlay');
+      const overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
+
+      const customGridLines = {
+        ecliptic: false,
+        equator: false,
+        equatorial_j2000: false,
+      };
+
+      const EPSILON_J2000 = 0.409092804; // 23.4392911 deg obliquity of ecliptic J2000.0
+      const COS_EPS = Math.cos(EPSILON_J2000);
+      const SIN_EPS = Math.sin(EPSILON_J2000);
+
+      // Precompute 360 points along the Ecliptic in ICRF frame
+      const ECLIPTIC_POINTS = [];
+      for (let deg = 0; deg < 360; deg += 1) {
+        const rad = deg * Math.PI / 180;
+        ECLIPTIC_POINTS.push([Math.cos(rad), Math.sin(rad) * COS_EPS, Math.sin(rad) * SIN_EPS]);
+      }
+
+      // Precompute 360 points along the Celestial Equator in JNOW frame
+      const EQUATOR_POINTS = [];
+      for (let deg = 0; deg < 360; deg += 1) {
+        const rad = deg * Math.PI / 180;
+        EQUATOR_POINTS.push([Math.cos(rad), Math.sin(rad), 0]);
+      }
+
+      // Precompute J2000 grid lines in ICRF frame
+      const J2000_PARALLELS = [-80, -60, -40, -20, 0, 20, 40, 60, 80].map(decDeg => {
+        const decRad = decDeg * Math.PI / 180;
+        const cosDec = Math.cos(decRad);
+        const sinDec = Math.sin(decRad);
+        const pts = [];
+        for (let raDeg = 0; raDeg < 360; raDeg += 2) {
+          const raRad = raDeg * Math.PI / 180;
+          pts.push([cosDec * Math.cos(raRad), cosDec * Math.sin(raRad), sinDec]);
+        }
+        return pts;
+      });
+
+      const J2000_MERIDIANS = Array.from({ length: 12 }, (_, i) => i * 30).map(raDeg => {
+        const raRad = raDeg * Math.PI / 180;
+        const cosRa = Math.cos(raRad);
+        const sinRa = Math.sin(raRad);
+        const pts = [];
+        for (let decDeg = -80; decDeg <= 80; decDeg += 2) {
+          const decRad = decDeg * Math.PI / 180;
+          pts.push([Math.cos(decRad) * cosRa, Math.cos(decRad) * sinRa, Math.sin(decRad)]);
+        }
+        return pts;
+      });
+
+      function projectToOverlay(vView, width, height, fovRad) {
+        if (!vView || vView[2] >= 0.99) return null;
+        const denom = 0.5 * (1.0 - vView[2]);
+        const px = vView[0] / denom;
+        const py = vView[1] / denom;
+        const scale = (height / 2) / (2 * Math.tan(fovRad / 4));
+        return {
+          x: width / 2 + px * scale,
+          y: height / 2 - py * scale,
+        };
+      }
+
+      function drawCustomLine(points3d, frameName, style, isClosed = true) {
+        if (!stel || !overlayCtx || !points3d.length) return;
+        const obs = stel.core.observer;
+        const fovRad = stel.core.fov;
+        const dpr = window.devicePixelRatio || 1;
+        const width = overlayCanvas.width;
+        const height = overlayCanvas.height;
+
+        overlayCtx.save();
+        overlayCtx.strokeStyle = style.color || '#E5B832';
+        overlayCtx.lineWidth = (style.width || 2.0) * dpr;
+        if (style.dash) overlayCtx.setLineDash(style.dash.map(d => d * dpr));
+
+        let inPath = false;
+        let lastX = 0;
+        let lastY = 0;
+        overlayCtx.beginPath();
+        const count = isClosed ? points3d.length + 1 : points3d.length;
+
+        for (let i = 0; i < count; i++) {
+          const pt = points3d[i % points3d.length];
+          const vView = stel.convertFrame(obs, frameName, 'VIEW', [pt[0], pt[1], pt[2], 0]);
+          const screenPt = projectToOverlay(vView, width, height, fovRad);
+
+          if (screenPt) {
+            const distSq = (screenPt.x - lastX) ** 2 + (screenPt.y - lastY) ** 2;
+            if (!inPath || distSq > (width * 1.2) ** 2) {
+              overlayCtx.moveTo(screenPt.x, screenPt.y);
+              inPath = true;
+            } else {
+              overlayCtx.lineTo(screenPt.x, screenPt.y);
+            }
+            lastX = screenPt.x;
+            lastY = screenPt.y;
+          } else {
+            inPath = false;
+          }
+        }
+        overlayCtx.stroke();
+        overlayCtx.restore();
+      }
+
+      function renderCustomOverlay() {
+        requestAnimationFrame(renderCustomOverlay);
+        if (!stel || !overlayCanvas || !overlayCtx) return;
+
+        const skyCanvas = document.getElementById('sky');
+        const dpr = window.devicePixelRatio || 1;
+        const rect = skyCanvas.getBoundingClientRect();
+        const displayW = Math.round(rect.width * dpr);
+        const displayH = Math.round(rect.height * dpr);
+
+        if (overlayCanvas.width !== displayW || overlayCanvas.height !== displayH) {
+          overlayCanvas.width = displayW;
+          overlayCanvas.height = displayH;
+        }
+
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+        const hasCustom = customGridLines.ecliptic || customGridLines.equator || customGridLines.equatorial_j2000;
+        if (!hasCustom) return;
+
+        if (customGridLines.equator) {
+          drawCustomLine(EQUATOR_POINTS, 'JNOW', { color: 'rgba(51, 161, 253, 0.95)', width: 2.0 }, true);
+        }
+        if (customGridLines.ecliptic) {
+          drawCustomLine(ECLIPTIC_POINTS, 'ICRF', { color: 'rgba(255, 204, 0, 0.95)', width: 2.0 }, true);
+        }
+        if (customGridLines.equatorial_j2000) {
+          for (const parallel of J2000_PARALLELS) {
+            drawCustomLine(parallel, 'ICRF', { color: 'rgba(120, 175, 245, 0.45)', width: 1.2, dash: [6, 6] }, true);
+          }
+          for (const meridian of J2000_MERIDIANS) {
+            drawCustomLine(meridian, 'ICRF', { color: 'rgba(120, 175, 245, 0.45)', width: 1.2, dash: [6, 6] }, false);
+          }
+        }
+      }
+      if (overlayCanvas) requestAnimationFrame(renderCustomOverlay);
 
       // Constellation labels are drawn from the sky-culture JSON, never through translateFn,
       // so Chinese names have to be swapped into the payload before the engine parses it.
@@ -411,6 +557,34 @@
               setModuleFlag(stel.core.constellations, 'lines_visible', message.constellationLines);
             forceRender();
             return;
+          case 'set_landscape': {
+            if (typeof message.id !== 'string' || !/^[\w-]+$/.test(message.id)) return reportError('Invalid landscape.');
+            if (message.id === 'none') {
+              setModuleFlag(stel.core.landscapes, 'visible', false);
+              forceRender();
+              return;
+            }
+            if (!loadedLandscapes.has(message.id)) {
+              stel.core.landscapes.addDataSource({ url: assetUrl(`data/landscapes/${message.id}`), key: message.id });
+              loadedLandscapes.add(message.id);
+            }
+            stel.core.landscapes.current_id = message.id;
+            setModuleFlag(stel.core.landscapes, 'visible', true);
+            forceRender();
+            return;
+          }
+          case 'set_environment':
+            if (typeof message.fog === 'boolean')
+              setModuleFlag(stel.core.landscapes, 'fog_visible', message.fog);
+            if (typeof message.cardinals === 'boolean')
+              setModuleFlag(stel.core.cardinals, 'visible', message.cardinals);
+            if (typeof message.turbidity === 'number')
+              setModuleFlag(stel.core.atmosphere, 'turbidity', message.turbidity);
+            if (Array.isArray(message.landscapeTint) && message.landscapeTint.length === 4) {
+              try { stel.core.landscapes.current.color = message.landscapeTint; } catch {}
+            }
+            forceRender();
+            return;
           case 'set_sky_culture': {
             if (typeof message.id !== 'string' || !/^[\w-]+$/.test(message.id)) return reportError('Invalid sky culture.');
             if (message.target !== undefined && (typeof message.target !== 'string' || !/^[\w .-]+$/.test(message.target))) return reportError('Invalid sky culture target.');
@@ -436,6 +610,15 @@
               if (typeof message[line] !== 'boolean') continue;
               const module = stel.getModule(`core.lines.${line}`);
               if (module) module.visible = message[line];
+            }
+            if (typeof message.ecliptic === 'boolean') {
+              customGridLines.ecliptic = message.ecliptic;
+            }
+            if (typeof message.equator === 'boolean') {
+              customGridLines.equator = message.equator;
+            }
+            if (typeof message.equatorial_j2000 === 'boolean') {
+              customGridLines.equatorial_j2000 = message.equatorial_j2000;
             }
             forceRender();
             return;
