@@ -4,7 +4,7 @@ import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view
 import * as React from 'react';
 import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Line, Path, Polygon, Rect } from 'react-native-svg';
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Polygon, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import SKY_CULTURES_DATA from '@/assets/stellar/skycultures-full.json';
 import { Text } from '@/components/ui';
 import { CalendarPanel } from '@/features/deep-space/calendar/calendar-panel';
@@ -30,8 +30,10 @@ const OVERLAY = {
 const DEFAULT_SKY_LAYERS: Required<StellariumSkyLayers> = {
   atmosphere: true,
   constellationArt: true,
+  constellationBoundaries: false,
   constellationLabels: true,
   constellationLines: true,
+  constellationOnlyPointed: false,
   landscape: true,
 };
 
@@ -53,6 +55,8 @@ const OBSERVER_CITIES = [
 const REGION_LABELS: Record<string, string> = SKY_CULTURES_DATA.regionsZh;
 
 const BEARING_LABELS = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+const COMPASS_MAJOR_TICKS = Array.from({ length: 12 }, (_, index) => index * 30);
+const COMPASS_MINOR_TICKS = Array.from({ length: 60 }, (_, index) => index * 6).filter(angle => angle % 30 !== 0);
 
 function bearingLabel(azimuthDeg: number): string {
   return BEARING_LABELS[Math.round(((azimuthDeg % 360) + 360) % 360 / 45) % 8];
@@ -69,11 +73,6 @@ type IconButtonProps = {
   children: React.ReactNode;
   onPress: () => void;
   testID: string;
-};
-
-type LayerPanelProps = {
-  layers: typeof DEFAULT_SKY_LAYERS;
-  onToggle: (key: SkyLayerKey) => void;
 };
 
 type DrawerFeature = 'calendar' | 'glossary' | 'settings' | 'tools';
@@ -144,7 +143,6 @@ function StarMapOverlayControls({
   gridLines,
   insets,
   nightMode,
-  onOpenLayers,
   onOpenMenu,
   onOpenSearch,
   onReturnToNow,
@@ -160,7 +158,6 @@ function StarMapOverlayControls({
   gridLines: typeof DEFAULT_GRID_LINES;
   insets: { bottom: number; top: number };
   nightMode: boolean;
-  onOpenLayers: () => void;
   onOpenMenu: () => void;
   onOpenSearch: () => void;
   onReturnToNow: () => void;
@@ -205,19 +202,20 @@ function StarMapOverlayControls({
             }}
             open={quickPanelOpen}
           />
-          {!quickPanelOpen && (
-            <IconButton
-              accessibilityLabel={translate('deep_space.layers')}
-              onPress={onOpenLayers}
-              testID="deep-space-reference-layers"
-            >
-              <LayersIcon />
-            </IconButton>
-          )}
         </View>
-        {!quickPanelOpen && <Compass azimuthDeg={azimuthDeg} />}
-        {!quickPanelOpen && <TimeControl clock={clock} onReturnToNow={onReturnToNow} />}
+        <View style={styles.timeControlWrapper}>
+          {!quickPanelOpen && <TimeControl clock={clock} onReturnToNow={onReturnToNow} />}
+        </View>
       </View>
+      {!quickPanelOpen && (
+        <View
+          pointerEvents="none"
+          style={[styles.compassCenterWrapper, { bottom: insets.bottom + 14 }]}
+          testID="deep-space-reference-compass-center"
+        >
+          <Compass azimuthDeg={azimuthDeg} />
+        </View>
+      )}
       {currentDetailControl && (
         <QuickControlDetailSheet
           items={currentDetailControl.detailItems}
@@ -286,8 +284,8 @@ function QuickControlDetailSheet({
                 <Text style={styles.quickDetailRowLabel}>{item.label}</Text>
                 <Text style={styles.quickDetailRowHint}>{item.hint}</Text>
               </View>
-              <View style={[styles.layerSwitch, item.active && styles.layerSwitchActive]}>
-                <View style={[styles.layerKnob, item.active && styles.layerKnobActive]} />
+              <View style={[styles.quickDetailSwitch, item.active && styles.quickDetailSwitchActive]}>
+                <View style={[styles.quickDetailKnob, item.active && styles.quickDetailKnobActive]} />
               </View>
             </Pressable>
           ))}
@@ -382,8 +380,22 @@ function getGridAndConstellationControls({
           label: '星座名称注记',
           onToggle: () => onToggleSkyLayer('constellationLabels'),
         },
+        {
+          active: skyLayers.constellationBoundaries,
+          hint: '国际天文联合会 1928 年划定的 88 星座天区界线',
+          id: 'constellationBoundaries',
+          label: '星座边界',
+          onToggle: () => onToggleSkyLayer('constellationBoundaries'),
+        },
+        {
+          active: skyLayers.constellationOnlyPointed,
+          hint: '只绘制视野中心指向的那个星座，其余星座隐藏',
+          id: 'constellationOnlyPointed',
+          label: '仅显示指向星座',
+          onToggle: () => onToggleSkyLayer('constellationOnlyPointed'),
+        },
       ],
-      detailSubtitle: '星座几何连线、艺术图画与名称',
+      detailSubtitle: '星座连线、艺术图画、名称、边界与聚焦',
       detailTitle: '星座显示设置',
       icon: 'constellation',
       id: 'constellation',
@@ -784,7 +796,6 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const [currentCulture, setCurrentCulture] = React.useState('western');
   const drawerFeature = useDrawerFeature({ currentCulture, setCurrentCulture, stellaRef });
   const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [layersOpen, setLayersOpen] = React.useState(false);
   const [nightMode, setNightMode] = React.useState(false);
   const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(stellaRef);
   const search = useStarMapSearch(stellaRef);
@@ -793,7 +804,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
     const interval = globalThis.setInterval(() => setClock(new Date()), 60_000);
     return () => globalThis.clearInterval(interval);
   }, []);
-  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !layersOpen;
+  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open;
 
   return (
     <View testID="deep-space-map-shell" style={styles.root}>
@@ -814,18 +825,8 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         gridLines={drawerFeature.gridLines}
         insets={insets}
         nightMode={nightMode}
-        onOpenLayers={() => {
-          setDrawerOpen(false);
-          setLayersOpen(value => !value);
-        }}
-        onOpenMenu={() => {
-          setLayersOpen(false);
-          setDrawerOpen(true);
-        }}
-        onOpenSearch={() => search.openSearch(() => {
-          setDrawerOpen(false);
-          setLayersOpen(false);
-        })}
+        onOpenMenu={() => setDrawerOpen(true)}
+        onOpenSearch={() => search.openSearch(() => setDrawerOpen(false))}
         onReturnToNow={() => setClock(new Date())}
         onToggleGridLine={drawerFeature.toggleGridLine}
         onToggleNightMode={() => setNightMode(value => !value)}
@@ -843,7 +844,6 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         }}
         showFab={showRestoreFab}
       />
-      {layersOpen && <LayerPanel layers={skyLayers} onToggle={toggleSkyLayer} />}
       {drawerOpen && (
         <ReferenceDrawer
           onClose={() => setDrawerOpen(false)}
@@ -994,35 +994,6 @@ function IconButton({ accessibilityLabel, children, onPress, testID }: IconButto
       testID={testID}
     >
       {children}
-    </Pressable>
-  );
-}
-
-function LayerPanel({ layers, onToggle }: LayerPanelProps) {
-  return (
-    <View testID="deep-space-reference-layers-panel" style={styles.layerPanel}>
-      <LayerToggle active={layers.landscape} label={translate('deep_space.horizon')} onPress={() => onToggle('landscape')} testID="deep-space-layer-landscape" />
-      <LayerToggle active={layers.atmosphere} label={translate('deep_space.atmosphere')} onPress={() => onToggle('atmosphere')} testID="deep-space-layer-atmosphere" />
-      <LayerToggle active={layers.constellationArt} label={translate('deep_space.constellation_art')} onPress={() => onToggle('constellationArt')} testID="deep-space-layer-constellation-art" />
-      <LayerToggle active={layers.constellationLines} label={translate('deep_space.constellations')} onPress={() => onToggle('constellationLines')} testID="deep-space-layer-constellation-lines" />
-    </View>
-  );
-}
-
-function LayerToggle({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID: string }) {
-  return (
-    <Pressable
-      accessibilityLabel={label}
-      accessibilityRole="switch"
-      accessibilityState={{ checked: active }}
-      onPress={onPress}
-      style={styles.layerRow}
-      testID={testID}
-    >
-      <Text style={styles.layerLabel}>{label}</Text>
-      <View style={[styles.layerSwitch, active && styles.layerSwitchActive]}>
-        <View style={[styles.layerKnob, active && styles.layerKnobActive]} />
-      </View>
     </Pressable>
   );
 }
@@ -1493,19 +1464,87 @@ function ReferenceSearchSheet({ error, onChange, onClose, onSubmit, query }: Ref
 }
 
 function Compass({ azimuthDeg }: { azimuthDeg: number }) {
+  const normalizedAzimuth = Math.round(((azimuthDeg % 360) + 360) % 360);
+
   return (
     <View testID="deep-space-reference-compass" style={styles.compass} pointerEvents="none">
       <View testID="deep-space-reference-compass-rose" style={[styles.compassRose, { transform: [{ rotate: `-${azimuthDeg}deg` }] }]}>
-        <Svg height={84} viewBox="0 0 84 84" width={84}>
-          <Circle cx={42} cy={42} fill="rgba(20, 22, 25, 0.46)" r={34} stroke="rgba(255,255,255,0.72)" strokeWidth={1.5} />
-          <Line stroke="rgba(255,255,255,0.8)" strokeWidth={1.5} x1={42} x2={42} y1={10} y2={74} />
-          <Line stroke="rgba(255,255,255,0.8)" strokeWidth={1.5} x1={10} x2={74} y1={42} y2={42} />
-          <Polygon fill="#F4F4F4" points="42,14 48,42 42,50 36,42" />
-          <Polygon fill="#DA665A" points="42,70 48,42 42,34 36,42" />
+        <Svg testID="deep-space-reference-compass-instrument" height={112} viewBox="0 0 120 120" width={112}>
+          <Defs>
+            <RadialGradient cx="50%" cy="34%" id="compassBezel" r="68%">
+              <Stop offset="0" stopColor="#4B6176" />
+              <Stop offset="0.48" stopColor="#17222D" />
+              <Stop offset="1" stopColor="#05080D" />
+            </RadialGradient>
+            <RadialGradient cx="50%" cy="38%" id="compassFace" r="64%">
+              <Stop offset="0" stopColor="#26364A" />
+              <Stop offset="0.62" stopColor="#101922" />
+              <Stop offset="1" stopColor="#060A10" />
+            </RadialGradient>
+            <LinearGradient id="compassNorthNeedle" x1="0" x2="0" y1="0" y2="1">
+              <Stop offset="0" stopColor="#FF8A7A" />
+              <Stop offset="0.48" stopColor="#E8443A" />
+              <Stop offset="1" stopColor="#8F171B" />
+            </LinearGradient>
+            <LinearGradient id="compassSouthNeedle" x1="0" x2="0" y1="0" y2="1">
+              <Stop offset="0" stopColor="#F7FBFF" />
+              <Stop offset="0.55" stopColor="#A8C4DC" />
+              <Stop offset="1" stopColor="#506A80" />
+            </LinearGradient>
+          </Defs>
+          <Circle cx={60} cy={60} fill="url(#compassBezel)" r={57} stroke="rgba(255,255,255,0.34)" strokeWidth={1.4} />
+          <Circle cx={60} cy={60} fill="none" r={53} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+          <Circle cx={60} cy={60} fill="url(#compassFace)" r={50} stroke="rgba(126,180,232,0.34)" strokeWidth={1.2} />
+          <Circle cx={60} cy={60} fill="none" opacity={0.55} r={41} stroke="rgba(255,255,255,0.16)" strokeDasharray="2 5" strokeWidth={1} />
+          <Circle cx={60} cy={60} fill="none" r={31} stroke="rgba(93,164,255,0.22)" strokeWidth={1} />
+          {COMPASS_MINOR_TICKS.map(angle => (
+            <Line
+              key={`minor-${angle}`}
+              stroke="rgba(255,255,255,0.28)"
+              strokeLinecap="round"
+              strokeWidth={1}
+              transform={`rotate(${angle} 60 60)`}
+              x1={60}
+              x2={60}
+              y1={10}
+              y2={14}
+            />
+          ))}
+          {COMPASS_MAJOR_TICKS.map(angle => (
+            <Line
+              key={`major-${angle}`}
+              stroke={angle % 90 === 0 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.56)'}
+              strokeLinecap="round"
+              strokeWidth={angle % 90 === 0 ? 2.2 : 1.4}
+              transform={`rotate(${angle} 60 60)`}
+              x1={60}
+              x2={60}
+              y1={8}
+              y2={angle % 90 === 0 ? 18 : 16}
+            />
+          ))}
+          <Line opacity={0.16} stroke="#FFFFFF" strokeWidth={1} x1={60} x2={60} y1={24} y2={96} />
+          <Line opacity={0.16} stroke="#FFFFFF" strokeWidth={1} x1={24} x2={96} y1={60} y2={60} />
+          <SvgText fill="#FFFFFF" fontSize={12} fontWeight="700" textAnchor="middle" x={60} y={29}>北</SvgText>
+          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={94} y={64}>东</SvgText>
+          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={60} y={103}>南</SvgText>
+          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={26} y={64}>西</SvgText>
+          <Polygon fill="url(#compassNorthNeedle)" points="60,18 66,60 60,70 54,60" stroke="rgba(255,255,255,0.38)" strokeWidth={0.8} />
+          <Polygon fill="url(#compassSouthNeedle)" points="60,102 66,60 60,50 54,60" stroke="rgba(5,10,16,0.42)" strokeWidth={0.8} />
+          <Circle cx={60} cy={60} fill="#0A1118" r={8.5} stroke="rgba(255,255,255,0.72)" strokeWidth={1.4} />
+          <Circle cx={60} cy={60} fill="#D9F0FF" r={2.6} />
         </Svg>
-        <Text style={[styles.compassLabel, styles.compassNorth]}>北</Text>
-        <Text style={[styles.compassLabel, styles.compassWest]}>西</Text>
-        <Text style={[styles.compassLabel, styles.compassEast]}>东</Text>
+      </View>
+      <Svg height={112} style={styles.compassFixedOverlay} viewBox="0 0 120 120" width={112}>
+        <Path d="M60 3 L68 16 H52 Z" fill="#F6FAFF" stroke="rgba(17,24,32,0.55)" strokeWidth={1} />
+        <Line stroke="rgba(255,255,255,0.82)" strokeLinecap="round" strokeWidth={1.4} x1={60} x2={60} y1={16} y2={22} />
+        <Path d="M28 38 C40 22, 67 17, 89 30" fill="none" stroke="rgba(255,255,255,0.24)" strokeLinecap="round" strokeWidth={3} />
+      </Svg>
+      <View style={styles.compassReadout}>
+        <Text testID="deep-space-reference-compass-azimuth" style={styles.compassAzimuthText}>
+          {normalizedAzimuth}
+          °
+        </Text>
       </View>
     </View>
   );
@@ -1546,16 +1585,6 @@ function SearchIcon({ color = OVERLAY.text, size = 31 }: { color?: string; size?
     <Svg height={size} viewBox="0 0 32 32" width={size}>
       <Circle cx={14} cy={14} fill="none" r={8} stroke={color} strokeWidth={2.5} />
       <Line stroke={color} strokeLinecap="round" strokeWidth={2.5} x1={20} x2={27} y1={20} y2={27} />
-    </Svg>
-  );
-}
-
-function LayersIcon() {
-  return (
-    <Svg height={35} viewBox="0 0 36 36" width={35}>
-      <Path d="M7 11 18 5l11 6-11 6z" fill="rgba(255,255,255,0.9)" />
-      <Path d="m9 17 9 5 9-5" fill="none" stroke="rgba(255,255,255,0.86)" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} />
-      <Path d="m9 23 9 5 9-5" fill="none" stroke="rgba(255,255,255,0.86)" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} />
     </Svg>
   );
 }
@@ -1796,6 +1825,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
+  compassCenterWrapper: {
+    alignItems: 'center',
+    height: 126,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+  },
+  timeControlWrapper: {
+    alignItems: 'flex-end',
+  },
   leftQuickBar: {
     alignItems: 'flex-end',
     flexDirection: 'row',
@@ -2003,36 +2042,70 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     marginTop: 2,
   },
+  quickDetailSwitch: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 14,
+    height: 28,
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+    width: 48,
+  },
+  quickDetailSwitchActive: {
+    backgroundColor: 'rgba(194, 218, 255, 0.75)',
+  },
+  quickDetailKnob: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 11,
+    height: 22,
+    width: 22,
+  },
+  quickDetailKnobActive: {
+    alignSelf: 'flex-end',
+  },
   nightModeOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(145, 0, 0, 0.48)',
   },
   compass: {
-    alignItems: 'center',
-    height: 92,
-    justifyContent: 'center',
-    marginLeft: 12,
+    elevation: 8,
+    height: 126,
+    shadowColor: '#000000',
+    shadowOffset: { height: 8, width: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    width: 112,
   },
   compassRose: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  compassLabel: {
-    color: OVERLAY.text,
-    fontSize: 10,
-    fontWeight: '700',
+    height: 112,
+    left: 0,
     position: 'absolute',
+    top: 0,
+    width: 112,
   },
-  compassNorth: {
+  compassFixedOverlay: {
+    left: 0,
+    position: 'absolute',
     top: 0,
   },
-  compassWest: {
-    left: -4,
-    top: 38,
+  compassReadout: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(6, 11, 17, 0.82)',
+    borderColor: 'rgba(126, 180, 232, 0.34)',
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    bottom: 0,
+    minWidth: 52,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    position: 'absolute',
   },
-  compassEast: {
-    right: -4,
-    top: 38,
+  compassAzimuthText: {
+    color: '#D9F0FF',
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '700',
+    letterSpacing: 0.8,
   },
   timeControl: {
     alignItems: 'flex-end',
@@ -2120,47 +2193,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
-  },
-  layerPanel: {
-    backgroundColor: 'rgba(30, 32, 36, 0.94)',
-    borderColor: OVERLAY.hairline,
-    borderRadius: 14,
-    borderWidth: 1,
-    bottom: 102,
-    left: 18,
-    position: 'absolute',
-    width: 208,
-  },
-  layerRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 52,
-    paddingHorizontal: 14,
-  },
-  layerLabel: {
-    color: OVERLAY.text,
-    fontSize: 14,
-  },
-  layerSwitch: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 14,
-    height: 28,
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-    width: 48,
-  },
-  layerSwitchActive: {
-    backgroundColor: 'rgba(194, 218, 255, 0.75)',
-  },
-  layerKnob: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 11,
-    height: 22,
-    width: 22,
-  },
-  layerKnobActive: {
-    alignSelf: 'flex-end',
   },
   drawerOverlay: {
     ...StyleSheet.absoluteFillObject,

@@ -51,7 +51,7 @@ $RequestedSerial = $Serial
 $Serial = Resolve-BoardSerial
 Write-Host "[usb-relay] selected board serial: $Serial (mode: $RequestedSerial)"
 
-. (Join-Path $PSScriptRoot 'relay-common.ps1')
+. (Join-Path $root 'relay-common.ps1')
 Initialize-RelayAdbEnvironment -Adb $adb | Out-Null
 $clearedSerials = @(Remove-RelayForwardsForOtherSerials -Adb $adb -KeepSerial $Serial)
 if ($clearedSerials.Count -gt 0) {
@@ -94,7 +94,7 @@ $env:RELAY_WEBRTC_BIND_HOST = "0.0.0.0"
 $env:RELAY_WEBRTC_ADVERTISE_HOST = "10.0.2.2"
 $env:RELAY_WEBRTC_UDP_PORT = "$RelayUdpPort"
 
-Start-Process -FilePath node -ArgumentList @("server.mjs") -WorkingDirectory $PSScriptRoot -WindowStyle Hidden
+Start-Process -FilePath node -ArgumentList @("server.mjs") -WorkingDirectory $root -WindowStyle Hidden
 Start-Sleep -Milliseconds 800
 
 $health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/stream-health" -TimeoutSec 5
@@ -102,7 +102,7 @@ Write-Host "[usb-relay] ready: $($health.mode)"
 Write-Host "[usb-relay] WHEP: http://10.0.2.2:$Port/board-webrtc/cam0/whep"
 Write-Host "[usb-relay] control/image remain: http://10.0.2.2:18999"
 
-$watcher = Join-Path $PSScriptRoot "watch-usb-relay.ps1"
+$watcher = Join-Path $root "watch-usb-relay.ps1"
 Start-Process -FilePath "powershell.exe" -ArgumentList @(
   '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $watcher,
   '-Serial', $RequestedSerial, '-Port', $Port, '-RelayUdpPort', $RelayUdpPort

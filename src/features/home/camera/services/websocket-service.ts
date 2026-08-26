@@ -1,3 +1,4 @@
+/* eslint-disable max-lines-per-function */
 import type {
   CameraJsonMessage,
   CameraWebSocketMessage,
@@ -147,8 +148,9 @@ export class CameraWebSocketService {
       appLogger.error('WS', '控制通道发生错误', {
         url: this.options.url,
         readyState: socket.readyState,
-        event: event.type,
+        event: event?.type,
       });
+      this.options.onStatusChange?.('error');
       // Close socket immediately to force reconnect
       try {
         socket.close();
@@ -157,7 +159,6 @@ export class CameraWebSocketService {
       if (this.socket === socket) {
         this.socket = null;
       }
-      this.options.onStatusChange?.('error');
     };
     socket.onclose = (event) => {
       if (this.socket !== socket)
@@ -167,11 +168,11 @@ export class CameraWebSocketService {
       this.socket = null;
       appLogger.warn('WS', '控制通道已断开', {
         url: this.options.url,
-        code: event.code,
-        reason: event.reason,
-        wasClean: event.wasClean,
+        code: event?.code,
+        reason: event?.reason,
+        wasClean: event?.wasClean,
       });
-      console.warn('[CameraWS] 连接断开:', this.options.url, event.code, event.reason);
+      console.warn('[CameraWS] 连接断开:', this.options.url, event?.code, event?.reason);
       this.options.onStatusChange?.('closed');
       this.scheduleReconnect();
     };

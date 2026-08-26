@@ -23,8 +23,10 @@ describe('stellarium service', () => {
     bridge.setSkyLayers({
       atmosphere: true,
       constellationArt: true,
+      constellationBoundaries: false,
       constellationLabels: true,
       constellationLines: true,
+      constellationOnlyPointed: false,
       landscape: true,
     });
 
@@ -32,8 +34,10 @@ describe('stellarium service', () => {
       type: 'set_sky_layers',
       atmosphere: true,
       constellationArt: true,
+      constellationBoundaries: false,
       constellationLabels: true,
       constellationLines: true,
+      constellationOnlyPointed: false,
       landscape: true,
     }));
   });

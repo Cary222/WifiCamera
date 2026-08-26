@@ -1,8 +1,15 @@
+import type { Buffer } from 'node:buffer';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const sceneHtml = readFileSync(resolve(__dirname, '../../assets/stellar/index.html'), 'utf8');
+const cjkFont = readFileSync(resolve(__dirname, '../../assets/stellar/fonts/NotoSansSC-Subset.ttf'));
 const namesZh = JSON.parse(readFileSync(resolve(__dirname, '../../assets/stellar/names-zh.json'), 'utf8')) as Record<string, string>;
+
+function sfntTableTags(font: Buffer): string[] {
+  const tableCount = font.readUInt16BE(4);
+  return Array.from({ length: tableCount }, (_, index) => font.subarray(12 + index * 16, 16 + index * 16).toString('ascii'));
+}
 const skyCultures = JSON.parse(readFileSync(resolve(__dirname, '../../assets/stellar/skycultures-full.json'), 'utf8')) as { cultures: { id: string; highlight?: string }[] };
 
 describe('stellarium default scene', () => {
@@ -18,8 +25,12 @@ describe('stellarium default scene', () => {
     expect(sceneHtml).toContain('const horizonDirection = stel.s2c(0, 20 * stel.D2R);');
     expect(sceneHtml).toContain('stel.lookAt(horizonDirection, 0);');
     expect(sceneHtml).toContain('case \'set_sky_layers\':');
-    expect(sceneHtml).toContain('stel.core.landscapes.visible = message.landscape;');
-    expect(sceneHtml).toContain('stel.core.constellations.labels_visible = message.constellationLabels;');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.landscapes, \'visible\', message.landscape);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.constellations, \'labels_visible\', message.constellationLabels);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.constellations, \'bounds_visible\', message.constellationBoundaries);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.constellations, \'show_only_pointed\', message.constellationOnlyPointed);');
+    // An unsupported optional flag must not abort the remaining layers in the same batch.
+    expect(sceneHtml).toContain('try { module[key] = value; } catch {}');
   });
 
   it('publishes the live view bearing so the compass can follow the engine', () => {
@@ -43,9 +54,12 @@ describe('stellarium default scene', () => {
     expect(sceneHtml).toContain('window.__STEL_LANG = window.__STEL_LANG || \'en\';');
   });
 
-  it('loads the bundled CJK subset so Chinese labels render as glyphs', () => {
+  it('loads a TrueType CJK subset that the bundled renderer can safely parse', () => {
     expect(sceneHtml).toContain('const uiFont = window.__STEL_LANG === \'zh\' ? \'fonts/NotoSansSC-Subset.ttf\' : \'fonts/Roboto-Regular.ttf\';');
-    expect(sceneHtml).toContain('stel.setFont(\'regular\', assetUrl(uiFont), 1.38);');
+    expect(sfntTableTags(cjkFont)).toContain('glyf');
+    expect(sfntTableTags(cjkFont)).not.toContain('CFF ');
+    expect(sceneHtml).toContain('void stel.setFont(\'regular\', assetUrl(uiFont)).catch(reportError);');
+    expect(sceneHtml).toContain('void stel.setFont(\'bold\', assetUrl(uiFontBold)).catch(reportError);');
   });
 
   it('computes the calendar in the scene because the bundled wasm drops calendar_*', () => {

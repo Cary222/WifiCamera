@@ -146,6 +146,21 @@ async function isTransportReachable(transport: CameraTransport): Promise<boolean
 }
 
 /**
+ * Probe each link independently and report both results.
+ *
+ * `probeTransports` only answers "which link should I use", which is not
+ * enough for the UI: when nothing is reachable the user needs to see *which*
+ * link failed to know whether to check the USB cable or the WiFi connection.
+ */
+export async function probeTransportReachability(): Promise<Record<CameraTransport, boolean>> {
+  const [usb, wifi] = await Promise.all([
+    isTransportReachable('usb'),
+    isTransportReachable('wifi'),
+  ]);
+  return { usb, wifi };
+}
+
+/**
  * Probe both links at once and return the first one that answers `/status`.
  *
  * Probing in parallel matters: when the preferred link is dead, a sequential

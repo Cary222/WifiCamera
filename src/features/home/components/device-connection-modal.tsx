@@ -1,9 +1,10 @@
-/* eslint-disable perfectionist/sort-imports, max-lines-per-function */
+/* eslint-disable perfectionist/sort-imports, max-lines-per-function, react-hooks/set-state-in-effect, react-hooks-extra/no-direct-set-state-in-use-effect, react-hooks/exhaustive-deps */
 import { Image } from 'expo-image';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import { Modal, Text, useModal } from '@/components/ui';
+import { TransportSelector } from '@/features/settings/components/transport-selector';
 import { WifiBandSelector } from '@/features/settings/components/wifi-band-selector';
 import { useCameraStore } from '@/features/home/camera/camera-store';
 import { translate } from '@/lib/i18n';
@@ -44,6 +45,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
   const [showIpInput, setShowIpInput] = useState(false);
 
   const initTransport = useCameraStore.use.initTransport();
+  const refreshTransportReachability = useCameraStore.use.refreshTransportReachability();
   const connectionStatus = useCameraStore.use.connectionStatus();
   const connectingRef = useRef(false);
   const onCloseRef = useRef(onClose);
@@ -61,6 +63,13 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
   useEffect(() => {
     onCloseRef.current = onClose;
   }, [onClose]);
+
+  // Re-probe whenever the modal opens: reachability from a previous session is
+  // stale, and showing it would misreport which link is currently usable.
+  useEffect(() => {
+    if (visible)
+      void refreshTransportReachability();
+  }, [visible, refreshTransportReachability]);
 
   // Auto-close modal when connection is established, with timeout fallback
   useEffect(() => {
@@ -191,6 +200,15 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
           <Text className="mb-6 text-center text-[15px] text-white/50">
             {translate('home.connect_hint')}
           </Text>
+
+          {/* Link selection: pick USB / WiFi before anything else, since the
+              fields below only matter for the WiFi path. */}
+          <View className="mb-6">
+            <Text className="mb-2 text-[14px] text-white/70">
+              {translate('settings.transport')}
+            </Text>
+            <TransportSelector standalone />
+          </View>
 
           {/* WiFi Camera IP Input */}
           <View className="mb-6">
