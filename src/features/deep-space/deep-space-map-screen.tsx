@@ -1,5 +1,5 @@
 import type { FieldOfViewInput } from '@/features/deep-space/tools/field-of-view';
-import type { StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
+import type { SelectedCelestialObject, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import * as React from 'react';
 import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -10,6 +10,7 @@ import { Text } from '@/components/ui';
 import { CalendarPanel } from '@/features/deep-space/calendar/calendar-panel';
 import { DEFAULT_LANDSCAPE_ID } from '@/features/deep-space/landscape/landscape-catalog';
 import { LandscapePanel } from '@/features/deep-space/landscape/landscape-panel';
+import { ObjectInfoSheet } from '@/features/deep-space/object-info/object-info-sheet';
 import { FieldOfViewOverlay } from '@/features/deep-space/tools/field-of-view-overlay';
 import { FieldOfViewPanel } from '@/features/deep-space/tools/field-of-view-panel';
 import { TelescopeControlPanel } from '@/features/deep-space/tools/telescope-control-panel';
@@ -861,6 +862,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const [azimuthDeg, setAzimuthDeg] = React.useState(0);
   const [clock, setClock] = React.useState(() => new Date());
   const [currentCulture, setCurrentCulture] = React.useState('western');
+  const [selectedObject, setSelectedObject] = React.useState<SelectedCelestialObject | null>(null);
   const drawerFeature = useDrawerFeature({ currentCulture, setCurrentCulture, stellaRef });
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [nightMode, setNightMode] = React.useState(false);
@@ -871,7 +873,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
     const interval = globalThis.setInterval(() => setClock(new Date()), 60_000);
     return () => globalThis.clearInterval(interval);
   }, []);
-  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open;
+  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selectedObject;
 
   return (
     <View testID="deep-space-map-shell" style={styles.root}>
@@ -881,6 +883,8 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         onBearingChange={setAzimuthDeg}
         onReady={() => stellaRef.current?.setSkyLayers?.(skyLayers)}
         onCommandError={() => search.setError(true)}
+        onObjectSelected={setSelectedObject}
+        onSelectionCleared={() => setSelectedObject(null)}
         onTargetFound={search.closeSearch}
         onTargetNotFound={() => search.setError(true)}
       />
@@ -927,6 +931,22 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         onPreviewCulture={id => stellaRef.current?.setSkyCulture?.(id)}
         stellaRef={stellaRef}
       />
+      {selectedObject && !drawerOpen && !drawerFeature.active && !search.open && (
+        <ObjectInfoSheet
+          object={selectedObject}
+          onCenter={obj => stellaRef.current?.pointAndLock(obj.id)}
+          onClose={() => {
+            setSelectedObject(null);
+            stellaRef.current?.clearSelection?.();
+          }}
+          onGoto={(raHours, decDeg) => {
+            setSelectedObject(null);
+            drawerFeature.open('tools');
+            stellaRef.current?.gotoRaDec(raHours * 15, decDeg);
+          }}
+          onZoomIn={() => stellaRef.current?.zoomTo(15)}
+        />
+      )}
       {search.open && (
         <ReferenceSearchSheet
           error={search.error}

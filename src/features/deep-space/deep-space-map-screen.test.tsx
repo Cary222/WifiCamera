@@ -22,6 +22,9 @@ const EVENTS_FIXTURE = [
 
 const mockComputeEvents = jest.fn(async () => EVENTS_FIXTURE);
 const mockComputeTonight = jest.fn(async () => TONIGHT_FIXTURE);
+const mockClearSelection = jest.fn();
+const mockGotoRaDec = jest.fn();
+const mockPointAndLock = jest.fn();
 const mockReload = jest.fn();
 const mockSearchTarget = jest.fn();
 const mockSetEnvironment = jest.fn();
@@ -32,10 +35,11 @@ const mockSetSkyCulture = jest.fn();
 const mockSetSkyLayers = jest.fn();
 const mockSetTime = jest.fn();
 const mockSetFovFrame = jest.fn();
-const mockGotoRaDec = jest.fn();
 const mockToggleConstellations = jest.fn();
 const mockZoomTo = jest.fn();
 let mockOnCommandError: (() => void) | undefined;
+let mockOnObjectSelected: ((object: unknown) => void) | undefined;
+let mockOnSelectionCleared: (() => void) | undefined;
 let mockOnTargetFound: (() => void) | undefined;
 let mockOnTargetNotFound: (() => void) | undefined;
 let mockOnBearingChange: ((azimuthDeg: number) => void) | undefined;
@@ -113,16 +117,20 @@ jest.mock('@/features/stellarium/stellarium-view', () => {
   const { View: MockView } = require('react-native');
 
   return {
-    StellariumView: ({ onBearingChange, onCommandError, onReady, onTargetFound, onTargetNotFound, ref }: { onBearingChange?: (azimuthDeg: number) => void; onCommandError?: () => void; onReady?: () => void; onTargetFound?: () => void; onTargetNotFound?: () => void; ref?: unknown }) => {
+    StellariumView: ({ onBearingChange, onCommandError, onObjectSelected, onReady, onSelectionCleared, onTargetFound, onTargetNotFound, ref }: { onBearingChange?: (azimuthDeg: number) => void; onCommandError?: () => void; onObjectSelected?: (object: unknown) => void; onReady?: () => void; onSelectionCleared?: () => void; onTargetFound?: () => void; onTargetNotFound?: () => void; ref?: unknown }) => {
       mockOnBearingChange = onBearingChange;
       mockOnCommandError = onCommandError;
+      mockOnObjectSelected = onObjectSelected;
+      mockOnSelectionCleared = onSelectionCleared;
       mockOnTargetFound = onTargetFound;
       mockOnTargetNotFound = onTargetNotFound;
       const readyRef = mockReact.useRef(false);
       mockReact.useImperativeHandle(ref, () => ({
+        clearSelection: mockClearSelection,
         computeEvents: mockComputeEvents,
         computeTonight: mockComputeTonight,
         gotoRaDec: mockGotoRaDec,
+        pointAndLock: mockPointAndLock,
         reload: mockReload,
         searchTarget: mockSearchTarget,
         setEnvironment: mockSetEnvironment,
@@ -611,5 +619,62 @@ describe('deep space landscape and environment integration', () => {
 
     expect(await screen.findByTestId('deep-space-landscape-panel')).toBeOnTheScreen();
     expect(screen.queryByTestId('deep-space-quick-detail-sheet')).not.toBeOnTheScreen();
+  });
+});
+
+describe('deep space celestial object info integration', () => {
+  const MOCK_TARGET = {
+    altDeg: 35.8,
+    azDeg: 120.4,
+    decDeg: -5.38,
+    designations: ['M 42', 'NGC 1976'],
+    distanceAu: null,
+    englishName: 'Orion Nebula',
+    id: 'NAME Great Orion Nebula',
+    name: '猎户座大星云',
+    phase: null,
+    raHours: 5.58,
+    vmag: 4.0,
+  };
+
+  it('pops up object info sheet when an object is selected in the star map', async () => {
+    setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+    expect(screen.getByText('猎户座大星云')).toBeOnTheScreen();
+    expect(screen.getByText('Orion Nebula · M 42')).toBeOnTheScreen();
+  });
+
+  it('locks onto target when center button in info sheet is tapped', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+    await user.press(await screen.findByTestId('deep-space-object-center-btn'));
+
+    expect(mockPointAndLock).toHaveBeenCalledWith('NAME Great Orion Nebula');
+  });
+
+  it('dismisses info sheet and clears engine selection on close button tap', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-object-close-btn'));
+
+    expect(screen.queryByTestId('deep-space-object-info-sheet')).not.toBeOnTheScreen();
+    expect(mockClearSelection).toHaveBeenCalled();
+  });
+
+  it('hides object info sheet when selection is cleared in the scene', async () => {
+    setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+
+    act(() => mockOnSelectionCleared?.());
+    expect(screen.queryByTestId('deep-space-object-info-sheet')).not.toBeOnTheScreen();
   });
 });
