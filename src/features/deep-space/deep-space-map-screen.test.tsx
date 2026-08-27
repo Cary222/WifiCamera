@@ -481,6 +481,16 @@ describe('deep space 3x2 quick controls', () => {
     expect(mockSetSkyLayers).toHaveBeenNthCalledWith(2, { constellationBoundaries: true });
     expect(mockSetSkyLayers).toHaveBeenNthCalledWith(3, { constellationOnlyPointed: true });
   });
+
+  it('opens atmosphere and light pollution controls on long pressing atmosphere button', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
+
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByText('大气层与光污染设置')).toBeOnTheScreen();
+    expect(screen.getByText('大气散射与消光')).toBeOnTheScreen();
+  });
 });
 
 describe('deep space observation tools and search', () => {
