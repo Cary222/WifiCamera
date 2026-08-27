@@ -498,6 +498,45 @@
       }
       // Sky-culture data sources load asynchronously. Wait until the featured
       // constellation enters the search index before moving the view to it.
+      function formatSelectedObject(obj) {
+        if (!obj) return null;
+        const radec = obj.getInfo('radec');
+        const azalt = radec ? stel.c2s(stel.convertFrame(stel.core.observer, 'ICRF', 'OBSERVED', radec)) : null;
+        const raRad = radec ? stel.c2s(radec)[0] : 0;
+        const decRad = radec ? stel.c2s(radec)[1] : 0;
+        const id = obj.id || '';
+        const cleanName = id.replace(/^NAME\s+/, '');
+        const zhName = NAMES_ZH[cleanName] || cleanName;
+
+        return {
+          id,
+          name: zhName,
+          englishName: cleanName,
+          designations: obj.designations ? obj.designations() : [id],
+          vmag: obj.getInfo('vmag'),
+          distanceAu: obj.getInfo('distance'),
+          phase: obj.getInfo('phase'),
+          raHours: (raRad * stel.R2D / 15 + 24) % 24,
+          decDeg: decRad * stel.R2D,
+          azDeg: azalt ? ((azalt[0] * stel.R2D % 360 + 360) % 360) : null,
+          altDeg: azalt ? (azalt[1] * stel.R2D) : null,
+        };
+      }
+
+      function handleSkyClick() {
+        setTimeout(() => {
+          const sel = stel.core.selection;
+          if (sel) {
+            const payload = formatSelectedObject(sel);
+            if (payload) {
+              send({ type: 'object_selected', object: payload });
+              return;
+            }
+          }
+          send({ type: 'selection_cleared' });
+        }, 50);
+      }
+
       function focusSkyCultureTarget(target, retries = 80) {
         const object = stel.getObj(target);
         if (object) {
@@ -525,6 +564,25 @@
         switch (message.type) {
           case 'goto_radec': return gotoRaDec(message);
           case 'zoom_to': return zoomTo(message);
+          case 'clear_selection': {
+            stel.core.selection = null;
+            send({ type: 'selection_cleared' });
+            forceRender();
+            return;
+          }
+          case 'point_and_lock': {
+            try {
+              const targetObj = typeof message.name === 'string' ? stel.getObj(message.name) : stel.core.selection;
+              if (targetObj) {
+                stel.core.selection = targetObj;
+                stel.pointAndLock(targetObj, 0.5);
+                const payload = formatSelectedObject(targetObj);
+                if (payload) send({ type: 'object_selected', object: payload });
+              }
+            } catch {}
+            forceRender();
+            return;
+          }
           case 'search_target': {
             try {
               const object = stel.getObj(message.name);
@@ -702,6 +760,7 @@
           // Start looking just above the horizon so the landscape stays in frame.
           const horizonDirection = stel.s2c(0, 20 * stel.D2R);
           stel.lookAt(horizonDirection, 0);
+          stel.on('click', handleSkyClick);
           send({ type: 'ready' });
           publishBearing();
           setInterval(publishBearing, 250);

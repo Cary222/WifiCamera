@@ -145,4 +145,17 @@ describe('stellarium scene commands and overlays', () => {
     expect(sceneHtml).toContain('stel.core.observer.latitude = message.latitudeDeg * stel.D2R;');
     expect(sceneHtml).toContain('stel.core.observer.longitude = message.longitudeDeg * stel.D2R;');
   });
+
+  it('registers canvas click listener to notify React Native of object selections', () => {
+    expect(sceneHtml).toContain('stel.on(\'click\', handleSkyClick);');
+    expect(sceneHtml).toContain('send({ type: \'object_selected\', object: payload });');
+    expect(sceneHtml).toContain('send({ type: \'selection_cleared\' });');
+  });
+
+  it('supports clearing selection and point_and_lock commands', () => {
+    expect(sceneHtml).toContain('case \'clear_selection\':');
+    expect(sceneHtml).toContain('stel.core.selection = null;');
+    expect(sceneHtml).toContain('case \'point_and_lock\':');
+    expect(sceneHtml).toContain('stel.pointAndLock(targetObj, 0.5);');
+  });
 });
