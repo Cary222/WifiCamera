@@ -162,6 +162,26 @@ describe('stellarium landscape and environment bridge', () => {
   });
 });
 
+describe('stellarium celestial object selection bridge', () => {
+  it('posts clear_selection command', () => {
+    const { bridge, postMessage } = createBridgeHarness();
+    bridge.setReady(true);
+
+    bridge.clearSelection();
+
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'clear_selection' }));
+  });
+
+  it('posts point_and_lock command with valid target', () => {
+    const { bridge, postMessage } = createBridgeHarness();
+    bridge.setReady(true);
+
+    bridge.pointAndLock('M 42');
+
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'point_and_lock', name: 'M 42' }));
+  });
+});
+
 describe('stellarium calendar requests', () => {
   it('resolves a tonight calculation with the payload matching its request id', async () => {
     const { bridge, postMessage } = createBridgeHarness();

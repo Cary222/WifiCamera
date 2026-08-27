@@ -31,6 +31,8 @@ export type StellariumEnvironment = {
 export type StellariumCommand
   = | { type: 'goto_radec'; raDeg: number; decDeg: number; duration?: number }
     | { type: 'zoom_to'; fovDeg: number; duration?: number }
+    | { type: 'clear_selection' }
+    | { type: 'point_and_lock'; name?: string }
     | { type: 'search_target'; name: string }
     | { type: 'toggle_constellations'; visible: boolean }
     | { type: 'set_sky_layers' } & StellariumSkyLayers
@@ -43,6 +45,20 @@ export type StellariumCommand
     | { type: 'set_fov_frame'; fovDeg: number; sensorW: number; sensorH: number }
     | { type: 'compute_tonight'; isoDate: string; latitudeDeg: number; longitudeDeg: number; requestId: number }
     | { type: 'compute_events'; isoStart: string; days: number; latitudeDeg: number; longitudeDeg: number; requestId: number };
+
+export type SelectedCelestialObject = {
+  altDeg?: number | null;
+  azDeg?: number | null;
+  decDeg: number;
+  designations: string[];
+  distanceAu?: number | null;
+  englishName: string;
+  id: string;
+  name: string;
+  phase?: number | null;
+  raHours: number;
+  vmag?: number | null;
+};
 
 export type ObserverLocation = { latitudeDeg: number; longitudeDeg: number };
 
@@ -77,7 +93,9 @@ type BridgeOptions = {
 };
 
 export type StellariumBridge = {
+  clearSelection: () => void;
   gotoRaDec: (raDeg: number, decDeg: number, duration?: number) => void;
+  pointAndLock: (name?: string) => void;
   zoomTo: (fovDeg: number, duration?: number) => void;
   searchTarget: (name: string) => void;
   toggleConstellations: (visible: boolean) => void;
@@ -124,6 +142,12 @@ function validate(command: StellariumCommand): string | undefined {
     case 'zoom_to':
       if (!isFiniteNumber(command.fovDeg) || command.fovDeg <= 0 || command.fovDeg > 360)
         return 'FOV must be greater than 0 and no more than 360 degrees.';
+      break;
+    case 'clear_selection':
+      break;
+    case 'point_and_lock':
+      if (command.name !== undefined && (typeof command.name !== 'string' || !command.name.trim()))
+        return 'Target name must be a non-empty string.';
       break;
     case 'search_target':
       if (typeof command.name !== 'string' || !command.name.trim())
@@ -250,7 +274,9 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
     }
   };
   return {
+    clearSelection: () => send({ type: 'clear_selection' }),
     gotoRaDec: (raDeg, decDeg, duration = 0.5) => send({ type: 'goto_radec', raDeg, decDeg, duration }),
+    pointAndLock: name => send({ type: 'point_and_lock', ...(name ? { name } : {}) }),
     zoomTo: (fovDeg, duration = 0.3) => send({ type: 'zoom_to', fovDeg, duration }),
     searchTarget: name => send({ type: 'search_target', name }),
     toggleConstellations: visible => send({ type: 'toggle_constellations', visible }),
