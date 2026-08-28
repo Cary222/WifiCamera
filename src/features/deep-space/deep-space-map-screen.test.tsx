@@ -490,7 +490,7 @@ describe('deep space 3x2 quick controls', () => {
     expect(mockSetSkyLayers).toHaveBeenNthCalledWith(3, { constellationOnlyPointed: true });
   });
 
-  it('opens atmosphere and light pollution controls on long pressing atmosphere button', async () => {
+  it('opens atmosphere controls with the fog switch on long pressing atmosphere button', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
     await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
@@ -498,6 +498,22 @@ describe('deep space 3x2 quick controls', () => {
     expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
     expect(screen.getByText('大气层与光污染设置')).toBeOnTheScreen();
     expect(screen.getByText('大气散射与消光')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-fog')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-fog'));
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith({ fog: false });
+  });
+
+  it('keeps the landscape enabled when toggling labels', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+
+    expect(screen.getByTestId('deep-space-grid-quick-landscape').props.accessibilityState.checked).toBe(true);
+    await user.press(screen.getByTestId('deep-space-grid-quick-labels'));
+
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ constellationLabels: false });
+    expect(mockSetSkyLayers).not.toHaveBeenCalledWith({ landscape: false });
+    expect(screen.getByTestId('deep-space-grid-quick-landscape').props.accessibilityState.checked).toBe(true);
   });
 });
 
@@ -586,39 +602,59 @@ describe('deep space observation tools and search', () => {
 });
 
 describe('deep space landscape and environment integration', () => {
-  it('opens the landscape panel from the reference drawer', async () => {
-    const { user } = setup(<DeepSpaceMapScreen />);
-    await user.press(screen.getByTestId('deep-space-reference-menu'));
-    await user.press(screen.getByText('地景与环境'));
+  async function openLandscapeDetail(user: ReturnType<typeof setup>['user']) {
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-landscape'));
+  }
 
-    expect(await screen.findByTestId('deep-space-landscape-panel')).toBeOnTheScreen();
+  it('opens the same quick detail sheet as the other controls on long pressing the quick landscape control', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await openLandscapeDetail(user);
+
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByText('地景设置')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-landscape')).toBeOnTheScreen();
   });
 
-  it('sends the chosen landscape to the engine', async () => {
+  it('toggles the landscape layer from inside the quick detail sheet', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
-    await user.press(screen.getByTestId('deep-space-reference-menu'));
-    await user.press(screen.getByText('地景与环境'));
-    await user.press(await screen.findByTestId('deep-space-landscape-option-ocean'));
+    await openLandscapeDetail(user);
 
-    expect(mockSetLandscape).toHaveBeenCalledWith('ocean');
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-landscape'));
+
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ landscape: false });
   });
 
-  it('sends environment changes to the engine', async () => {
+  it('sends environment changes to the engine from the quick detail sheet', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
-    await user.press(screen.getByTestId('deep-space-reference-menu'));
-    await user.press(screen.getByText('地景与环境'));
-    await user.press(await screen.findByTestId('deep-space-landscape-toggle-cardinals'));
+    await openLandscapeDetail(user);
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-cardinals'));
 
     expect(mockSetEnvironment).toHaveBeenCalledWith({ cardinals: false });
   });
 
-  it('escapes the quick detail sheet and opens the landscape panel on long pressing the quick landscape control', async () => {
+  it('steps forward through the landscapes without leaving the sheet', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
-    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
-    await user.longPress(screen.getByTestId('deep-space-grid-quick-landscape'));
+    await openLandscapeDetail(user);
 
-    expect(await screen.findByTestId('deep-space-landscape-panel')).toBeOnTheScreen();
-    expect(screen.queryByTestId('deep-space-quick-detail-sheet')).not.toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-value')).toHaveTextContent('盖兰');
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-next'));
+
+    expect(mockSetLandscape).toHaveBeenLastCalledWith('winterfield');
+    // The sheet stays open so the observer can keep browsing.
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-value')).toHaveTextContent('冬日原野');
+  });
+
+  it('wraps around to the last landscape when stepping backwards from the first', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await openLandscapeDetail(user);
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-prev'));
+
+    expect(mockSetLandscape).toHaveBeenLastCalledWith('ocean');
   });
 });
 
