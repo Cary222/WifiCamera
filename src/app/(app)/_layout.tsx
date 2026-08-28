@@ -1,3 +1,4 @@
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { Redirect, SplashScreen, Tabs } from 'expo-router';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo } from 'react';
@@ -68,21 +69,31 @@ export default function TabLayout() {
     <Tabs screenOptions={screenOptions}>
       <Tabs.Screen
         name="(home)"
-        options={{
-          title: translate('home.title'),
-          tabBarIcon: ({ focused }) => <HomeFilled focused={focused} />,
-          tabBarLabel: renderTabBarLabel(translate('home.title'), isDark),
-          tabBarButtonTestID: 'home-tab',
+        options={({ route }) => {
+          const routeName = getFocusedRouteNameFromRoute(route);
+          const hideTabs = routeName === 'camera' || routeName === 'album';
+          return {
+            title: translate('home.title'),
+            tabBarIcon: ({ focused }) => <HomeFilled focused={focused} />,
+            tabBarLabel: renderTabBarLabel(translate('home.title'), isDark),
+            tabBarButtonTestID: 'home-tab',
+            tabBarStyle: hideTabs ? { display: 'none' } : screenOptions.tabBarStyle,
+          };
         }}
       />
 
       <Tabs.Screen
         name="(deep-space)"
-        options={{
-          title: translate('deep_space.title'),
-          tabBarIcon: ({ focused }) => <StarmapFilled focused={focused} />,
-          tabBarLabel: renderTabBarLabel(translate('deep_space.title'), isDark),
-          tabBarButtonTestID: 'deep-space-tab',
+        options={({ route }) => {
+          const routeName = getFocusedRouteNameFromRoute(route);
+          const hideTabs = routeName === 'star-map';
+          return {
+            title: translate('deep_space.title'),
+            tabBarIcon: ({ focused }) => <StarmapFilled focused={focused} />,
+            tabBarLabel: renderTabBarLabel(translate('deep_space.title'), isDark),
+            tabBarButtonTestID: 'deep-space-tab',
+            tabBarStyle: hideTabs ? { display: 'none' } : screenOptions.tabBarStyle,
+          };
         }}
       />
 

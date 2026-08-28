@@ -1,5 +1,6 @@
 /* eslint-disable max-lines-per-function */
 
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -98,6 +99,7 @@ function ParamCard({ title, value, active, onPress }: ParamCardProps) {
 type ManualParam = 'wb' | 'shutter' | 'gain' | 'ev';
 
 export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
 
@@ -493,6 +495,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
         captureMode={captureMode}
         onCaptureModeChange={mode => setCaptureMode(mode)}
         thumbnailUri={thumbnailUri}
+        onThumbnailPress={() => router.push('/album' as never)}
         isRecording={isRecording}
         rightButton={<SheetMenuIcon color={sheetOpen && isPro ? BRAND : '#FFFFFF'} />}
         rightButtonActive={sheetOpen && isPro}

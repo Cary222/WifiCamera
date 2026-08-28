@@ -46,14 +46,14 @@ export function CameraTopBar({
         <CameraBackButton onBack={onBack} />
       </View>
 
-      <View className="pointer-events-none absolute inset-x-0 items-center">
+      <View pointerEvents="box-none" className="absolute inset-x-0 items-center">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={title}
           onPress={onTitlePress}
           disabled={disabled}
           style={{ backgroundColor: PILL_BG }}
-          className="pointer-events-auto h-8 flex-row items-center gap-1.5 rounded-full px-3.5 active:opacity-70 disabled:opacity-40"
+          className="h-8 flex-row items-center gap-1.5 rounded-full px-3.5 active:opacity-70 disabled:opacity-40"
         >
           <Text className="text-[12px] font-medium text-white">{title}</Text>
           {expanded ? <ChevronDownIcon size={14} /> : <ChevronUpIcon size={14} />}

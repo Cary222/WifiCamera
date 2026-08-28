@@ -51,7 +51,7 @@ const VARIANT_CONFIG: Record<NonNullable<SegmentedControlProps<string>['variant'
   'capsule-lg': {
     rootClass: 'overflow-hidden rounded-full border p-1 px-1.5',
     trackClass: 'px-0',
-    optionClass: 'h-[38px] px-6 justify-center items-center',
+    optionClass: 'h-[38px] px-3 justify-center items-center',
     textClass: 'text-[14px]',
     indicatorClass: 'absolute inset-y-0 rounded-full',
   },
@@ -118,7 +118,9 @@ export function SegmentedControl<T extends string>({
   }, [trackWidth]);
 
   const indicatorStyle = useAnimatedStyle(() => {
-    const segmentWidth = fixedSegmentWidth ?? trackWidth.value / segmentCount;
+    const segmentWidth = trackWidth.value > 0
+      ? trackWidth.value / segmentCount
+      : (fixedSegmentWidth ?? 0);
     return {
       transform: [{ translateX: indicatorPosition.value * segmentWidth }],
       width: segmentWidth,

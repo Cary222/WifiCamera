@@ -350,6 +350,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               value={containerFormat}
                               onChange={value => setContainerFormat(value as 'mp4' | 'ser')}
                               variant="capsule-lg"
+                              segmentPixelWidth={64}
                               className="h-[44px]"
                               style={{
                                 backgroundColor: PILL_GROUP_BG,

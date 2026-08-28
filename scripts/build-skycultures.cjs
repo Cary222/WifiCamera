@@ -1,6 +1,6 @@
 // 从 assets/data/skycultures 与 i18n/skycultures-zh_Hans.qm 提取完整的 33 个天空文化数据
-const fs = require('fs');
-const path = require('path');
+const fs = require('node:fs');
+const path = require('node:path');
 const { parseQm } = require('../tmp/qm.cjs');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -68,13 +68,17 @@ for (const row of rawTranslations) {
 }
 
 function translateText(text) {
-  if (!text) return null;
+  if (!text)
+    return null;
   const trimmed = text.trim();
-  if (exactMap.has(trimmed)) return exactMap.get(trimmed);
-  if (lowerMap.has(trimmed.toLowerCase())) return lowerMap.get(trimmed.toLowerCase());
+  if (exactMap.has(trimmed))
+    return exactMap.get(trimmed);
+  if (lowerMap.has(trimmed.toLowerCase()))
+    return lowerMap.get(trimmed.toLowerCase());
   const stripped = trimmed.replace(/\r?\n+/g, ' ');
   for (const [k, v] of exactMap.entries()) {
-    if (k.replace(/\r?\n+/g, ' ') === stripped) return v;
+    if (k.replace(/\r?\n+/g, ' ') === stripped)
+      return v;
   }
   return null;
 }
@@ -86,12 +90,14 @@ const cultures = [];
 for (const id of cultureIds) {
   const dir = path.join(SKY_DIR, id);
   const metaPath = path.join(dir, 'index.json');
-  if (!fs.existsSync(metaPath)) continue;
+  if (!fs.existsSync(metaPath))
+    continue;
 
   let meta = {};
   try {
     meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-  } catch (err) {
+  }
+  catch (err) {
     console.warn(`[warn] parse failed ${metaPath}:`, err.message);
   }
 
@@ -102,7 +108,8 @@ for (const id of cultureIds) {
   let titleRaw = meta.title || '';
   if (!titleRaw && descMd) {
     const hm = descMd.match(/^#\s+(.*)$/m);
-    if (hm) titleRaw = hm[1].trim();
+    if (hm)
+      titleRaw = hm[1].trim();
   }
   if (!titleRaw) {
     titleRaw = id;
@@ -115,8 +122,9 @@ for (const id of cultureIds) {
   // 3. Intro
   let intro = meta.intro || '';
   if (!intro && descMd) {
-    const m = descMd.match(/##\s+Introduction\s*\n+([\s\S]*?)(?=\n##|$)/);
-    if (m) intro = m[1].trim();
+    const m = descMd.match(/##\s+Introduction\s*\n([\s\S]*?)(?=\n##|$)/);
+    if (m)
+      intro = m[1].trim();
   }
   const introZh = translateText(intro);
 
@@ -125,10 +133,13 @@ for (const id of cultureIds) {
   if (!thumbnail) {
     const files = fs.readdirSync(dir);
     const topWebp = files.find(f => f.endsWith('.webp'));
-    if (topWebp) thumbnail = topWebp;
+    if (topWebp) {
+      thumbnail = topWebp;
+    }
     else if (fs.existsSync(path.join(dir, 'illustrations'))) {
       const illFiles = fs.readdirSync(path.join(dir, 'illustrations')).filter(f => f.endsWith('.webp'));
-      if (illFiles.length > 0) thumbnail = `illustrations/${illFiles[0]}`;
+      if (illFiles.length > 0)
+        thumbnail = `illustrations/${illFiles[0]}`;
     }
   }
 
@@ -154,7 +165,8 @@ for (const id of cultureIds) {
 }
 
 function parseDescription(md, cultureId) {
-  if (!md) return [];
+  if (!md)
+    return [];
   const lines = md.split(/\r?\n/);
   const sections = [];
   let currentSection = { heading: '', headingZh: '', blocks: [] };
@@ -204,7 +216,7 @@ function parseDescription(md, cultureId) {
       let para = line;
       i++;
       while (i < lines.length && lines[i].trim().length > 0 && !lines[i].startsWith('#') && !lines[i].startsWith('![')) {
-        para += '\n' + lines[i];
+        para += `\n${lines[i]}`;
         i++;
       }
       const pTrimmed = para.trim();
@@ -228,7 +240,8 @@ function parseDescription(md, cultureId) {
 cultures.sort((a, b) => {
   const ra = REGION_ORDER.indexOf(a.region);
   const rb = REGION_ORDER.indexOf(b.region);
-  if (ra !== rb) return ra - rb;
+  if (ra !== rb)
+    return ra - rb;
   return a.id.localeCompare(b.id);
 });
 

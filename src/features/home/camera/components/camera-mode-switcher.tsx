@@ -9,6 +9,7 @@ export type CameraModeSwitcherProps = {
   isCapturing?: boolean;
   isRecording?: boolean;
   variant?: 'capsule-lg';
+  segmentPixelWidth?: number;
   photoLabel?: string;
   photoLabelTx?: TxKeyPath;
   videoLabel?: string;
@@ -26,6 +27,7 @@ export function CameraModeSwitcher({
   isCapturing = false,
   isRecording = false,
   variant = 'capsule-lg',
+  segmentPixelWidth = 72,
   photoLabel,
   photoLabelTx = 'camera.photo',
   videoLabel,
@@ -55,6 +57,7 @@ export function CameraModeSwitcher({
       value={mode}
       onChange={onChange}
       variant={variant}
+      segmentPixelWidth={segmentPixelWidth}
       className={className}
       testID={testID}
     />

@@ -1,6 +1,7 @@
 /* eslint-disable max-lines-per-function */
 
 import type { LandscapeRatio } from '../camera-store';
+import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -75,6 +76,7 @@ function SolveResultRow({ label, value }: { label: string; value: string }) {
 }
 
 export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const connectionStatus = useCameraStore.use.connectionStatus();
@@ -460,6 +462,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
         captureMode={captureMode}
         onCaptureModeChange={mode => setCaptureMode(mode)}
         thumbnailUri={imageUrl}
+        onThumbnailPress={() => router.push('/album' as never)}
         isCapturing={isCapturing}
         isRecording={isRecording}
         rightButton={<SheetMenuIcon color={sheetOpen ? BRAND : '#FFFFFF'} />}

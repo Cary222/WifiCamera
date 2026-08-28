@@ -1,6 +1,24 @@
 {
   "version": 1,
   "skills": {
+    "agent-device": {
+      "source": "callstack/agent-device",
+      "sourceType": "github",
+      "skillPath": "skills/agent-device/SKILL.md",
+      "computedHash": "0a673fe5ec24469f6ad35596cdf40f9d33076b78d0a929742d9e1de83f97d231"
+    },
+    "android-emulator": {
+      "source": "callstack/agent-device",
+      "sourceType": "github",
+      "skillPath": "skills/android-emulator/SKILL.md",
+      "computedHash": "20b3ca719cceeb25a7442f167f5ae60a816e03cd2b05dc3574cdd9d9056e8dac"
+    },
+    "dogfood": {
+      "source": "callstack/agent-device",
+      "sourceType": "github",
+      "skillPath": "skills/dogfood/SKILL.md",
+      "computedHash": "8e6dfbff0633e355210ce7ae109cb39a3e1347946b6e92aaa607271154526b6b"
+    },
     "eas-app-stores": {
       "source": "expo/skills",
       "sourceType": "github",
@@ -23,7 +41,7 @@
       "source": "expo/skills",
       "sourceType": "github",
       "skillPath": "plugins/expo/skills/eas-simulator/SKILL.md",
-      "computedHash": "f50147686ee17ca4ec257563000861c5c4e2de58012e77007e4b22b735e93325"
+      "computedHash": "772c471d1144b1d0665c00a36d6cfb16ee499c2c42d13913ae513b72380715b5"
     },
     "eas-update-insights": {
       "source": "expo/skills",
@@ -162,6 +180,12 @@
       "sourceType": "github",
       "skillPath": "feature-sliced-design/SKILL.md",
       "computedHash": "775a8ee42f32b12d33478eaf2416c0c1c394fac61b98805c6cf0f228cc2c9b34"
+    },
+    "ios-simulator": {
+      "source": "callstack/agent-device",
+      "sourceType": "github",
+      "skillPath": "skills/ios-simulator/SKILL.md",
+      "computedHash": "a0196ca78c5af1e2f25f4d534b3971fe8d9e5e6aa02a2d0f35a53b222bca57da"
     },
     "react-native-best-practices": {
       "source": "software-mansion-labs/skills",

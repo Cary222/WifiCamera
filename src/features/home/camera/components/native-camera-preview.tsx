@@ -196,13 +196,16 @@ export type PreviewSurfaceProps = {
 const WebVideoSurface = memo(({ stream }: { stream: MediaStream | null }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  const attachVideo = useCallback((node: HTMLVideoElement | null) => {
-    videoRef.current = node;
-    if (node) {
-      node.srcObject = stream as unknown as globalThis.MediaStream | null;
-      void node.play().catch(() => {});
-    }
-  }, [stream]);
+  const attachVideo = useCallback(
+    (node: HTMLVideoElement | null) => {
+      videoRef.current = node;
+      if (node) {
+        node.srcObject = stream as unknown as globalThis.MediaStream | null;
+        void node.play().catch(() => {});
+      }
+    },
+    [stream],
+  );
 
   useEffect(() => {
     const video = videoRef.current;
