@@ -1,3 +1,4 @@
+import type { ImageSourcePropType } from 'react-native';
 import LANDSCAPES_DATA from '@/assets/stellar/landscapes.json';
 
 export type LandscapeOption = {
@@ -11,21 +12,16 @@ export type LandscapeOption = {
 
 export const DEFAULT_LANDSCAPE_ID = 'guereins';
 
-/**
- * `none` is not a data source: data/landscapes/zero ships no HiPS tiles, so the
- * scene hides the landscape module instead of loading anything for it.
- */
-const NONE_OPTION: LandscapeOption = {
-  credit: null,
-  descriptionZh: '隐藏地面景观，仅保留天球视图',
-  id: 'none',
-  sizeMB: 0,
-  title: 'No landscape',
-  titleZh: '无地景',
+export const LANDSCAPE_THUMBNAILS: Record<string, ImageSourcePropType> = {
+  champagne_castle: require('@/assets/stellar/data/landscapes/champagne_castle/Norder0/Allsky.webp'),
+  garching: require('@/assets/stellar/data/landscapes/garching/Norder0/Allsky.webp'),
+  guereins: require('@/assets/stellar/data/landscapes/guereins/Norder0/Allsky.webp'),
+  kloppenheim: require('@/assets/stellar/data/landscapes/kloppenheim/Norder0/Allsky.webp'),
+  ocean: require('@/assets/stellar/data/landscapes/ocean/Norder0/Allsky.webp'),
+  winterfield: require('@/assets/stellar/data/landscapes/winterfield/Norder0/Allsky.webp'),
 };
 
 export const LANDSCAPES: LandscapeOption[] = [
-  NONE_OPTION,
   ...(LANDSCAPES_DATA.landscapes as LandscapeOption[]),
 ];
 
