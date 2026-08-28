@@ -43,6 +43,7 @@
   },
   "camera": {
     "capture": "Single capture",
+    "capturing": "Capturing",
     "current_preset": "Current preset",
     "exposure_time": "Exposure time",
     "gain": "Gain",
@@ -51,6 +52,7 @@
     "mode_stream": "STREAM",
     "not_connected": "Camera is not connected",
     "not_connected_hint": "Tap to go to device setup →",
+    "photo": "Photo",
     "presets": "Capture presets",
     "preview_waiting": "Waiting for preview",
     "repeat": "Start sequence",
@@ -60,9 +62,10 @@
     "status_idle": "Not connected",
     "status_label": "Camera status",
     "status_open": "Connected",
-    "stop": "Stop capture",
+    "stop": "Stop",
     "subtitle": "Camera capture",
-    "title": "WifiCamera"
+    "title": "WifiCamera",
+    "video": "Video"
   },
   "dashboard": {
     "humidity": "Humidity",
@@ -230,6 +233,22 @@
     "submit": "Sign In",
     "title": "Welcome to STAR"
   },
+  "nebula": {
+    "auto_stretch": "Photo auto stretch:",
+    "auto_stretch_off": "Off",
+    "auto_stretch_on": "On",
+    "ev": "EV",
+    "focus_assist": "Focus assist",
+    "gain": "Gain",
+    "mode_title": "Starry Sky Mode",
+    "resolve": "Resolve",
+    "resolve_failed": "Resolve failed",
+    "resolve_in_progress": "Resolving…",
+    "resolve_success": "Resolve success",
+    "shutter": "Shutter",
+    "watermark": "Watermark",
+    "white_balance": "White balance"
+  },
   "onboarding": {
     "message": "Welcome to SkySense"
   },
@@ -262,6 +281,37 @@
     "update_available": "Update Available",
     "uploading": "Uploading...",
     "version_label": "Version"
+  },
+  "planet": {
+    "aspect_full": "Full",
+    "bit_depth": "Bit Depth",
+    "container": "Container",
+    "countdown": "Countdown",
+    "countdown_label": "Countdown",
+    "error_roi_rejected": "Board rejected ROI setting",
+    "error_roi_timeout": "Switching ROI timed out",
+    "error_ser_flush": "SER file flush did not finish in time",
+    "error_ser_not_active": "Board did not enter SER recording",
+    "error_ser_start_failed": "Failed to start RAW stream",
+    "error_ser_start_timeout": "Starting RAW stream timed out",
+    "error_start_rejected": "Board rejected recording request",
+    "error_start_timeout": "Starting recording timed out",
+    "error_stop_timeout": "Stopping recording timed out",
+    "exposure": "Exposure",
+    "format": "Format",
+    "fps": "FPS",
+    "frames": "frames",
+    "framing": "ROI cropping & frame rate",
+    "gain": "Gain",
+    "label_metering_center": "Center",
+    "label_metering_matrix": "Matrix",
+    "label_metering_target": "Target",
+    "metering_mode": "Metering Mode",
+    "mode_title": "Planet Video",
+    "roi_summary": "{{aspect}} · {{fps}}fps",
+    "roi_text": "Up to {{fps}} FPS",
+    "shutter": "Shutter",
+    "switching_roi": "Switching ROI…"
   },
   "profile": {
     "about": "About",

@@ -2,8 +2,6 @@
 # WiFi Camera 全链路状态检查与一键自愈脚本
 # 使用方式: bash tools/usb-webrtc-relay/mac/check-status.sh [--fix]
 
-set -e
-
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -34,18 +32,69 @@ find_adb() {
 
 ADB=$(find_adb)
 if [ -z "$ADB" ]; then
-  echo -e "${RED}[FAIL] 未找到 adb 命令！${NC}"
+  echo -e "${RED}[FAIL] 未找到 adb 命令！请设置 ANDROID_SDK_ROOT 或 ANDROID_HOME${NC}"
   exit 1
 fi
 echo -e "${GREEN}[OK]${NC} ADB 路径: $ADB"
 
-# 2. 检查物理设备
-BOARD=$("$ADB" devices -l 2>/dev/null | grep -E '^[^*\s]+\s+device' | awk '{print $1}' | grep -v '^emulator-' | grep -v '^127\.' | head -n 1 || true)
-if [ -z "$BOARD" ]; then
-  echo -e "${RED}[FAIL] 未检测到物理相机板子！请检查 USB 数据线是否连接。${NC}"
-  "$ADB" devices -l
-  exit 1
+# 确保 Rockchip 厂商 ID 已加入 adb_usb.ini
+mkdir -p ~/.android
+if ! grep -q "0x2207" ~/.android/adb_usb.ini 2>/dev/null; then
+  echo "0x2207" >>~/.android/adb_usb.ini
 fi
+
+# 2. 检查物理硬件与 ADB 设备识别
+get_board_serial() {
+  "$ADB" devices -l 2>/dev/null | grep -E '^[^*\s]+\s+device' | awk '{print $1}' | grep -v '^emulator-' | grep -v '^127\.' | grep -v '^localhost' | head -n 1 || true
+}
+
+BOARD=$(get_board_serial)
+
+# 如果 ADB 没认出来，检查 macOS 底层 USB 总线
+if [ -z "$BOARD" ]; then
+  USB_HARDWARE_FOUND=false
+  if ioreg -p IOUSB -l -w 0 2>/dev/null | grep -i -E "2207|rockchip|rk3|WifiCamera" &>/dev/null; then
+    USB_HARDWARE_FOUND=true
+  fi
+
+  if [ "$USB_HARDWARE_FOUND" = true ]; then
+    echo -e "${YELLOW}[WARN] macOS USB 总线已识别到 Rockchip 相机硬件，但 ADB Server 处于假死状态！${NC}"
+    echo -e "       正在自动重启 ADB Server (kill-server & start-server)..."
+    "$ADB" kill-server >/dev/null 2>&1 || true
+    "$ADB" start-server >/dev/null 2>&1 || true
+    sleep 2
+    BOARD=$(get_board_serial)
+  fi
+fi
+
+# 如果仍然没有识别到设备
+if [ -z "$BOARD" ]; then
+  echo -e "\n${RED}[FAIL] 未检测到物理相机板子！${NC}"
+  if ioreg -p IOUSB -l -w 0 2>/dev/null | grep -i -E "2207|rockchip|rk3|WifiCamera" &>/dev/null; then
+    echo -e "${YELLOW}诊断提示: macOS USB 识别到设备，但 ADB 无法握手。请尝试重新插拔 Type-C 数据线。${NC}"
+  else
+    echo -e "${YELLOW}诊断提示: macOS USB 总线未发现任何 Rockchip 设备。请检查数据线是否插紧、是否插在 Mac 本机口。${NC}"
+  fi
+  echo -e "\n当前 ADB 设备列表:"
+  "$ADB" devices -l
+
+  if [ "$DO_FIX" = true ]; then
+    echo -e "\n${YELLOW}正在尝试重启 ADB Server 深度探测...${NC}"
+    "$ADB" kill-server >/dev/null 2>&1 || true
+    "$ADB" start-server >/dev/null 2>&1 || true
+    sleep 2
+    BOARD=$(get_board_serial)
+    if [ -n "$BOARD" ]; then
+      echo -e "${GREEN}[OK] 重启 ADB 成功识别设备: $BOARD${NC}"
+    else
+      echo -e "${RED}[ERROR] 重启 ADB 仍无法识别，请物理重新插拔相机 USB 数据线。${NC}"
+      exit 1
+    fi
+  else
+    exit 1
+  fi
+fi
+
 echo -e "${GREEN}[OK]${NC} 板子序列号: $BOARD"
 
 # 3. 检查板端 3 大服务
@@ -119,5 +168,5 @@ if [ "$DO_FIX" = true ]; then
   echo -e "${YELLOW}正在执行一键自动修复与重启...${NC}"
   bash "$(dirname "$0")/start-usb-mode.sh"
 else
-  echo -e "💡 提示: 若有 [FAIL] 项，请直接运行一键修复命令: ${GREEN}bash tools/usb-webrtc-relay/mac/start-usb-mode.sh${NC}"
+  echo -e "若有 [FAIL] 项，请运行: ${GREEN}bash tools/usb-webrtc-relay/mac/check-status.sh --fix${NC} 进行一键自愈。"
 fi

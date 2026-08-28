@@ -1,21 +1,19 @@
 /* eslint-disable max-lines-per-function */
 
-import type { LandscapeCaptureMode, LandscapeRatio } from '../camera-store';
-import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
+import { AspectRatioButton, ToolCard, useAspectRatioAnimation } from '../components';
+import { CameraBottomBar } from '../components/camera-bottom-bar';
+import { CameraTopBar } from '../components/camera-top-bar';
 import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
 import { getImage } from '../services/file-service';
 
 import {
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronUpIcon,
   CloseIcon,
   CountdownIcon,
   ResetIcon,
@@ -28,19 +26,12 @@ import { LandscapeRuler } from './landscape-ruler';
 const BRAND = '#CBFF3C';
 const SHEET_BG = '#141414';
 const CARD_BG = '#1F1F1F';
-const BOTTOM_BAR_BG = '#0A0A0A';
 const PILL_BG = 'rgba(34,42,54,0.72)';
-const PREVIEW_PILL_BG = 'rgba(34,42,54,0.38)';
-
-const RATIO_16_9 = 0.5625;
 /** Shutter diameter as a share of screen width, from the 402pt design board. */
 const SHUTTER_SIZE_RATIO = 0.1890547263681592;
 const SHUTTER_BORDER_RATIO = 0.043478260869565216;
 const SHUTTER_BOTTOM_GAP = 32;
 const BOTTOM_BAR_HEIGHT = 78;
-/** Spare vertical space given to the top black bar, matching stock camera apps. */
-const PREVIEW_TOP_SPARE_SHARE_16_9 = 0.25;
-const PREVIEW_TOP_SPARE_SHARE_4_3 = 0.35;
 
 const SHUTTER_VALUES = [
   0.001,
@@ -84,33 +75,6 @@ function formatShutter(value: number): string {
   return value >= 1 ? `${value}` : `1/${Math.round(1 / value)}`;
 }
 
-type ToolCardProps = {
-  icon?: React.ReactNode;
-  label: string;
-  active: boolean;
-  textOnly?: boolean;
-  onPress: () => void;
-};
-
-function ToolCard({ icon, label, active, textOnly, onPress }: ToolCardProps) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={{ backgroundColor: active ? BRAND : CARD_BG }}
-      className="h-[92px] flex-1 items-center justify-center gap-2 rounded-2xl active:opacity-80"
-    >
-      {textOnly
-        ? <Text className={`text-[21px] ${active ? 'text-black' : 'text-white'}`}>{label}</Text>
-        : (
-            <>
-              {icon}
-              <Text className={`text-[12px] ${active ? 'text-black' : 'text-white'}`}>{label}</Text>
-            </>
-          )}
-    </Pressable>
-  );
-}
-
 type ParamCardProps = {
   title: string;
   value: string;
@@ -125,8 +89,8 @@ function ParamCard({ title, value, active, onPress }: ParamCardProps) {
       style={{ backgroundColor: active ? BRAND : CARD_BG }}
       className="h-[80px] flex-1 items-center justify-center gap-1 rounded-2xl active:opacity-80"
     >
-      <Text className={`text-[12px] ${active ? 'text-black' : 'text-white'}`}>{title}</Text>
-      <Text className={`text-[17px] ${active ? 'font-medium text-black' : 'text-white'}`}>{value}</Text>
+      <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>{title}</Text>
+      <Text className={`text-[17px] ${active ? 'font-medium text-black dark:text-black' : 'text-white dark:text-white'}`}>{value}</Text>
     </Pressable>
   );
 }
@@ -135,7 +99,7 @@ type ManualParam = 'wb' | 'shutter' | 'gain' | 'ev';
 
 export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const insets = useSafeAreaInsets();
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth } = useWindowDimensions();
 
   const connectionStatus = useCameraStore.use.connectionStatus();
   const lastCommandError = useCameraStore.use.lastCommandError();
@@ -173,30 +137,8 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const startLandscapeRecording = useCameraStore.use.startLandscapeRecording();
   const stopLandscapeRecording = useCameraStore.use.stopLandscapeRecording();
 
-  // Preview geometry: the viewport is edge-to-edge and its height follows the
-  // selected aspect ratio; leftover space is split 25/75 (16:9) or 35/65 (4:3).
-  const ratioValue = ratio === '4:3' ? 0.75 : RATIO_16_9;
-  const previewHeight = Math.min(screenHeight, screenWidth / ratioValue);
-  const spareHeight = Math.max(0, screenHeight - previewHeight);
-  const topShare = ratio === '4:3' ? PREVIEW_TOP_SPARE_SHARE_4_3 : PREVIEW_TOP_SPARE_SHARE_16_9;
-  const previewTop = Math.max(Math.min(insets.top, spareHeight), Math.round(spareHeight * topShare));
-  // The video surface keeps its maximum size so the ratio animation never
-  // resizes it (resizing mid-animation stutters the stream on Android).
-  const surfaceHeight = Math.min(screenHeight, screenWidth / RATIO_16_9);
-
-  const animatedPreviewHeight = useSharedValue(previewHeight);
-  const animatedPreviewTop = useSharedValue(previewTop);
-
-  useEffect(() => {
-    animatedPreviewHeight.value = withTiming(previewHeight, { duration: 220 });
-    animatedPreviewTop.value = withTiming(previewTop, { duration: 220 });
-  }, [animatedPreviewHeight, animatedPreviewTop, previewHeight, previewTop]);
-
-  const previewStyle = useAnimatedStyle(() => ({
-    top: animatedPreviewTop.value,
-    height: animatedPreviewHeight.value,
-  }));
-  const topBarStyle = useAnimatedStyle(() => ({ top: animatedPreviewTop.value + 12 }));
+  // Use the shared aspect ratio animation hook
+  const { previewStyle, topBarStyle, surfaceHeight } = useAspectRatioAnimation(ratio, 220, 12);
 
   const shutterSize = Math.round(screenWidth * SHUTTER_SIZE_RATIO);
   const shutterBorder = Math.max(3, Math.round(shutterSize * SHUTTER_BORDER_RATIO));
@@ -283,14 +225,13 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
     setRatio(ratio === '4:3' ? '16:9' : '4:3');
   }, [ratio, setRatio]);
 
-  const ratioLabel: LandscapeRatio = ratio === '4:3' ? '4:3' : '16:9';
   const shutterDisabled = isCapturing || isRepeating || isRecordingBusy;
 
   return (
     <View className="flex-1" style={{ backgroundColor: '#000' }}>
       <Animated.View
         className="absolute left-0 items-center justify-center overflow-hidden bg-black"
-        style={[{ width: screenWidth }, previewStyle]}
+        style={[{ width: screenWidth }, previewStyle as any]}
       >
         <PreviewSurface
           stream={stream}
@@ -306,41 +247,28 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
         </View>
       )}
 
-      <Animated.View
-        className="absolute inset-x-0 flex-row items-center justify-between px-4"
-        style={topBarStyle}
-      >
-        <Pressable
-          onPress={onBack}
-          style={{ backgroundColor: PREVIEW_PILL_BG }}
-          className="size-[36px] items-center justify-center rounded-full active:opacity-70"
-        >
-          <ChevronLeftIcon />
-        </Pressable>
-
-        <Pressable
-          onPress={() => setSheetTarget(current => (current === 'tools' ? 'manual' : 'tools'))}
-          style={{ backgroundColor: PREVIEW_PILL_BG }}
-          className="h-[36px] flex-row items-center gap-1.5 rounded-full px-3.5 active:opacity-80"
-        >
-          <Text className="text-[13px] text-white">{translate('landscape.title')}</Text>
-          {sheetTarget === 'tools' ? <ChevronDownIcon /> : <ChevronUpIcon />}
-        </Pressable>
-
-        <Pressable
-          onPress={() => {
-            const next = isPro ? 'auto' : 'pro';
-            setShutterMode(next);
-            if (next === 'auto')
-              setSheetOpen(false);
-          }}
-          disabled={shutterDisabled}
-          style={{ backgroundColor: PREVIEW_PILL_BG }}
-          className="h-[30px] min-w-[62px] items-center justify-center rounded-full px-3 active:opacity-80"
-        >
-          <Text className="text-[13px] text-white">{isPro ? 'M' : 'AUTO'}</Text>
-        </Pressable>
-      </Animated.View>
+      <CameraTopBar
+        title={translate('landscape.title')}
+        onBack={onBack}
+        onTitlePress={() => setSheetTarget(current => (current === 'tools' ? 'manual' : 'tools'))}
+        expanded={sheetTarget === 'tools'}
+        style={topBarStyle as any}
+        rightContent={(
+          <Pressable
+            onPress={() => {
+              const next = isPro ? 'auto' : 'pro';
+              setShutterMode(next);
+              if (next === 'auto')
+                setSheetOpen(false);
+            }}
+            disabled={shutterDisabled}
+            style={{ backgroundColor: 'rgba(34,42,54,0.72)' }}
+            className="h-[30px] min-w-[62px] items-center justify-center rounded-full px-3 active:opacity-80"
+          >
+            <Text className="text-[13px] text-white">{isPro ? 'M' : 'AUTO'}</Text>
+          </Pressable>
+        )}
+      />
 
       {(isCapturing || isCountingDown || isRepeating || isRecording || isRecordingBusy || !isConnected) && (
         <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 56 }}>
@@ -421,7 +349,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                   setBurstOpen(true);
                 }}
               />
-              <ToolCard label={ratioLabel} textOnly active={false} onPress={handleRatioPress} />
+              <AspectRatioButton ratio={ratio} onPress={handleRatioPress} cardBg={CARD_BG} />
               <ToolCard
                 icon={<WatermarkFlaskIcon color={watermark ? '#111' : '#FFF'} disabled={!watermark} />}
                 label={translate('landscape.watermark')}
@@ -561,55 +489,21 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
         </View>
       )}
 
-      <View
-        className="absolute inset-x-0 bottom-0 flex-row items-center justify-between px-5"
-        style={{ backgroundColor: BOTTOM_BAR_BG, paddingBottom: insets.bottom + 12, paddingTop: 12 }}
-      >
-        <Pressable className="size-[54px] overflow-hidden rounded-full bg-white/10 active:opacity-70">
-          {thumbnailUri
-            ? <Image source={{ uri: thumbnailUri }} style={{ width: 54, height: 54 }} contentFit="cover" />
-            : <View className="size-[54px] rounded-full bg-white/10" />}
-        </Pressable>
-
-        <View className="h-[40px] flex-row items-center rounded-full border border-white/22 px-1">
-          {(['photo', 'video'] as LandscapeCaptureMode[]).map((mode) => {
-            const active = captureMode === mode;
-            return (
-              <Pressable
-                key={mode}
-                disabled={shutterDisabled || isCountingDown}
-                onPress={() => setCaptureMode(mode)}
-                style={active ? { backgroundColor: BRAND } : undefined}
-                className="h-[32px] min-w-[60px] items-center justify-center rounded-full"
-              >
-                <Text className={`text-[13px] ${active ? 'font-medium text-black' : 'text-white'}`}>
-                  {mode === 'photo' ? translate('landscape.photo') : translate('landscape.video')}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <Pressable
-          onPress={() => setSheetOpen((open) => {
-            if (open)
-              return false;
-            setBurstOpen(false);
-            return true;
-          })}
-          disabled={!isPro}
-          className="size-[54px] items-center justify-center rounded-full active:opacity-70"
-          style={{
-            borderColor: isPro
-              ? sheetOpen ? BRAND : 'rgba(255,255,255,0.35)'
-              : 'rgba(255,255,255,0.16)',
-            borderWidth: 1.6,
-            opacity: isPro ? 1 : 0.45,
-          }}
-        >
-          <SheetMenuIcon color={sheetOpen && isPro ? BRAND : '#FFFFFF'} />
-        </Pressable>
-      </View>
+      <CameraBottomBar
+        captureMode={captureMode}
+        onCaptureModeChange={mode => setCaptureMode(mode)}
+        thumbnailUri={thumbnailUri}
+        isRecording={isRecording}
+        rightButton={<SheetMenuIcon color={sheetOpen && isPro ? BRAND : '#FFFFFF'} />}
+        rightButtonActive={sheetOpen && isPro}
+        onRightButtonPress={() => setSheetOpen((open) => {
+          if (open)
+            return false;
+          setBurstOpen(false);
+          return true;
+        })}
+        rightButtonDisabled={!isPro}
+      />
 
       {lastCommandError && (
         <View className="absolute inset-x-0 items-center" style={{ bottom: insets.bottom + 220 }}>

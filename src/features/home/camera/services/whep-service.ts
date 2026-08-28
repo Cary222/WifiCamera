@@ -109,6 +109,7 @@ export type WhepSession = {
 
 type WhepSessionOptions = {
   onDisconnected?: () => void;
+  onTrack?: (stream: MediaStream, track: MediaStreamTrack) => void;
 };
 
 // Diagnostic counter: multiple live sessions mean multiple screens are pulling
@@ -219,6 +220,7 @@ export async function openWhepSession(
       ) {
         stream.addTrack(track);
       }
+      options.onTrack?.(source ?? stream, track);
     }
   };
 
@@ -239,8 +241,14 @@ export async function openWhepSession(
       () => closed,
     );
     if (!response.ok) {
-      appLogger.warn('WHEP', '视频协商请求失败', { status: response.status });
-      throw new Error(`WHEP negotiation failed: HTTP ${response.status}`);
+      const errorText = await response.text().catch(() => '');
+      appLogger.warn('WHEP', '视频协商请求失败', {
+        status: response.status,
+        error: errorText,
+      });
+      throw new Error(
+        `WHEP negotiation failed: HTTP ${response.status} ${errorText}`,
+      );
     }
 
     const location = response.headers.get('location');

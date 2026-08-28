@@ -5,7 +5,6 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-  runOnJS,
 } from 'react-native-reanimated';
 
 import { Text, View } from '@/components/ui';
@@ -71,11 +70,6 @@ export function WifiBandSelector({ standalone = false, onSwitch, allowDisconnect
   const handleSwitch = useCallback((to5G: boolean) => {
     if (isDisabled || is5G === to5G)
       return;
-
-    indicatorPosition.value = withTiming(to5G ? 1 : 0, {
-      duration: 200,
-      easing: Easing.inOut(Easing.quad),
-    });
 
     setWifiBand(to5G);
 

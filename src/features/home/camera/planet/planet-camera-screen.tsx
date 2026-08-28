@@ -7,14 +7,14 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Text } from '@/components/ui';
+import { SegmentedControl, Text } from '@/components/ui';
+import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
+import { CameraModeSwitcher } from '../components/camera-mode-switcher';
+import { CameraTopBar } from '../components/camera-top-bar';
 import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
 import { getCameraBaseUrl } from '../config';
 import {
-  ChevronDownIcon,
-  ChevronLeftIcon,
-  ChevronUpIcon,
   CloseIcon,
   CountdownIcon,
   MeteringIcon,
@@ -32,7 +32,6 @@ import { useShutterCountdown } from './use-shutter-countdown';
 const BRAND = '#CBFF3C';
 const CARD_BG = '#141518';
 const SHEET_BG = '#141416';
-const PILL_BG = 'rgba(34, 42, 54, 0.72)';
 const PILL_GROUP_BG = '#141518';
 
 const EXPOSURE_VALUES = [
@@ -105,10 +104,10 @@ function ParamCard({ label, value, active, disabled = false, onPress }: {
       }}
       className="h-[74px] flex-1 items-center justify-center rounded-2xl border active:opacity-80 disabled:opacity-40"
     >
-      <Text className={`text-[12px] ${active ? 'font-medium text-black/75' : 'text-white/55'}`}>
+      <Text className={`text-[12px] ${active ? 'font-medium text-black/75 dark:text-black/75' : 'text-white/55 dark:text-white/55'}`}>
         {label}
       </Text>
-      <Text className={`mt-1.5 text-[17px] font-bold ${active ? 'text-black' : 'text-white'}`}>
+      <Text className={`mt-1.5 text-[17px] font-bold ${active ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>
         {value}
       </Text>
     </Pressable>
@@ -183,7 +182,6 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     isCapturing,
     isApplyingRoi,
     effectiveRoi,
-    actionError,
     capturePhoto,
     startRecording,
     stopRecording,
@@ -264,51 +262,31 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
         />
       </View>
 
-      {/* 2. Top Bar */}
-      <View
-        className="absolute inset-x-0 flex-row items-center justify-between px-4"
+      <CameraTopBar
+        title={translate('planet.mode_title')}
+        onBack={handleBack}
+        onTitlePress={() => setArrowDirection(prev => (prev === 'down' ? 'up' : 'down'))}
+        expanded={arrowDirection === 'down'}
+        disabled={settingsDisabled}
         style={{ top: insets.top + 10 }}
-      >
-        <Pressable
-          onPress={handleBack}
-          style={{ backgroundColor: PILL_BG }}
-          className="size-9 items-center justify-center rounded-full active:opacity-70"
-        >
-          <ChevronLeftIcon size={20} />
-        </Pressable>
-
-        {/* Top Capsule: Toggles arrow direction (down ⌵ <-> up ⌃) */}
-        <Pressable
-          onPress={() => {
-            if (settingsDisabled)
-              return;
-            setArrowDirection(prev => (prev === 'down' ? 'up' : 'down'));
-          }}
-          disabled={settingsDisabled}
-          style={{ backgroundColor: PILL_BG }}
-          className="h-8 flex-row items-center gap-1.5 rounded-full px-3.5 active:opacity-70 disabled:opacity-40"
-        >
-          <Text className="text-[12px] font-medium text-white">行星视频</Text>
-          {arrowDirection === 'down' ? <ChevronDownIcon size={14} /> : <ChevronUpIcon size={14} />}
-        </Pressable>
-
-        {/* Top-Right: ROI Specs */}
-        <Pressable
-          onPress={() => setRoiSheetOpen(true)}
-          disabled={settingsDisabled}
-          className="items-end justify-center py-1 active:opacity-70 disabled:opacity-40"
-        >
-          <Text className="text-[13px] font-medium tracking-wide text-white/90">
-            {`${effectiveRoi.width}×${effectiveRoi.height}  ${activeRoiPreset.fps}fps`}
-          </Text>
-        </Pressable>
-      </View>
+        rightContent={(
+          <Pressable
+            onPress={() => setRoiSheetOpen(true)}
+            disabled={settingsDisabled}
+            className="items-end justify-center py-1 active:opacity-70 disabled:opacity-40"
+          >
+            <Text className="text-[11px] font-medium tracking-wide text-white/90">
+              {`${effectiveRoi.width}×${effectiveRoi.height}  ${activeRoiPreset.fps}fps`}
+            </Text>
+          </Pressable>
+        )}
+      />
 
       {/* 3. Recording / ROI Indicator */}
       {isApplyingRoi && (
         <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 58 }}>
           <View className="rounded-full bg-black/75 px-3.5 py-1">
-            <Text className="text-xs font-medium text-white">正在切换画幅…</Text>
+            <Text className="text-xs font-medium text-white">{translate('planet.switching_roi')}</Text>
           </View>
         </View>
       )}
@@ -317,23 +295,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
           <View className="flex-row items-center gap-2 rounded-full bg-red-600/90 px-3.5 py-1">
             <View className="size-2 rounded-full bg-white" />
             <Text className="text-xs font-bold text-white">
-              {`REC ${formatClock(recordingSeconds)}${containerFormat === 'mp4' ? '' : ` · ${writtenFrames} 帧`}`}
+              {`REC ${formatClock(recordingSeconds)}${containerFormat === 'mp4' ? '' : ` · ${writtenFrames} ${translate('planet.frames')}`}`}
             </Text>
           </View>
         </View>
-      )}
-
-      {/* 4. Action Error Toast */}
-      {actionError && (
-        <Pressable
-          onPress={dismissError}
-          className="absolute inset-x-0 items-center"
-          style={{ top: insets.top + 98 }}
-        >
-          <View className="rounded-full border border-red-500/40 bg-black/80 px-4 py-1.5">
-            <Text className="text-xs text-red-300">{actionError}</Text>
-          </View>
-        </Pressable>
       )}
 
       {/* 5. Bottom Control Container */}
@@ -350,21 +315,21 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                       {/* Row 1: Parameter Cards */}
                       <View className="flex-row gap-2.5">
                         <ParamCard
-                          label="曝光时间"
+                          label={translate('planet.exposure')}
                           value={formatExposure(exposure)}
                           active={activeParamCard === 'exposure'}
                           disabled={settingsDisabled}
                           onPress={() => setActiveParamCard('exposure')}
                         />
                         <ParamCard
-                          label="增益"
+                          label={translate('planet.gain')}
                           value={`${gain}`}
                           active={activeParamCard === 'gain'}
                           disabled={settingsDisabled}
                           onPress={() => setActiveParamCard('gain')}
                         />
                         <ParamCard
-                          label="格式"
+                          label={translate('planet.format')}
                           value={formatCardLabel}
                           active={activeParamCard === 'format'}
                           disabled={settingsDisabled}
@@ -376,73 +341,46 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                       <View className="mt-4 min-h-[52px] justify-center">
                         {activeParamCard === 'format' && (
                           <View className="flex-row items-center gap-3">
-                            {/* Container Pill (MP4 / SER) */}
-                            <View
-                              style={{ backgroundColor: PILL_GROUP_BG, borderColor: 'rgba(255, 255, 255, 0.14)' }}
-                              className="h-[44px] flex-row items-center rounded-full border p-1"
-                            >
-                              {(['mp4', 'ser'] as const).map((item) => {
-                                const selected = containerFormat === item;
-                                return (
-                                  <Pressable
-                                    key={item}
-                                    onPress={() => setContainerFormat(item)}
-                                    disabled={settingsDisabled}
-                                    style={{ backgroundColor: selected ? BRAND : 'transparent' }}
-                                    className="h-[34px] min-w-[56px] items-center justify-center rounded-full px-3"
-                                  >
-                                    <Text
-                                      className={`text-[13px] ${
-                                        selected ? 'font-bold text-black' : 'font-medium text-white'
-                                      }`}
-                                    >
-                                      {item.toUpperCase()}
-                                    </Text>
-                                  </Pressable>
-                                );
-                              })}
-                            </View>
+                            {/* Container Format Segmented Control (MP4 / SER) */}
+                            <SegmentedControl
+                              options={[
+                                { value: 'mp4', label: 'MP4' },
+                                { value: 'ser', label: 'SER' },
+                              ]}
+                              value={containerFormat}
+                              onChange={value => setContainerFormat(value as 'mp4' | 'ser')}
+                              variant="capsule-lg"
+                              className="h-[44px]"
+                              style={{
+                                backgroundColor: PILL_GROUP_BG,
+                                borderColor: 'rgba(255, 255, 255, 0.14)',
+                              }}
+                            />
 
-                            {/* Bit Depth Pill (8-bit / 12-bit / 16-bit) */}
-                            <View
+                            {/* Bit Depth Segmented Control (8-bit / 12-bit / 16-bit) */}
+                            <SegmentedControl
+                              options={[
+                                { value: '8-bit', label: '8-bit' },
+                                { value: '12-bit', label: '12-bit' },
+                                { value: '16-bit', label: '16-bit' },
+                              ]}
+                              value={bitDepth}
+                              onChange={value => setBitDepth(value as BitDepth)}
+                              variant="capsule-lg"
+                              className="h-[44px] flex-1"
                               style={{
                                 backgroundColor: PILL_GROUP_BG,
                                 borderColor: 'rgba(255, 255, 255, 0.14)',
                                 opacity: containerFormat === 'ser' ? 1 : 0.35,
                               }}
-                              className="h-[44px] flex-1 flex-row items-center rounded-full border p-1"
-                            >
-                              {(['8-bit', '12-bit', '16-bit'] as const).map((depth) => {
-                                const selected = containerFormat === 'ser' && bitDepth === depth;
-                                return (
-                                  <Pressable
-                                    key={depth}
-                                    onPress={() => {
-                                      if (containerFormat === 'ser')
-                                        setBitDepth(depth);
-                                    }}
-                                    disabled={settingsDisabled || containerFormat !== 'ser'}
-                                    style={{ backgroundColor: selected ? BRAND : 'transparent' }}
-                                    className="h-[34px] flex-1 items-center justify-center rounded-full"
-                                  >
-                                    <Text
-                                      className={`text-[13px] ${
-                                        selected ? 'font-bold text-black' : 'font-medium text-white'
-                                      }`}
-                                    >
-                                      {depth}
-                                    </Text>
-                                  </Pressable>
-                                );
-                              })}
-                            </View>
+                            />
                           </View>
                         )}
 
                         {activeParamCard === 'exposure' && (
                           <View className="w-full items-center py-1">
                             <LandscapeRuler
-                              label="快门"
+                              label={translate('planet.shutter')}
                               values={EXPOSURE_VALUES}
                               value={exposure}
                               formatValue={value => formatExposure(value)}
@@ -458,7 +396,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         {activeParamCard === 'gain' && (
                           <View className="w-full items-center py-1">
                             <LandscapeRuler
-                              label="增益"
+                              label={translate('planet.gain')}
                               values={GAIN_VALUES}
                               value={gain}
                               formatValue={value => `${value}dB`}
@@ -480,7 +418,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                       <View className="mb-3.5 flex-row items-center justify-between px-1" style={{ opacity: 0.4 }}>
                         <View className="flex-row items-center gap-2.5">
                           <MeteringIcon color="#FFF" size={24} />
-                          <Text className="text-[15px] font-normal text-white">测光模式</Text>
+                          <Text className="text-[15px] font-normal text-white">{translate('planet.metering_mode')}</Text>
                         </View>
 
                         <View
@@ -489,7 +427,11 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         >
                           {(['center', 'target', 'matrix'] as const).map((modeKey) => {
                             const selected = meteringMode === modeKey;
-                            const label = modeKey === 'center' ? '中心' : modeKey === 'target' ? '目标' : '全画面';
+                            const label = modeKey === 'center'
+                              ? translate('planet.label_metering_center')
+                              : modeKey === 'target'
+                                ? translate('planet.label_metering_target')
+                                : translate('planet.label_metering_matrix');
                             return (
                               <Pressable
                                 key={modeKey}
@@ -499,7 +441,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               >
                                 <Text
                                   className={`text-[13px] ${
-                                    selected ? 'font-bold text-black' : 'font-normal text-white'
+                                    selected ? 'font-bold text-black dark:text-black' : 'font-normal text-white dark:text-white'
                                   }`}
                                 >
                                   {label}
@@ -527,7 +469,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                           className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
                           <Text className="text-[18px] font-normal text-white">
-                            {aspectRatio === 'full' ? '全幅' : aspectRatio}
+                            {aspectRatio === 'full' ? translate('planet.aspect_full') : aspectRatio}
                           </Text>
                         </Pressable>
 
@@ -542,7 +484,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         >
                           <CountdownIcon color="#FFF" size={24} disabled={countdownSeconds === 0} />
                           <Text className="mt-1 text-[11px] font-normal text-white/70">
-                            {countdownSeconds > 0 ? `${countdownSeconds}s` : '倒计时'}
+                            {countdownSeconds > 0 ? `${countdownSeconds}s` : translate('planet.countdown_label')}
                           </Text>
                         </Pressable>
 
@@ -613,68 +555,38 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
           {/* Album Button */}
           <Pressable
             onPress={() => router.push('/album' as never)}
-            className="size-[58px] items-center justify-center overflow-hidden rounded-full border border-white/20 bg-[#1A1A1D] active:opacity-70"
+            className="size-[54px] items-center justify-center overflow-hidden rounded-full bg-white/10 active:opacity-70"
           >
             {imageUrl
               ? (
                   <Image
                     source={{ uri: imageUrl }}
-                    style={{ width: 58, height: 58 }}
+                    style={{ width: 54, height: 54 }}
                     contentFit="cover"
                   />
                 )
               : (
-                  <View className="size-[58px] items-center justify-center rounded-full bg-white/10">
-                    <Text className="text-[11px] text-white/60">相册</Text>
-                  </View>
+                  <View className="size-[54px] rounded-full bg-white/10" />
                 )}
           </Pressable>
 
           {/* Capture Mode Toggle Capsule (拍照 | 视频) */}
-          <View
-            style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.16)' }}
-            className="h-[48px] flex-row items-center rounded-full border p-1 px-1.5"
-          >
-            <Pressable
-              onPress={() => handleCaptureModePress('photo')}
-              disabled={isRecording || isCapturing || isApplyingRoi}
-              style={{ backgroundColor: captureMode === 'photo' ? BRAND : 'transparent' }}
-              className="h-[38px] min-w-[70px] items-center justify-center rounded-full px-4 active:opacity-80"
-            >
-              <Text
-                className={`text-[14px] ${
-                  captureMode === 'photo' ? 'font-bold text-black' : 'font-medium text-white'
-                }`}
-              >
-                {isCapturing ? '拍摄中' : '拍照'}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => handleCaptureModePress('video')}
-              disabled={isCapturing || isApplyingRoi}
-              style={{ backgroundColor: captureMode === 'video' ? BRAND : 'transparent' }}
-              className="h-[38px] min-w-[70px] items-center justify-center rounded-full px-4 active:opacity-80"
-            >
-              <Text
-                className={`text-[14px] ${
-                  captureMode === 'video' ? 'font-bold text-black' : 'font-medium text-white'
-                }`}
-              >
-                {isRecording ? '停止' : '视频'}
-              </Text>
-            </Pressable>
-          </View>
+          <CameraModeSwitcher
+            mode={captureMode}
+            onChange={mode => handleCaptureModePress(mode)}
+            variant="capsule-lg"
+            isCapturing={isCapturing}
+            isRecording={isRecording}
+          />
 
           {/* Hamburger Menu Button (Toggles Panel Open/Closed) */}
           <Pressable
             onPress={() => setIsPanelOpen(prev => !prev)}
             style={{
               borderColor: isPanelOpen ? BRAND : 'rgba(255, 255, 255, 0.22)',
-              borderWidth: 1.5,
-              backgroundColor: '#141518',
+              borderWidth: 1.6,
             }}
-            className="size-[58px] items-center justify-center rounded-full active:opacity-70"
+            className="size-[54px] items-center justify-center rounded-full active:opacity-70"
           >
             <SheetMenuIcon color={isPanelOpen ? BRAND : '#FFF'} size={24} />
           </Pressable>
@@ -694,7 +606,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
             style={{ backgroundColor: SHEET_BG, paddingBottom: insets.bottom + 20 }}
           >
             <View className="mb-4 flex-row items-center justify-between">
-              <Text className="text-base font-bold text-white">ROI 硬件裁切与帧率</Text>
+              <Text className="text-base font-bold text-white">{translate('planet.framing')}</Text>
               <Pressable
                 onPress={() => setRoiSheetOpen(false)}
                 className="size-8 items-center justify-center rounded-full bg-white/10 active:opacity-80"
@@ -721,16 +633,16 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                     className="flex-row items-center justify-between rounded-xl px-4 py-3.5 active:opacity-80"
                   >
                     <View>
-                      <Text className={`text-sm font-bold ${selected ? 'text-black' : 'text-white'}`}>
+                      <Text className={`text-sm font-bold ${selected ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>
                         {`${presetRoi.width}×${presetRoi.height}`}
                       </Text>
-                      <Text className={`mt-0.5 text-xs ${selected ? 'text-black/70' : 'text-white/50'}`}>
-                        {`最高 ${preset.fps} FPS`}
+                      <Text className={`mt-0.5 text-xs ${selected ? 'text-black/70 dark:text-black/70' : 'text-white/50 dark:text-white/50'}`}>
+                        {translate('planet.roi_text', { fps: preset.fps })}
                       </Text>
                     </View>
                     <View className={`rounded-full px-2.5 py-1 ${selected ? 'bg-black/20' : 'bg-white/10'}`}>
-                      <Text className={`text-xs font-semibold ${selected ? 'text-black' : 'text-white'}`}>
-                        {`${aspectRatio === 'full' ? '全幅' : aspectRatio} · ${preset.fps}fps`}
+                      <Text className={`text-xs font-semibold ${selected ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>
+                        {translate('planet.roi_summary', { aspect: aspectRatio === 'full' ? translate('planet.aspect_full') : aspectRatio, fps: preset.fps })}
                       </Text>
                     </View>
                   </Pressable>

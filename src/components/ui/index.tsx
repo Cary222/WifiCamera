@@ -14,6 +14,7 @@ export * from './modal';
 export * from './progress-bar';
 export * from './safe-area-page';
 export * from './screen-header';
+export * from './segmented-control';
 export * from './select';
 export * from './text';
 export * from './utils';

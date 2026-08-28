@@ -8,15 +8,17 @@
  * The store (`useAlbumStore`) is NOT used here — the screen manages its own
  * data loading so it can directly own the mock/real data transformation.
  */
-import type { AlbumData, PhotoItem } from './types';
+import type { AlbumData, PhotoItem, StorageCardState } from './types';
 import { useNavigation } from '@react-navigation/native';
 import { Image as NImage } from 'expo-image';
 import * as React from 'react';
 
-import { ScrollView, View } from 'react-native';
+import { Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FocusAwareStatusBar, Pressable, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera';
+import { CameraBackButton } from '@/features/home/camera/components/camera-top-bar';
+import { useStorageInfo } from '@/features/home/hooks/use-storage-info';
 import { translate } from '@/lib/i18n';
 import { AlbumErrorState } from './components/album-error-state';
 import { DateGroupHeader } from './components/date-group-header';
@@ -24,32 +26,11 @@ import { FolderGrid } from './components/folder-tile';
 import { ImageViewer } from './components/image-viewer';
 import { StorageCard } from './components/storage-card';
 import { getAlbumBaseUrl } from './config';
-import { MOCK_ALBUM_DATA } from './mock-data';
 import { listPicFolders } from './services/album-service';
 // eslint-disable-next-line perfectionist/sort-imports -- require must come after regular imports
-const backIcon = require('@/assets/common/back.png');
 const moreIcon = require('@/assets/common/more.png');
 
 type Status = 'loading' | 'success' | 'error';
-
-/**
- * Normalizes storage values to GB.
- * The board's `/FileCopy/get_disk_usage/` already reports GB, while the
- * WebSocket `used_space`/`all_space` fields report raw bytes.
- */
-function formatStorage(
-  used: number | null,
-  total: number | null,
-): { usedGB: number; totalGB: number } | null {
-  if (used === null || total === null)
-    return null;
-  const isBytes = total > 1024;
-  const divisor = isBytes ? 1024 * 1024 * 1024 : 1;
-  return {
-    usedGB: Math.round((used / divisor) * 10) / 10,
-    totalGB: Math.round((total / divisor) * 10) / 10,
-  };
-}
 
 function isPlausibleAlbumDate(date: unknown): date is Date {
   if (!(date instanceof Date) || Number.isNaN(date.getTime()))
@@ -171,10 +152,7 @@ function extractTargetName(name: string): string {
  */
 function groupIntoAlbumData(
   folders: Array<{ name: string; path?: string; size?: number; mtime?: number }>,
-  usedSpace: number | null,
-  allSpace: number | null,
-): AlbumData {
-  const real = formatStorage(usedSpace, allSpace);
+): Pick<AlbumData, 'groups'> {
   const baseUrl = getAlbumBaseUrl();
 
   const map = new Map<string, { label: string; sortKey: string; items: PhotoItem[] }>();
@@ -209,14 +187,7 @@ function groupIntoAlbumData(
     items: entry.items,
   }));
 
-  return {
-    storage: {
-      name: 'album.storage_card.name',
-      usedGB: real?.usedGB ?? MOCK_ALBUM_DATA.storage.usedGB,
-      totalGB: real?.totalGB ?? MOCK_ALBUM_DATA.storage.totalGB,
-    },
-    groups,
-  };
+  return { groups };
 }
 
 function TitleBar({
@@ -233,7 +204,7 @@ function TitleBar({
         onPress={() => navigation.goBack()}
         style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' }}
       >
-        <NImage source={backIcon} style={{ width: 28, height: 28 }} contentFit="contain" />
+        <CameraBackButton onBack={() => navigation.goBack()} />
       </Pressable>
 
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -254,6 +225,7 @@ function TitleBar({
 }
 
 function AlbumBody({
+  storage,
   data,
   collapsed,
   toggleGroup,
@@ -262,6 +234,7 @@ function AlbumBody({
   onItemPress,
   insetsBottom,
 }: {
+  storage: StorageCardState;
   data: AlbumData;
   collapsed: Record<string, boolean>;
   toggleGroup: (groupId: string) => void;
@@ -272,13 +245,17 @@ function AlbumBody({
 }) {
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: '#090a0c' }}
+      style={{
+        flex: 1,
+        backgroundColor: '#090a0c',
+        ...(Platform.OS === 'web' ? { scrollbarWidth: 'none' } : {}),
+      }}
       contentContainerStyle={{ paddingBottom: 40 + insetsBottom }}
       showsVerticalScrollIndicator={false}
     >
-      <View className="mt-2">
+      <View className="mx-4">
         <StorageCard
-          storage={data.storage}
+          storage={storage}
           onFormatPress={onFormatPress}
         />
       </View>
@@ -312,8 +289,9 @@ function AlbumBody({
 export function AlbumScreen() {
   const insets = useSafeAreaInsets();
   const isMockMode = useCameraStore.use.isMockMode();
-  const usedSpace = useCameraStore.use.usedSpace();
-  const allSpace = useCameraStore.use.allSpace();
+  const connectionStatus = useCameraStore.use.connectionStatus();
+  const isConnected = connectionStatus === 'open';
+  const storageInfo = useStorageInfo(isConnected);
 
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
   const [status, setStatus] = React.useState<Status>('loading');
@@ -324,21 +302,31 @@ export function AlbumScreen() {
     setCollapsed(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   }, []);
 
+  const storageState = React.useMemo<StorageCardState>(() => {
+    const hasRealData = storageInfo.totalGB > 0;
+    return {
+      name: 'album.storage_card.name',
+      usedGB: hasRealData ? storageInfo.usedGB : 0,
+      totalGB: hasRealData ? storageInfo.totalGB : 0,
+    };
+  }, [storageInfo.usedGB, storageInfo.totalGB]);
+
   const handleRefresh = React.useCallback(async () => {
     setStatus('loading');
     try {
       const folders = await listPicFolders();
       console.info(`[Album] folders=${folders.length}`);
-      const data = groupIntoAlbumData(folders, usedSpace, allSpace);
-      console.info(`[Album] groups=${data.groups.length} items=${data.groups.reduce((n, g) => n + g.items.length, 0)}`);
-      setAlbumData(data);
+      const { groups } = groupIntoAlbumData(folders);
+      const totalItems = groups.reduce((n, g) => n + g.items.length, 0);
+      console.info(`[Album] groups=${groups.length} items=${totalItems}`);
+      setAlbumData({ storage: storageState, groups });
       setStatus('success');
     }
     catch (error) {
       console.warn('[Album] load failed', error);
       setStatus('error');
     }
-  }, [usedSpace, allSpace]);
+  }, [storageState]);
 
   const handleFormatPress = React.useCallback(() => {
     // TODO: wire up to camera format command once the camera API is reachable
@@ -369,6 +357,7 @@ export function AlbumScreen() {
 
     return (
       <AlbumBody
+        storage={storageState}
         data={albumData}
         collapsed={collapsed}
         toggleGroup={toggleGroup}

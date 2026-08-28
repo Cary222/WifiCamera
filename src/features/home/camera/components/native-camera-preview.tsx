@@ -2,7 +2,7 @@
 
 import type { MediaStream } from 'react-native-webrtc';
 
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { NativeModules, Platform, View } from 'react-native';
 import { Text } from '@/components/ui';
 import { appLogger } from '@/lib/app-logger';
@@ -112,6 +112,11 @@ export function useLandscapeCameraPreview(
           return;
         const session = await openWhepSession(getCameraWhepUrl(), {
           onDisconnected: scheduleReconnect,
+          onTrack: (incomingStream) => {
+            if (active) {
+              setStream(incomingStream);
+            }
+          },
         });
         if (!active) {
           await session.close();
@@ -189,7 +194,15 @@ export type PreviewSurfaceProps = {
  * plain <video> element. Never rendered on native.
  */
 const WebVideoSurface = memo(({ stream }: { stream: MediaStream | null }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const attachVideo = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) {
+      node.srcObject = stream as unknown as globalThis.MediaStream | null;
+      void node.play().catch(() => {});
+    }
+  }, [stream]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -223,7 +236,7 @@ const WebVideoSurface = memo(({ stream }: { stream: MediaStream | null }) => {
 
   return (
     <video
-      ref={videoRef}
+      ref={attachVideo}
       autoPlay
       playsInline
       muted
@@ -243,7 +256,9 @@ export const PreviewSurface = memo(
     if (Platform.OS === 'web') {
       return <WebVideoSurface stream={stream} />;
     }
-    if (stream && NativeWebRTC) {
+    const hasTracks
+      = stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
+    if (stream && hasTracks && NativeWebRTC) {
       return (
         <RTCView
           streamURL={stream.toURL()}
@@ -275,6 +290,8 @@ PreviewSurface.displayName = 'PreviewSurface';
  */
 export function NativeCameraPreview() {
   const { previewState, stream } = useLandscapeCameraPreview();
+  const hasTracks
+    = stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
 
   return (
     <View className="flex-1 overflow-hidden rounded-2xl bg-neutral-900">
@@ -284,6 +301,7 @@ export function NativeCameraPreview() {
           )
         : (
             stream
+            && hasTracks
             && NativeWebRTC && (
               <RTCView
                 streamURL={stream.toURL()}

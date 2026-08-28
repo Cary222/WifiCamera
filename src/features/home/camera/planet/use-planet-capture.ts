@@ -81,6 +81,10 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
   const [writtenFrames, setWrittenFrames] = useState(0);
   const [isApplyingRoi, setIsApplyingRoi] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const reportActionError = useCallback((message: string) => {
+    console.error('[planet-capture]', message);
+    setActionError(message);
+  }, []);
 
   const effectiveRoi = useMemo(
     () => getEffectiveSensorRoi(roiPreset, aspectRatio),
@@ -166,7 +170,7 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
       await sleep(700);
     }).catch((error) => {
       if (active)
-        setActionError(error instanceof Error ? error.message : String(error));
+        reportActionError(error instanceof Error ? error.message : String(error));
     }).finally(() => {
       if (active)
         setIsApplyingRoi(false);
@@ -175,7 +179,7 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
     return () => {
       active = false;
     };
-  }, [effectiveRoi, isConnected, sendCommandWait]);
+  }, [effectiveRoi, isConnected, reportActionError, sendCommandWait]);
 
   const clearTimers = useCallback(() => {
     if (recordingTimerRef.current)
@@ -220,10 +224,10 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
         if (typeof payload.written_frames === 'number')
           setWrittenFrames(payload.written_frames);
         if (payload.error_message)
-          setActionError(payload.error_message);
+          reportActionError(payload.error_message);
       });
     }, 1500);
-  }, [sendCommandWait]);
+  }, [reportActionError, sendCommandWait]);
 
   const readSerStatus = useCallback(async (): Promise<SerStatusPayload | null> => {
     const result = await sendCommandWait('get_ser_status', [], 4500);
@@ -313,7 +317,7 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
         appliedSettingRef.current = `${exposure}/${gain}`;
         changeStreamingSetting(exposure, gain);
       }
-      setActionError(error instanceof Error ? error.message : String(error));
+      reportActionError(error instanceof Error ? error.message : String(error));
     }
   }, [
     isConnected,
@@ -329,6 +333,7 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
     pollSerStatus,
     ensureSerStreaming,
     waitForSerCondition,
+    reportActionError,
   ]);
 
   const stopRecording = useCallback(async () => {
@@ -359,7 +364,7 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
       requestCameraState();
     }
     catch (error) {
-      setActionError(error instanceof Error ? error.message : String(error));
+      reportActionError(error instanceof Error ? error.message : String(error));
     }
     finally {
       setIsRecording(false);
@@ -379,6 +384,7 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
     clearTimers,
     requestCameraState,
     waitForSerCondition,
+    reportActionError,
   ]);
 
   const dismissError = useCallback(() => {

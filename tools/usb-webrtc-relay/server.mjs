@@ -179,6 +179,33 @@ function rewriteSdpCandidates(sdp) {
   return trailing ? `${rewritten}${lineEnding}` : rewritten;
 }
 
+function ensureH264InOffer(sdp) {
+  if (/a=rtpmap:\d+\s+H264\/90000/i.test(sdp)) {
+    return sdp;
+  }
+  const pt = "102";
+  const lineEnding = sdp.includes("\r\n") ? "\r\n" : "\n";
+  const h264Lines = [
+    `a=rtpmap:${pt} H264/90000`,
+    `a=rtcp-fb:${pt} goog-remb`,
+    `a=rtcp-fb:${pt} transport-cc`,
+    `a=rtcp-fb:${pt} ccm fir`,
+    `a=rtcp-fb:${pt} nack`,
+    `a=rtcp-fb:${pt} nack pli`,
+    `a=fmtp:${pt} packetization-mode=1;profile-level-id=42e01f;level-asymmetry-allowed=1`,
+  ].join(lineEnding);
+
+  let modified = sdp.replace(/(m=video\s+\d+\s+\S+)(\s+.*)?/, `$1 ${pt}$2`);
+  if (modified.includes("a=recvonly")) {
+    modified = modified.replace("a=recvonly", `a=recvonly${lineEnding}${h264Lines}`);
+  } else if (modified.includes("a=mid:0")) {
+    modified = modified.replace("a=mid:0", `a=mid:0${lineEnding}${h264Lines}`);
+  } else {
+    modified = modified + lineEnding + h264Lines;
+  }
+  return modified;
+}
+
 function rewriteLocation(location, incomingUrl) {
   if (!location) return location;
   try {
@@ -201,54 +228,82 @@ function proxyWhep(request, response) {
     `http://${request.headers.host}`,
   );
   const targetPath = incomingUrl.pathname.replace(/^\/board-webrtc/, "") || "/";
-  const upstream = httpRequest(
-    {
-      host: boardWhepHost,
-      port: boardWhepPort,
-      path: `${targetPath}${incomingUrl.search}`,
-      method: request.method,
-      headers: {
-        ...request.headers,
-        host: `${boardWhepHost}:${boardWhepPort}`,
+  const isSdpPost =
+    request.method === "POST" &&
+    String(request.headers["content-type"] || "").includes("application/sdp");
+
+  const forwardToUpstream = (bodyBuffer) => {
+    let finalBody = bodyBuffer;
+    const reqHeaders = {
+      ...request.headers,
+      host: `${boardWhepHost}:${boardWhepPort}`,
+    };
+    if (isSdpPost && bodyBuffer) {
+      const originalSdp = bodyBuffer.toString("utf8");
+      const normalizedSdp = ensureH264InOffer(originalSdp);
+      finalBody = Buffer.from(normalizedSdp, "utf8");
+      reqHeaders["content-length"] = finalBody.length;
+    }
+
+    const upstream = httpRequest(
+      {
+        host: boardWhepHost,
+        port: boardWhepPort,
+        path: `${targetPath}${incomingUrl.search}`,
+        method: request.method,
+        headers: reqHeaders,
       },
-    },
-    (upstreamResponse) => {
-      const headers = { ...upstreamResponse.headers };
-      if (headers.location)
-        headers.location = rewriteLocation(
-          String(headers.location),
-          incomingUrl,
-        );
-      const contentType = String(headers["content-type"] || "");
-      if (!contentType.includes("application/sdp")) {
-        response.writeHead(upstreamResponse.statusCode || 502, headers);
-        upstreamResponse.pipe(response);
-        return;
-      }
+      (upstreamResponse) => {
+        const headers = { ...upstreamResponse.headers };
+        if (headers.location)
+          headers.location = rewriteLocation(
+            String(headers.location),
+            incomingUrl,
+          );
+        const contentType = String(headers["content-type"] || "");
+        if (!contentType.includes("application/sdp")) {
+          response.writeHead(upstreamResponse.statusCode || 502, headers);
+          upstreamResponse.pipe(response);
+          return;
+        }
 
-      const chunks = [];
-      upstreamResponse.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-      upstreamResponse.on("end", () => {
-        const body = rewriteSdpCandidates(
-          Buffer.concat(chunks).toString("utf8"),
-        );
-        delete headers["content-length"];
-        response.writeHead(upstreamResponse.statusCode || 502, headers);
-        response.end(body);
-      });
-    },
-  );
+        const chunks = [];
+        upstreamResponse.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+        upstreamResponse.on("end", () => {
+          const body = rewriteSdpCandidates(
+            Buffer.concat(chunks).toString("utf8"),
+          );
+          delete headers["content-length"];
+          response.writeHead(upstreamResponse.statusCode || 502, headers);
+          response.end(body);
+        });
+      },
+    );
 
-  upstream.setTimeout(10_000, () =>
-    upstream.destroy(new Error("board WHEP proxy timeout")),
-  );
-  upstream.on("error", (error) => {
-    stats.lastError = `WHEP proxy: ${error.message}`;
-    if (!response.headersSent)
-      response.writeHead(502, { "content-type": "application/json" });
-    response.end(JSON.stringify({ error: stats.lastError }));
-  });
-  request.pipe(upstream);
+    upstream.setTimeout(10_000, () =>
+      upstream.destroy(new Error("board WHEP proxy timeout")),
+    );
+    upstream.on("error", (error) => {
+      stats.lastError = `WHEP proxy: ${error.message}`;
+      if (!response.headersSent)
+        response.writeHead(502, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: stats.lastError }));
+    });
+
+    if (finalBody) {
+      upstream.end(finalBody);
+    } else {
+      request.pipe(upstream);
+    }
+  };
+
+  if (isSdpPost) {
+    const bodyChunks = [];
+    request.on("data", (chunk) => bodyChunks.push(Buffer.from(chunk)));
+    request.on("end", () => forwardToUpstream(Buffer.concat(bodyChunks)));
+  } else {
+    forwardToUpstream(null);
+  }
 }
 
 const server = createServer((request, response) => {

@@ -27,7 +27,7 @@ export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaini
 
       <View className="mt-5 flex-row items-center gap-2 self-start rounded-[20px] border border-neutral-200 bg-transparent px-4 py-2 dark:border-[#48484880]">
         <View className={`size-[10px] rounded-full ${isConnected ? 'bg-[#c8e733]' : 'bg-neutral-400'}`} />
-        <Text className={`text-[14px] font-normal ${isConnected ? 'text-[#c8e733]' : 'text-neutral-400'}`}>
+        <Text className={`text-[14px] font-normal ${isConnected ? 'text-[#c8e733]! dark:text-[#c8e733]!' : 'text-neutral-400! dark:text-neutral-400!'}`}>
           {translate(isConnected ? 'home.device_connected' : 'home.device_not_connected')}
         </Text>
       </View>

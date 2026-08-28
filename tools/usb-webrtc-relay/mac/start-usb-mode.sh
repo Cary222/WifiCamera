@@ -47,7 +47,16 @@ find_board() {
     serials=$("$ADB" devices -l 2>/dev/null | grep -E '^[^*\s]+\s+device' | awk '{print $1}' | grep -v '^emulator-' | grep -v '^127\.' | grep -v '^localhost' || true)
 
     if [ -z "$serials" ]; then
-        log_error "未找到物理设备，请检查 USB 连接"
+        # 尝试重启 ADB server 深度恢复
+        log_warn "未通过 ADB 发现设备，正在自动重启 ADB Server (kill-server & start-server)..."
+        "$ADB" kill-server >/dev/null 2>&1 || true
+        "$ADB" start-server >/dev/null 2>&1 || true
+        sleep 2
+        serials=$("$ADB" devices -l 2>/dev/null | grep -E '^[^*\s]+\s+device' | awk '{print $1}' | grep -v '^emulator-' | grep -v '^127\.' | grep -v '^localhost' || true)
+    fi
+
+    if [ -z "$serials" ]; then
+        log_error "未找到物理设备，请检查 USB 数据线是否插紧"
         exit 1
     fi
 

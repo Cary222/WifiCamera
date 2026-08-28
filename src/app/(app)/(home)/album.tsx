@@ -1,8 +1,8 @@
 import { useNavigation } from '@react-navigation/native';
 import { useLayoutEffect, useMemo } from 'react';
 import { View } from 'react-native';
-import { useUniwind } from 'uniwind';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
 import { AlbumScreen } from '@/features/home/album/album-screen';
 
 export default function AlbumPage() {

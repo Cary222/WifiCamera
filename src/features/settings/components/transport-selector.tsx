@@ -1,24 +1,15 @@
 import type { CameraTransportPreference } from '@/features/home/camera/transport';
 
-import { Pressable, StyleSheet, useColorScheme } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
-
-import { Text, View } from '@/components/ui';
+import { View } from 'react-native';
+import { SegmentedControl, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera/camera-store';
 import { translate } from '@/lib/i18n';
 
-const OPTIONS: { value: CameraTransportPreference; label: string }[] = [
-  { value: 'auto', label: 'settings.transport_auto' },
-  { value: 'usb', label: 'settings.transport_usb' },
-  { value: 'wifi', label: 'settings.transport_wifi' },
-];
-
-const SEGMENT_WIDTH = 62;
+const OPTIONS = [
+  { value: 'auto', labelTx: 'settings.transport_auto' },
+  { value: 'usb', labelTx: 'settings.transport_usb' },
+  { value: 'wifi', labelTx: 'settings.transport_wifi' },
+] as const satisfies readonly { value: CameraTransportPreference; labelTx: 'settings.transport_auto' | 'settings.transport_usb' | 'settings.transport_wifi' }[];
 
 /**
  * Picks the link used to reach the board: auto-probe, or pin USB / WiFi.
@@ -31,30 +22,12 @@ export function TransportSelector({ standalone = false }: { standalone?: boolean
   const transport = useCameraStore.use.transport();
   const probing = useCameraStore.use.transportProbing();
   const switchTransport = useCameraStore.use.switchTransport();
-  const colorScheme = useColorScheme();
-
-  const selectedIndex = OPTIONS.findIndex(option => option.value === preference);
-  const indicatorPosition = useSharedValue(Math.max(0, selectedIndex));
 
   const handleSelect = (value: CameraTransportPreference) => {
-    if (value === preference)
-      return;
-    const index = OPTIONS.findIndex(option => option.value === value);
-    indicatorPosition.value = withTiming(index, {
-      duration: 200,
-      easing: Easing.inOut(Easing.quad),
-    });
-    switchTransport(value);
+    if (value !== preference)
+      switchTransport(value);
   };
 
-  const indicatorStyle = useAnimatedStyle(() => {
-    'worklet';
-    return {
-      transform: [{ translateX: indicatorPosition.value * SEGMENT_WIDTH }],
-    };
-  });
-
-  const borderColor = colorScheme === 'dark' ? '#48484880' : '#E5E7EB';
   const activeLabel = probing
     ? translate('settings.transport_probing')
     : transport === 'wifi'
@@ -62,22 +35,15 @@ export function TransportSelector({ standalone = false }: { standalone?: boolean
       : translate('settings.transport_usb');
 
   const segments = (
-    <View style={[styles.container, { borderColor }]}>
-      <Animated.View style={[styles.indicator, indicatorStyle]} />
-      {OPTIONS.map(option => (
-        <Pressable
-          key={option.value}
-          style={styles.button}
-          onPress={() => handleSelect(option.value)}
-        >
-          <Text style={styles.text} tx={option.label as Parameters<typeof translate>[0]} />
-        </Pressable>
-      ))}
-    </View>
+    <SegmentedControl<CameraTransportPreference>
+      options={OPTIONS}
+      value={preference}
+      onChange={handleSelect}
+      variant="neutral-fixed"
+      segmentPixelWidth={62}
+    />
   );
 
-  // Inside the connection modal the label sits above the control, and each
-  // link's reachability is shown so a failure points at the right cable.
   if (standalone) {
     return (
       <View>
@@ -132,7 +98,7 @@ function TransportReachability() {
         <View key={link} className="flex-row items-center gap-1.5">
           <View
             style={[
-              styles.dot,
+              { width: 8, height: 8, borderRadius: 4 },
               { backgroundColor: reachability[link] ? '#C8E733' : '#6B7280' },
             ]}
           />
@@ -144,40 +110,3 @@ function TransportReachability() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    height: 35,
-    width: SEGMENT_WIDTH * 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    backgroundColor: 'transparent',
-    position: 'relative',
-  },
-  indicator: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    width: SEGMENT_WIDTH,
-    height: 33,
-    backgroundColor: '#C8E733',
-    borderRadius: 6,
-  },
-  button: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1,
-  },
-  text: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-});
