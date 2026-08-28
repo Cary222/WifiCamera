@@ -43,6 +43,7 @@
   },
   "camera": {
     "capture": "التقاط واحد",
+    "capturing": "جارٍ الالتقاط",
     "current_preset": "الإعداد الحالي",
     "exposure_time": "مدة التعريض",
     "gain": "الكسب",
@@ -51,6 +52,7 @@
     "mode_stream": "بث",
     "not_connected": "الكاميرا غير متصلة",
     "not_connected_hint": "انقر للانتقال إلى إعداد الجهاز ←",
+    "photo": "صورة",
     "presets": "إعدادات الالتقاط",
     "preview_waiting": "في انتظار المعاينة",
     "repeat": "بدء التسلسل",
@@ -62,7 +64,8 @@
     "status_open": "متصل",
     "stop": "إيقاف الالتقاط",
     "subtitle": "التقاط الصور بالكاميرا",
-    "title": "WifiCamera"
+    "title": "WifiCamera",
+    "video": "فيديو"
   },
   "dashboard": {
     "humidity": "الرطوبة",
@@ -230,6 +233,22 @@
     "submit": "تسجيل الدخول",
     "title": "مرحبا بكم في STAR"
   },
+  "nebula": {
+    "auto_stretch": "التمدد التلقائي للصورة:",
+    "auto_stretch_off": "إيقاف",
+    "auto_stretch_on": "تشغيل",
+    "ev": "EV",
+    "focus_assist": "مساعدة التركيز",
+    "gain": "الكسب",
+    "mode_title": "وضع السماء المرصعة بالنجوم",
+    "resolve": "تحليل",
+    "resolve_failed": "فشل التحليل",
+    "resolve_in_progress": "جارٍ التحليل…",
+    "resolve_success": "نجح التحليل",
+    "shutter": "الغالق",
+    "watermark": "العلامة المائية",
+    "white_balance": "توازن اللون الأبيض"
+  },
   "onboarding": {
     "message": "مرحبا بك في SkySense"
   },
@@ -262,6 +281,37 @@
     "update_available": "يتوفر تحديث",
     "uploading": "جارٍ الرفع...",
     "version_label": "الإصدار"
+  },
+  "planet": {
+    "aspect_full": "كامل",
+    "bit_depth": "عمق البت",
+    "container": "الحاوية",
+    "countdown": "العد التنازلي",
+    "countdown_label": "العد التنازلي",
+    "error_roi_rejected": "رفضت اللوحة إعداد ROI",
+    "error_roi_timeout": "انتهت مهلة تبديل ROI",
+    "error_ser_flush": "لم يكتمل حفظ ملف SER في الوقت المحدد",
+    "error_ser_not_active": "لم تدخل اللوحة تسجيل SER",
+    "error_ser_start_failed": "فشل بدء تدفق RAW",
+    "error_ser_start_timeout": "انتهت مهلة بدء تدفق RAW",
+    "error_start_rejected": "رفضت اللوحة طلب التسجيل",
+    "error_start_timeout": "انتهت مهلة بدء التسجيل",
+    "error_stop_timeout": "انتهت مهلة إيقاف التسجيل",
+    "exposure": "التعريض",
+    "format": "التنسيق",
+    "fps": "FPS",
+    "frames": "إطارات",
+    "framing": "قص ROI ومعدل الإطارات",
+    "gain": "الكسب",
+    "label_metering_center": "المركز",
+    "label_metering_matrix": "المصفوفة",
+    "label_metering_target": "الهدف",
+    "metering_mode": "وضع القياس",
+    "mode_title": "فيديو الكوكب",
+    "roi_summary": "{{aspect}} · {{fps}}fps",
+    "roi_text": "حتى {{fps}} FPS",
+    "shutter": "الغالق",
+    "switching_roi": "جارٍ تبديل ROI…"
   },
   "profile": {
     "about": "حول",

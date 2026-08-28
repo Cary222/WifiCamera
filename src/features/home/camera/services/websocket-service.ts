@@ -1,4 +1,5 @@
 /* eslint-disable max-lines-per-function */
+
 import type {
   CameraJsonMessage,
   CameraWebSocketMessage,
@@ -83,7 +84,9 @@ export class CameraWebSocketService {
       try {
         this.socket.close();
       }
-      catch {}
+      catch (e) {
+        console.debug('[CameraWS] 关闭旧连接异常（可忽略）:', e);
+      }
       this.socket = null;
     }
 
@@ -155,7 +158,9 @@ export class CameraWebSocketService {
       try {
         socket.close();
       }
-      catch {}
+      catch (e) {
+        console.debug('[CameraWS] 关闭错误套接字异常（可忽略）:', e);
+      }
       if (this.socket === socket) {
         this.socket = null;
       }
@@ -251,7 +256,9 @@ export class CameraWebSocketService {
         try {
           this.socket.send(serializeCameraJsonMessage({ device_name: 'StartUp', instruction: 'HeartBeat' }));
         }
-        catch {}
+        catch (e) {
+          console.debug('[CameraWS] 心跳发送失败（可忽略）:', e);
+        }
       }
     }, this.options.heartbeatIntervalMs);
   }

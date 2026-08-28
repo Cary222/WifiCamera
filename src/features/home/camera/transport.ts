@@ -59,14 +59,22 @@ const USB_WHEP_URL = 'http://10.0.2.2:18787/board-webrtc/cam0/whep';
  * WiFi endpoints use dynamically resolved URLs via getWifiCameraUrl() and
  * getWifiWhepUrl() so that users can configure the camera's IP address.
  */
+const configuredUsbBaseUrl = process.env.EXPO_PUBLIC_CAMERA_BASE_URL;
+
 const TRANSPORT_ENDPOINTS: Record<CameraTransport, TransportEndpoints> = {
   usb: {
-    base: Env.EXPO_PUBLIC_CAMERA_BASE_URL || USB_BASE_URL,
+  // env.ts has a WiFi fallback for legacy callers; only an explicit process
+  // variable may override the USB emulator endpoint.
+    base: configuredUsbBaseUrl || USB_BASE_URL,
     whep: Env.EXPO_PUBLIC_CAMERA_WHEP_URL || USB_WHEP_URL,
   },
   wifi: {
-    get base() { return getWifiCameraUrl(); },
-    get whep() { return getWifiWhepUrl(); },
+    get base() {
+      return getWifiCameraUrl();
+    },
+    get whep() {
+      return getWifiWhepUrl();
+    },
   },
 };
 
@@ -81,9 +89,12 @@ export const TRANSPORT_FALLBACK_GRACE_MS = 5_000;
 /** Minimum spacing between probes, so a flapping link cannot spam the board. */
 export const TRANSPORT_PROBE_MIN_INTERVAL_MS = 5_000;
 
-let activeTransport: CameraTransport = readStoredPreference() === 'wifi' ? 'wifi' : 'usb';
+let activeTransport: CameraTransport
+  = readStoredPreference() === 'wifi' ? 'wifi' : 'usb';
 
-export function getTransportEndpoints(transport: CameraTransport): TransportEndpoints {
+export function getTransportEndpoints(
+  transport: CameraTransport,
+): TransportEndpoints {
   if (transport === 'wifi') {
     return {
       base: getWifiCameraUrl(),
@@ -102,26 +113,34 @@ export function setActiveTransport(transport: CameraTransport): void {
 }
 
 function readStoredPreference(): CameraTransportPreference {
-  const stored = getItem<CameraTransportPreference>(STORAGE_KEYS.CAMERA_TRANSPORT);
-  return stored === 'usb' || stored === 'wifi' || stored === 'auto' ? stored : 'auto';
+  const stored = getItem<CameraTransportPreference>(
+    STORAGE_KEYS.CAMERA_TRANSPORT,
+  );
+  return stored === 'usb' || stored === 'wifi' || stored === 'auto'
+    ? stored
+    : 'auto';
 }
 
 export function getTransportPreference(): CameraTransportPreference {
   return readStoredPreference();
 }
 
-export function setTransportPreference(preference: CameraTransportPreference): void {
+export function setTransportPreference(
+  preference: CameraTransportPreference,
+): void {
   setItem(STORAGE_KEYS.CAMERA_TRANSPORT, preference);
 }
 
-async function isTransportReachable(transport: CameraTransport): Promise<boolean> {
+async function isTransportReachable(
+  transport: CameraTransport,
+): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TRANSPORT_PROBE_TIMEOUT_MS);
   let probeUrl: string;
 
   if (Platform.OS === 'web') {
-    // On web, probe through Metro dev server's camera proxy middleware.
-    // We always probe USB transport on web since that's what CameraProxy handles.
+  // On web, probe through Metro dev server's camera proxy middleware.
+  // We always probe USB transport on web since that's what CameraProxy handles.
     probeUrl = 'http://localhost:8081/camera-proxy/status';
   }
   else {
@@ -134,7 +153,7 @@ async function isTransportReachable(transport: CameraTransport): Promise<boolean
     });
     if (!response.ok)
       return false;
-    const payload = await response.json() as { ok?: boolean };
+    const payload = (await response.json()) as { ok?: boolean };
     return payload?.ok === true;
   }
   catch {

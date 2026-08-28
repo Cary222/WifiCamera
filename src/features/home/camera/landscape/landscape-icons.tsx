@@ -74,7 +74,7 @@ export function WatermarkFlaskIcon({ color = '#FFF', size = 26, disabled = false
 }
 
 export function SheetMenuIcon({ color = '#FFF', size = 24, ...props }: IconProps) {
-  return <Svg width={size} height={size} viewBox="0 0 24 24" {...props}><Path d="M4.5 7.5h15M4.5 12h15M4.5 16.5h15" {...stroke(color, 2)} /></Svg>;
+  return <Svg width={size} height={size} viewBox="0 0 24 24" {...props}><Path d="M3 7.5h18M5 12h14M7 16.5h10" {...stroke(color, 2)} /></Svg>;
 }
 
 export function RatioBoxIcon({ color = '#FFF', size = 24, ...props }: IconProps) {

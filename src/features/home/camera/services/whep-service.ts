@@ -4,11 +4,28 @@ import type { MediaStream, MediaStreamTrack } from 'react-native-webrtc';
 import { NativeModules } from 'react-native';
 import { appLogger } from '@/lib/app-logger';
 
-const NativeWebRTC = NativeModules.WebRTCModule ? require('react-native-webrtc') : null;
+const NativeWebRTC = NativeModules.WebRTCModule
+  ? require('react-native-webrtc')
+  : null;
 
-const MediaStreamClass = NativeWebRTC?.MediaStream;
-const RTCPeerConnection = NativeWebRTC?.RTCPeerConnection;
-const RTCSessionDescription = NativeWebRTC?.RTCSessionDescription;
+/**
+ * Web fallback: browsers ship their own standards-based WebRTC, so the same
+ * negotiation code runs against `window.RTCPeerConnection` when the
+ * react-native-webrtc native module is absent.
+ */
+const BrowserWebRTC
+  = typeof window !== 'undefined' && window.RTCPeerConnection
+    ? {
+        RTCPeerConnection: window.RTCPeerConnection,
+        MediaStream: window.MediaStream,
+        RTCSessionDescription: window.RTCSessionDescription,
+      }
+    : null;
+
+const WebRTC = NativeWebRTC ?? BrowserWebRTC;
+const RTCPeerConnection = WebRTC?.RTCPeerConnection;
+const MediaStreamClass = WebRTC?.MediaStream;
+const RTCSessionDescription = WebRTC?.RTCSessionDescription;
 
 // Matches the browser build (app.js `postWhepOfferWhenReady`): keep offering the
 // WHEP endpoint while the board is still spinning up its MediaMTX source.
@@ -54,7 +71,10 @@ type LocalCandidate = {
  * Build an `application/trickle-ice-sdpfrag` body for the given candidates,
  * grouped by the m-line they belong to (see reader.js `generateSdpFragment`).
  */
-function generateSdpFragment(offerData: OfferData, candidates: LocalCandidate[]): string {
+function generateSdpFragment(
+  offerData: OfferData,
+  candidates: LocalCandidate[],
+): string {
   const candidatesByMedia = new Map<number, LocalCandidate[]>();
   for (const candidate of candidates) {
     const mid = candidate.sdpMLineIndex;
@@ -89,6 +109,7 @@ export type WhepSession = {
 
 type WhepSessionOptions = {
   onDisconnected?: () => void;
+  onTrack?: (stream: MediaStream, track: MediaStreamTrack) => void;
 };
 
 // Diagnostic counter: multiple live sessions mean multiple screens are pulling
@@ -100,9 +121,9 @@ let liveSessionCount = 0;
  *
  * Modelled on the working browser implementation (app.js
  * `startDirectWebRtcPreview` / `postWhepOfferWhenReady`):
- * - add recvonly video/audio transceivers plus a data channel, matching the
- *   browser offer exactly — MediaMTX answers a video-only offer differently and
- *   that negotiation stalls;
+ * - offer a single recvonly video m-line ONLY — the board's custom MediaMTX
+ *   build rejects offers carrying audio ("codecs not supported by client") or
+ *   a data channel ("sdp: syntax error") with HTTP 400;
  * - do NOT filter loopback candidates; keeping them lets the board and the
  *   phone match up instantly over LAN;
  * - deliver every later ICE candidate via PATCH (trickle ICE), otherwise the
@@ -110,11 +131,20 @@ let liveSessionCount = 0;
  * - retry the offer POST for up to ~1.8s while the board's stream source is
  *   still starting, so a fast WHEP connect never races the RTSP source.
  */
-export async function openWhepSession(whepUrl: string, options: WhepSessionOptions = {}): Promise<WhepSession> {
+export async function openWhepSession(
+  whepUrl: string,
+  options: WhepSessionOptions = {},
+): Promise<WhepSession> {
   if (!RTCPeerConnection || !MediaStreamClass) {
-    appLogger.error('WHEP', 'WebRTC 原生模块不可用');
-    throw new Error('WebRTC native module is not available in this environment');
+    appLogger.error('WHEP', 'WebRTC 不可用（无原生模块且非浏览器环境）');
+    throw new Error('WebRTC is not available in this environment');
   }
+  // Browser MediaStream has no `release()`; only the native bridge does.
+  const releaseStream = (target: MediaStream) => {
+    const releasable = target as MediaStream & { release?: () => void };
+
+    releasable.release?.();
+  };
   appLogger.info('WHEP', '开始协商视频流', { whepUrl });
   const peer = new RTCPeerConnection({ iceServers: [] });
   const stream: MediaStream = new MediaStreamClass();
@@ -173,18 +203,24 @@ export async function openWhepSession(whepUrl: string, options: WhepSessionOptio
   };
 
   peer.addTransceiver('video', { direction: 'recvonly' });
-  peer.addTransceiver('audio', { direction: 'recvonly' });
-  peer.createDataChannel('');
 
-  peer.ontrack = (event: { streams: MediaStream[]; track: MediaStreamTrack }) => {
+  peer.ontrack = (event: {
+    streams: MediaStream[];
+    track: MediaStreamTrack;
+  }) => {
     const source = event.streams[0];
     for (const track of source?.getTracks() ?? [event.track]) {
       if (track.kind !== 'video')
         continue;
       track.onended = notifyDisconnected;
-      if (!stream.getTracks().some((current: MediaStreamTrack) => current.id === track.id)) {
+      if (
+        !stream
+          .getTracks()
+          .some((current: MediaStreamTrack) => current.id === track.id)
+      ) {
         stream.addTrack(track);
       }
+      options.onTrack?.(source ?? stream, track);
     }
   };
 
@@ -199,17 +235,36 @@ export async function openWhepSession(whepUrl: string, options: WhepSessionOptio
       throw new Error('WHEP offer SDP is unavailable');
     offerData = parseOffer(localSdp);
 
-    const response = await postWhepOfferWhenReady(whepUrl, localSdp, () => closed);
+    const response = await postWhepOfferWhenReady(
+      whepUrl,
+      localSdp,
+      () => closed,
+    );
     if (!response.ok) {
-      appLogger.warn('WHEP', '视频协商请求失败', { status: response.status });
-      throw new Error(`WHEP negotiation failed: HTTP ${response.status}`);
+      const errorText = await response.text().catch(() => '');
+      appLogger.warn('WHEP', '视频协商请求失败', {
+        status: response.status,
+        error: errorText,
+      });
+      throw new Error(
+        `WHEP negotiation failed: HTTP ${response.status} ${errorText}`,
+      );
     }
 
     const location = response.headers.get('location');
-    if (location)
-      sessionUrl = new URL(location, whepUrl).toString();
+    if (location) {
+      // Web proxy returns a root-relative Location; resolve it against the
+      // page origin since `new URL()` requires an absolute base.
+      const baseUrl
+        = whepUrl.startsWith('/') && typeof globalThis.location !== 'undefined'
+          ? globalThis.location.origin
+          : whepUrl;
+      sessionUrl = new URL(location, baseUrl).toString();
+    }
     const answerSdp = await response.text();
-    await peer.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answerSdp }));
+    await peer.setRemoteDescription(
+      new RTCSessionDescription({ type: 'answer', sdp: answerSdp }),
+    );
 
     // Candidates gathered before the session URL existed are delivered now.
     if (queuedCandidates.length > 0) {
@@ -225,7 +280,7 @@ export async function openWhepSession(whepUrl: string, options: WhepSessionOptio
   catch (error) {
     appLogger.error('WHEP', '视频流协商失败', String(error));
     peer.close();
-    stream.release();
+    releaseStream(stream);
     throw error;
   }
 
@@ -242,7 +297,10 @@ export async function openWhepSession(whepUrl: string, options: WhepSessionOptio
             + `jitterMs=${Math.round(Number(item.jitter) * 1000)} bytes=${item.bytesReceived}`,
           );
         }
-        if (item.type === 'candidate-pair' && (item.state === 'succeeded' || item.nominated)) {
+        if (
+          item.type === 'candidate-pair'
+          && (item.state === 'succeeded' || item.nominated)
+        ) {
           rows.push(`pair nominated=${item.nominated} state=${item.state}`);
         }
       });
@@ -253,7 +311,7 @@ export async function openWhepSession(whepUrl: string, options: WhepSessionOptio
         return;
       closed = true;
       peer.close();
-      stream.release();
+      releaseStream(stream);
       liveSessionCount = Math.max(0, liveSessionCount - 1);
       if (__DEV__)
         console.warn(`[CameraWHEP] session closed, live=${liveSessionCount}`);
@@ -277,7 +335,10 @@ async function postWhepOfferWhenReady(
   const startedAt = Date.now();
   let attempt = 0;
 
-  while (!isCancelled() && Date.now() - startedAt < WHEP_OFFER_RETRY_TIMEOUT_MS) {
+  while (
+    !isCancelled()
+    && Date.now() - startedAt < WHEP_OFFER_RETRY_TIMEOUT_MS
+  ) {
     attempt += 1;
     const response = await fetch(whepUrl, {
       method: 'POST',

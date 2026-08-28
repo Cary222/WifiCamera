@@ -36,7 +36,7 @@ export function PresetWheel({ configs, selectedId, onSelect }: PresetWheelProps)
             >
               <Text
                 className={`text-sm font-medium ${
-                  isSelected ? 'text-white' : 'text-black dark:text-white'
+                  isSelected ? 'text-white dark:text-white' : 'text-black dark:text-black'
                 }`}
               >
                 {config.name}

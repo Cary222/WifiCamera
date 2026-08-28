@@ -2,8 +2,8 @@
 
 import type { MediaStream } from 'react-native-webrtc';
 
-import { memo, useEffect, useState } from 'react';
-import { NativeModules, View } from 'react-native';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { NativeModules, Platform, View } from 'react-native';
 import { Text } from '@/components/ui';
 import { appLogger } from '@/lib/app-logger';
 import { translate } from '@/lib/i18n';
@@ -11,7 +11,9 @@ import { useCameraStore } from '../camera-store';
 import { getCameraWhepUrl } from '../config';
 import { openWhepSession } from '../services/whep-service';
 
-const NativeWebRTC = NativeModules.WebRTCModule ? require('react-native-webrtc') : null;
+const NativeWebRTC = NativeModules.WebRTCModule
+  ? require('react-native-webrtc')
+  : null;
 
 export const RTCView = NativeWebRTC?.RTCView ?? View;
 
@@ -35,17 +37,22 @@ let mountedPreviewCount = 0;
 // browser's one-session-at-a-time behaviour.
 let activePreviewTeardown: Promise<void> = Promise.resolve();
 
-function serializePreviewTeardown(teardown: () => Promise<void>): Promise<void> {
+function serializePreviewTeardown(
+  teardown: () => Promise<void>,
+): Promise<void> {
   activePreviewTeardown = activePreviewTeardown.then(teardown, teardown);
   return activePreviewTeardown;
 }
 
-export function useLandscapeCameraPreview(_options: LandscapePreviewOptions = {}) {
+export function useLandscapeCameraPreview(
+  _options: LandscapePreviewOptions = {},
+) {
   const startStreaming = useCameraStore.use.startStreaming();
   const startStreamingManual = useCameraStore.use.startStreamingManual();
   const connectionStatus = useCameraStore.use.connectionStatus();
   const transport = useCameraStore.use.transport();
-  const [previewState, setPreviewState] = useState<CameraPreviewState>('connecting');
+  const [previewState, setPreviewState]
+    = useState<CameraPreviewState>('connecting');
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   useEffect(() => {
@@ -103,7 +110,14 @@ export function useLandscapeCameraPreview(_options: LandscapePreviewOptions = {}
         await activePreviewTeardown;
         if (!active)
           return;
-        const session = await openWhepSession(getCameraWhepUrl(), { onDisconnected: scheduleReconnect });
+        const session = await openWhepSession(getCameraWhepUrl(), {
+          onDisconnected: scheduleReconnect,
+          onTrack: (incomingStream) => {
+            if (active) {
+              setStream(incomingStream);
+            }
+          },
+        });
         if (!active) {
           await session.close();
           return;
@@ -141,7 +155,10 @@ export function useLandscapeCameraPreview(_options: LandscapePreviewOptions = {}
       startStreaming('auto');
     }
     else {
-      startStreamingManual(storeState.landscapeManualExposure, storeState.landscapeManualGain);
+      startStreamingManual(
+        storeState.landscapeManualExposure,
+        storeState.landscapeManualGain,
+      );
     }
 
     // Matches browser app.js: 200ms delay between sending start_streaming and
@@ -172,27 +189,99 @@ export type PreviewSurfaceProps = {
   height: number;
 };
 
-export const PreviewSurface = memo(({ stream, previewState, width, height }: PreviewSurfaceProps) => {
-  if (stream && NativeWebRTC) {
-    return (
-      <RTCView
-        streamURL={stream.toURL()}
-        objectFit="cover"
-        mirror={false}
-        style={{ width, height }}
-      />
-    );
-  }
+/**
+ * Web surface: browsers have no RTCView, so the MediaStream is attached to a
+ * plain <video> element. Never rendered on native.
+ */
+const WebVideoSurface = memo(({ stream }: { stream: MediaStream | null }) => {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const attachVideo = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node) {
+      node.srcObject = stream as unknown as globalThis.MediaStream | null;
+      void node.play().catch(() => {});
+    }
+  }, [stream]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video)
+      return;
+
+    if (!stream) {
+      video.srcObject = null;
+      return;
+    }
+
+    const nativeStream = stream as unknown as globalThis.MediaStream;
+    video.srcObject = nativeStream;
+    void video.play().catch(() => {});
+
+    const handleTrackEvent = () => {
+      if (video.srcObject !== nativeStream) {
+        video.srcObject = nativeStream;
+      }
+      void video.play().catch(() => {});
+    };
+
+    nativeStream.addEventListener?.('addtrack', handleTrackEvent);
+    nativeStream.addEventListener?.('removetrack', handleTrackEvent);
+
+    return () => {
+      nativeStream.removeEventListener?.('addtrack', handleTrackEvent);
+      nativeStream.removeEventListener?.('removetrack', handleTrackEvent);
+    };
+  }, [stream]);
+
   return (
-    <View className="flex-1 items-center justify-center bg-[#0B0B0D]" style={{ width, height }}>
-      <Text className="text-sm text-white/40">
-        {previewState === 'error'
-          ? translate('landscape.preview_failed')
-          : translate('landscape.preview_connecting')}
-      </Text>
-    </View>
+    <video
+      ref={attachVideo}
+      autoPlay
+      playsInline
+      muted
+      style={{
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover',
+        background: '#0B0B0D',
+      }}
+    />
   );
 });
+WebVideoSurface.displayName = 'WebVideoSurface';
+
+export const PreviewSurface = memo(
+  ({ stream, previewState, width, height }: PreviewSurfaceProps) => {
+    if (Platform.OS === 'web') {
+      return <WebVideoSurface stream={stream} />;
+    }
+    const hasTracks
+      = stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
+    if (stream && hasTracks && NativeWebRTC) {
+      return (
+        <RTCView
+          streamURL={stream.toURL()}
+          objectFit="cover"
+          mirror={false}
+          style={{ width, height }}
+        />
+      );
+    }
+    return (
+      <View
+        className="flex-1 items-center justify-center bg-[#0B0B0D]"
+        style={{ width, height }}
+      >
+        <Text className="text-sm text-white/40">
+          {previewState === 'error'
+            ? translate('landscape.preview_failed')
+            : translate('landscape.preview_connecting')}
+        </Text>
+      </View>
+    );
+  },
+);
 PreviewSurface.displayName = 'PreviewSurface';
 
 /**
@@ -201,17 +290,27 @@ PreviewSurface.displayName = 'PreviewSurface';
  */
 export function NativeCameraPreview() {
   const { previewState, stream } = useLandscapeCameraPreview();
+  const hasTracks
+    = stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
 
   return (
     <View className="flex-1 overflow-hidden rounded-2xl bg-neutral-900">
-      {stream && NativeWebRTC && (
-        <RTCView
-          streamURL={stream.toURL()}
-          objectFit="cover"
-          mirror={false}
-          style={{ flex: 1 }}
-        />
-      )}
+      {Platform.OS === 'web'
+        ? (
+            <WebVideoSurface stream={stream} />
+          )
+        : (
+            stream
+            && hasTracks
+            && NativeWebRTC && (
+              <RTCView
+                streamURL={stream.toURL()}
+                objectFit="cover"
+                mirror={false}
+                style={{ flex: 1 }}
+              />
+            )
+          )}
       {previewState !== 'live' && (
         <View className="absolute inset-0 items-center justify-center">
           <Text className="text-neutral-500">

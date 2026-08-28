@@ -43,6 +43,7 @@
   },
   "camera": {
     "capture": "单次拍摄",
+    "capturing": "拍摄中",
     "current_preset": "当前预设",
     "exposure_time": "曝光时间",
     "gain": "增益",
@@ -51,6 +52,7 @@
     "mode_stream": "预览",
     "not_connected": "相机尚未连接",
     "not_connected_hint": "点击前往设备设置 →",
+    "photo": "拍照",
     "presets": "拍摄预设",
     "preview_waiting": "等待预览画面",
     "repeat": "开始连拍",
@@ -60,9 +62,10 @@
     "status_idle": "未连接",
     "status_label": "相机状态",
     "status_open": "已连接",
-    "stop": "停止拍摄",
+    "stop": "停止",
     "subtitle": "相机拍摄",
-    "title": "WifiCamera"
+    "title": "WifiCamera",
+    "video": "视频"
   },
   "dashboard": {
     "humidity": "湿度",
@@ -230,6 +233,22 @@
     "submit": "登陆",
     "title": "欢迎来到STAR"
   },
+  "nebula": {
+    "auto_stretch": "拍照成片自动拉伸：",
+    "auto_stretch_off": "关闭",
+    "auto_stretch_on": "开启",
+    "ev": "EV",
+    "focus_assist": "对焦辅助",
+    "gain": "增益",
+    "mode_title": "星空模式",
+    "resolve": "解析",
+    "resolve_failed": "解析失败",
+    "resolve_in_progress": "解析中…",
+    "resolve_success": "解析成功",
+    "shutter": "快门",
+    "watermark": "水印",
+    "white_balance": "白平衡"
+  },
   "onboarding": {
     "message": "欢迎使用 SkySense"
   },
@@ -262,6 +281,37 @@
     "update_available": "有可用更新",
     "uploading": "上传中...",
     "version_label": "版本"
+  },
+  "planet": {
+    "aspect_full": "全幅",
+    "bit_depth": "位深",
+    "container": "封装",
+    "countdown": "倒计时",
+    "countdown_label": "倒计时",
+    "error_roi_rejected": "板端拒绝了画幅设置",
+    "error_roi_timeout": "切换画幅超时",
+    "error_ser_flush": "SER 文件刷盘未在预期时间内完成",
+    "error_ser_not_active": "板端未进入 SER 录制状态",
+    "error_ser_start_failed": "启动 RAW 采集流失败",
+    "error_ser_start_timeout": "启动 RAW 采集流超时",
+    "error_start_rejected": "板端拒绝了录制请求",
+    "error_start_timeout": "启动录制超时",
+    "error_stop_timeout": "停止录制超时",
+    "exposure": "曝光时间",
+    "format": "格式",
+    "fps": "帧率",
+    "frames": "帧",
+    "framing": "ROI 硬件裁切与帧率",
+    "gain": "增益",
+    "label_metering_center": "中心",
+    "label_metering_matrix": "全画面",
+    "label_metering_target": "目标",
+    "metering_mode": "测光模式",
+    "mode_title": "行星视频",
+    "roi_summary": "{{aspect}} · {{fps}}fps",
+    "roi_text": "最高 {{fps}} FPS",
+    "shutter": "快门",
+    "switching_roi": "正在切换画幅…"
   },
   "profile": {
     "about": "关于",

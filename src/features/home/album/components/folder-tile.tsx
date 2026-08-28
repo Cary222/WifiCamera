@@ -1,5 +1,6 @@
 import type { PhotoItem } from '../types';
 import { Image } from 'expo-image';
+import * as React from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 
 import { Text } from '@/components/ui';
@@ -7,10 +8,9 @@ import { Text } from '@/components/ui';
 // eslint-disable-next-line perfectionist/sort-imports -- require must come after regular imports
 const nebulaPlaceholder = require('@/assets/icons/index/PhotoAlbum.png');
 
-export function computeTileWidth(screenWidth: number): number {
-  const horizontalMargin = 16 * 2;
+export function computeTileWidth(containerWidth: number): number {
   const gap = 5 * 2;
-  return (screenWidth - horizontalMargin - gap) / 3;
+  return (containerWidth - gap) / 3;
 }
 
 type TileProps = {
@@ -105,17 +105,33 @@ export function FolderGrid({
   items: PhotoItem[];
   onItemPress?: (item: PhotoItem) => void;
 }) {
-  const { width: screenWidth } = useWindowDimensions();
-  const tileWidth = computeTileWidth(screenWidth);
+  const [containerWidth, setContainerWidth] = React.useState(
+    useWindowDimensions().width,
+  );
+  const GAP = 5;
+
+  // tileWidth stays 0 until the container is measured — items won't render
+  // correctly until then, which is fine because the initial render shows nothing
+  // anyway (album screen starts in loading state).
+  const tileWidth = computeTileWidth(containerWidth);
 
   return (
-    <View className="mx-4 mt-2 flex-row flex-wrap justify-between">
+    <View
+      className="mx-4 mt-2 flex-row flex-wrap"
+      onLayout={e => setContainerWidth(e.nativeEvent.layout.width)}
+    >
       {items.map((item, index) => {
-        const remaining = items.length - index - 1;
-        const isLastRow = remaining < 3;
-        const marginBottom = isLastRow ? 0 : 5;
+        const isFirstInRow = index % 3 === 0;
+        const marginLeft = isFirstInRow ? 0 : GAP;
         return (
-          <View key={item.id} style={{ width: tileWidth, marginBottom }}>
+          <View
+            key={item.id}
+            style={{
+              width: tileWidth,
+              marginLeft,
+              marginBottom: GAP,
+            }}
+          >
             <FolderTileInner item={item} width={tileWidth} onPress={onItemPress} />
           </View>
         );

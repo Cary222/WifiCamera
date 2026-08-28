@@ -65,7 +65,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          <View className="mt-8">
+          <View className="mt-8 px-5">
             <SettingHeading tx="settings.wifi" />
             <TransportSelector />
             <WifiBandSelector />
