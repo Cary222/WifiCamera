@@ -100,6 +100,41 @@ describe('stellarium default scene', () => {
     expect(sceneHtml).toContain('stel.pointAndLock(object, 0.5);');
     expect(sceneHtml).toContain('if (message.target) focusSkyCultureTarget(message.target);');
   });
+});
+
+describe('stellarium scene commands and overlays', () => {
+  it('projects custom grid overlays with the engine core field of view', () => {
+    // Runtime inspection shows fov belongs to core, not observer. Reading observer.fov
+    // produces NaN coordinates and leaves the overlay canvas completely transparent.
+    expect(sceneHtml).toContain('const fovRad = stel.core.fov;');
+    expect(sceneHtml).not.toContain('const fovRad = obs.fov;');
+  });
+
+  it('lazily registers a landscape data source before switching to it', () => {
+    // The engine keeps one module per landscape key; re-adding a source leaks memory,
+    // so the scene must remember which keys it already registered.
+    expect(sceneHtml).toContain('const loadedLandscapes = new Set([\'guereins\']);');
+    expect(sceneHtml).toContain('case \'set_landscape\': {');
+    expect(sceneHtml).toContain('if (!loadedLandscapes.has(message.id)) {');
+    expect(sceneHtml).toContain('stel.core.landscapes.addDataSource({ url: assetUrl(`data/landscapes/$' + '{message.id}`), key: message.id });');
+    expect(sceneHtml).toContain('stel.core.landscapes.current_id = message.id;');
+  });
+
+  it('treats the zero horizon as hiding the landscape instead of loading tiles', () => {
+    // data/landscapes/zero ships no properties or tiles, so it cannot be a HiPS source.
+    expect(sceneHtml).toContain('if (message.id === \'none\') {');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.landscapes, \'visible\', false);');
+  });
+
+  it('exposes the environment knobs the engine actually implements', () => {
+    // Verified at runtime: fog_visible, cardinals.visible, atmosphere.turbidity and
+    // landscape color are writable; rotation/brightness/opacity do not exist.
+    expect(sceneHtml).toContain('case \'set_environment\':');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.landscapes, \'fog_visible\', message.fog);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.cardinals, \'visible\', message.cardinals);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.atmosphere, \'turbidity\', message.turbidity);');
+    expect(sceneHtml).toContain('stel.core.landscapes.current.color = message.landscapeTint;');
+  });
 
   it('supports the drawer feature commands against real engine state', () => {
     expect(sceneHtml).toContain('case \'set_time\':');
@@ -109,5 +144,18 @@ describe('stellarium default scene', () => {
     expect(sceneHtml).toContain('case \'set_location\':');
     expect(sceneHtml).toContain('stel.core.observer.latitude = message.latitudeDeg * stel.D2R;');
     expect(sceneHtml).toContain('stel.core.observer.longitude = message.longitudeDeg * stel.D2R;');
+  });
+
+  it('registers canvas click listener to notify React Native of object selections', () => {
+    expect(sceneHtml).toContain('stel.on(\'click\', handleSkyClick);');
+    expect(sceneHtml).toContain('send({ type: \'object_selected\', object: payload });');
+    expect(sceneHtml).toContain('send({ type: \'selection_cleared\' });');
+  });
+
+  it('supports clearing selection and point_and_lock commands', () => {
+    expect(sceneHtml).toContain('case \'clear_selection\':');
+    expect(sceneHtml).toContain('stel.core.selection = null;');
+    expect(sceneHtml).toContain('case \'point_and_lock\':');
+    expect(sceneHtml).toContain('stel.pointAndLock(targetObj, 0.5);');
   });
 });

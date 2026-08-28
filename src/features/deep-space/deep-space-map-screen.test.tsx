@@ -22,18 +22,24 @@ const EVENTS_FIXTURE = [
 
 const mockComputeEvents = jest.fn(async () => EVENTS_FIXTURE);
 const mockComputeTonight = jest.fn(async () => TONIGHT_FIXTURE);
+const mockClearSelection = jest.fn();
+const mockGotoRaDec = jest.fn();
+const mockPointAndLock = jest.fn();
 const mockReload = jest.fn();
 const mockSearchTarget = jest.fn();
+const mockSetEnvironment = jest.fn();
 const mockSetGridLines = jest.fn();
+const mockSetLandscape = jest.fn();
 const mockSetLocation = jest.fn();
 const mockSetSkyCulture = jest.fn();
 const mockSetSkyLayers = jest.fn();
 const mockSetTime = jest.fn();
 const mockSetFovFrame = jest.fn();
-const mockGotoRaDec = jest.fn();
 const mockToggleConstellations = jest.fn();
 const mockZoomTo = jest.fn();
 let mockOnCommandError: (() => void) | undefined;
+let mockOnObjectSelected: ((object: unknown) => void) | undefined;
+let mockOnSelectionCleared: (() => void) | undefined;
 let mockOnTargetFound: (() => void) | undefined;
 let mockOnTargetNotFound: (() => void) | undefined;
 let mockOnBearingChange: ((azimuthDeg: number) => void) | undefined;
@@ -111,20 +117,26 @@ jest.mock('@/features/stellarium/stellarium-view', () => {
   const { View: MockView } = require('react-native');
 
   return {
-    StellariumView: ({ onBearingChange, onCommandError, onReady, onTargetFound, onTargetNotFound, ref }: { onBearingChange?: (azimuthDeg: number) => void; onCommandError?: () => void; onReady?: () => void; onTargetFound?: () => void; onTargetNotFound?: () => void; ref?: unknown }) => {
+    StellariumView: ({ onBearingChange, onCommandError, onObjectSelected, onReady, onSelectionCleared, onTargetFound, onTargetNotFound, ref }: { onBearingChange?: (azimuthDeg: number) => void; onCommandError?: () => void; onObjectSelected?: (object: unknown) => void; onReady?: () => void; onSelectionCleared?: () => void; onTargetFound?: () => void; onTargetNotFound?: () => void; ref?: unknown }) => {
       mockOnBearingChange = onBearingChange;
       mockOnCommandError = onCommandError;
+      mockOnObjectSelected = onObjectSelected;
+      mockOnSelectionCleared = onSelectionCleared;
       mockOnTargetFound = onTargetFound;
       mockOnTargetNotFound = onTargetNotFound;
       const readyRef = mockReact.useRef(false);
       mockReact.useImperativeHandle(ref, () => ({
+        clearSelection: mockClearSelection,
         computeEvents: mockComputeEvents,
         computeTonight: mockComputeTonight,
         gotoRaDec: mockGotoRaDec,
+        pointAndLock: mockPointAndLock,
         reload: mockReload,
         searchTarget: mockSearchTarget,
+        setEnvironment: mockSetEnvironment,
         setFovFrame: mockSetFovFrame,
         setGridLines: mockSetGridLines,
+        setLandscape: mockSetLandscape,
         setLocation: mockSetLocation,
         setSkyCulture: mockSetSkyCulture,
         setSkyLayers: mockSetSkyLayers,
@@ -419,15 +431,20 @@ describe('deep space 3x2 quick controls', () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
 
-    // 长按网格和线条按钮
+    // 长按网格和线条按钮，展现 6 项完整网格和线条选项
     await user.longPress(screen.getByTestId('deep-space-grid-quick-grid-lines'));
     expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
     expect(screen.getByText('网格和线条设置')).toBeOnTheScreen();
     expect(screen.getByText('地平坐标网格 (Azimuthal)')).toBeOnTheScreen();
     expect(screen.getByText('赤道坐标网格 (JNow)')).toBeOnTheScreen();
+    expect(screen.getByText('赤道坐标网格 (J2000)')).toBeOnTheScreen();
+    expect(screen.getByText('黄道线 (Ecliptic)')).toBeOnTheScreen();
+    expect(screen.getByText('天赤道 (Celestial Equator)')).toBeOnTheScreen();
     expect(screen.getByText('子午线 (Meridian)')).toBeOnTheScreen();
 
-    // 细粒度切换子午线
+    // 细粒度切换黄道线与子午线
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-ecliptic'));
+    expect(mockSetGridLines).toHaveBeenLastCalledWith({ ecliptic: true });
     await user.press(screen.getByTestId('deep-space-quick-detail-toggle-meridian'));
     expect(mockSetGridLines).toHaveBeenLastCalledWith({ meridian: true });
 
@@ -471,6 +488,32 @@ describe('deep space 3x2 quick controls', () => {
 
     expect(mockSetSkyLayers).toHaveBeenNthCalledWith(2, { constellationBoundaries: true });
     expect(mockSetSkyLayers).toHaveBeenNthCalledWith(3, { constellationOnlyPointed: true });
+  });
+
+  it('opens atmosphere controls with the fog switch on long pressing atmosphere button', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
+
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByText('大气层与光污染设置')).toBeOnTheScreen();
+    expect(screen.getByText('大气散射与消光')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-fog')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-fog'));
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith({ fog: false });
+  });
+
+  it('keeps the landscape enabled when toggling labels', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+
+    expect(screen.getByTestId('deep-space-grid-quick-landscape').props.accessibilityState.checked).toBe(true);
+    await user.press(screen.getByTestId('deep-space-grid-quick-labels'));
+
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ constellationLabels: false });
+    expect(mockSetSkyLayers).not.toHaveBeenCalledWith({ landscape: false });
+    expect(screen.getByTestId('deep-space-grid-quick-landscape').props.accessibilityState.checked).toBe(true);
   });
 });
 
@@ -555,5 +598,119 @@ describe('deep space observation tools and search', () => {
     act(() => mockOnCommandError?.());
     expect(screen.getByTestId('deep-space-map-shell')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-map-search-error')).toHaveTextContent('未找到该天体，请改用标准名称或编号');
+  });
+});
+
+describe('deep space landscape and environment integration', () => {
+  async function openLandscapeDetail(user: ReturnType<typeof setup>['user']) {
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-landscape'));
+  }
+
+  it('opens the same quick detail sheet as the other controls on long pressing the quick landscape control', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await openLandscapeDetail(user);
+
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByText('地景设置')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-landscape')).toBeOnTheScreen();
+  });
+
+  it('toggles the landscape layer from inside the quick detail sheet', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await openLandscapeDetail(user);
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-landscape'));
+
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ landscape: false });
+  });
+
+  it('sends environment changes to the engine from the quick detail sheet', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await openLandscapeDetail(user);
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-cardinals'));
+
+    expect(mockSetEnvironment).toHaveBeenCalledWith({ cardinals: false });
+  });
+
+  it('steps forward through the landscapes without leaving the sheet', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await openLandscapeDetail(user);
+
+    expect(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-value')).toHaveTextContent('盖兰');
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-next'));
+
+    expect(mockSetLandscape).toHaveBeenLastCalledWith('winterfield');
+    // The sheet stays open so the observer can keep browsing.
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-value')).toHaveTextContent('冬日原野');
+  });
+
+  it('wraps around to the last landscape when stepping backwards from the first', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await openLandscapeDetail(user);
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-prev'));
+
+    expect(mockSetLandscape).toHaveBeenLastCalledWith('ocean');
+  });
+});
+
+describe('deep space celestial object info integration', () => {
+  const MOCK_TARGET = {
+    altDeg: 35.8,
+    azDeg: 120.4,
+    decDeg: -5.38,
+    designations: ['M 42', 'NGC 1976'],
+    distanceAu: null,
+    englishName: 'Orion Nebula',
+    id: 'NAME Great Orion Nebula',
+    name: '猎户座大星云',
+    phase: null,
+    raHours: 5.58,
+    vmag: 4.0,
+  };
+
+  it('pops up object info sheet when an object is selected in the star map', async () => {
+    setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+    expect(screen.getByText('猎户座大星云')).toBeOnTheScreen();
+    expect(screen.getByText('Orion Nebula · M 42')).toBeOnTheScreen();
+  });
+
+  it('locks onto target when center button in info sheet is tapped', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+    await user.press(await screen.findByTestId('deep-space-object-center-btn'));
+
+    expect(mockPointAndLock).toHaveBeenCalledWith('NAME Great Orion Nebula');
+  });
+
+  it('dismisses info sheet and clears engine selection on close button tap', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-object-close-btn'));
+
+    expect(screen.queryByTestId('deep-space-object-info-sheet')).not.toBeOnTheScreen();
+    expect(mockClearSelection).toHaveBeenCalled();
+  });
+
+  it('hides object info sheet when selection is cleared in the scene', async () => {
+    setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+
+    act(() => mockOnSelectionCleared?.());
+    expect(screen.queryByTestId('deep-space-object-info-sheet')).not.toBeOnTheScreen();
   });
 });

@@ -1,5 +1,5 @@
 import type { FieldOfViewInput } from '@/features/deep-space/tools/field-of-view';
-import type { StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
+import type { SelectedCelestialObject, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import * as React from 'react';
 import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
@@ -8,24 +8,17 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Polygon, RadialGradient,
 import SKY_CULTURES_DATA from '@/assets/stellar/skycultures-full.json';
 import { Text } from '@/components/ui';
 import { CalendarPanel } from '@/features/deep-space/calendar/calendar-panel';
+import { DEFAULT_LANDSCAPE_ID, LANDSCAPES } from '@/features/deep-space/landscape/landscape-catalog';
+import { ObjectInfoSheet } from '@/features/deep-space/object-info/object-info-sheet';
 import { FieldOfViewOverlay } from '@/features/deep-space/tools/field-of-view-overlay';
 import { FieldOfViewPanel } from '@/features/deep-space/tools/field-of-view-panel';
 import { TelescopeControlPanel } from '@/features/deep-space/tools/telescope-control-panel';
 import { StellariumView } from '@/features/stellarium/stellarium-view';
 import { getLanguage, translate } from '@/lib/i18n';
-
-const OVERLAY = {
-  accent: '#2B82F6',
-  accentDim: 'rgba(43, 130, 246, 0.18)',
-  control: 'rgba(17, 19, 22, 0.66)',
-  drawer: '#26282C',
-  drawerHeader: '#383B40',
-  hairline: 'rgba(255, 255, 255, 0.16)',
-  muted: 'rgba(255, 255, 255, 0.66)',
-  purple: '#A892FF',
-  text: '#FFFFFF',
-  warning: '#FFB4BA',
-};
+import { CloseIcon } from './ui/close-icon';
+import { OVERLAY } from './ui/deep-space-theme';
+import { FeatureSheet } from './ui/feature-sheet';
+import { featureSheetStyles } from './ui/feature-sheet-styles';
 
 const DEFAULT_SKY_LAYERS: Required<StellariumSkyLayers> = {
   atmosphere: true,
@@ -37,8 +30,11 @@ const DEFAULT_SKY_LAYERS: Required<StellariumSkyLayers> = {
   landscape: true,
 };
 
-const DEFAULT_GRID_LINES: Record<'azimuthal' | 'equatorial_jnow' | 'meridian', boolean> = {
+const DEFAULT_GRID_LINES: Record<'azimuthal' | 'ecliptic' | 'equator' | 'equatorial_j2000' | 'equatorial_jnow' | 'meridian', boolean> = {
   azimuthal: false,
+  ecliptic: false,
+  equator: false,
+  equatorial_j2000: false,
   equatorial_jnow: false,
   meridian: false,
 };
@@ -60,6 +56,19 @@ const COMPASS_MINOR_TICKS = Array.from({ length: 60 }, (_, index) => index * 6).
 
 function bearingLabel(azimuthDeg: number): string {
   return BEARING_LABELS[Math.round(((azimuthDeg % 360) + 360) % 360 / 45) % 8];
+}
+
+function landscapeStepper(activeId: string, onSelect: (id: string) => void) {
+  const index = Math.max(0, LANDSCAPES.findIndex(option => option.id === activeId));
+
+  return {
+    onStep: (delta: number) => {
+      const next = (index + delta + LANDSCAPES.length) % LANDSCAPES.length;
+      onSelect(LANDSCAPES[next].id);
+    },
+    position: `第 ${index + 1} / ${LANDSCAPES.length} 套`,
+    value: LANDSCAPES[index]?.titleZh ?? activeId,
+  };
 }
 
 type SkyLayerKey = keyof typeof DEFAULT_SKY_LAYERS;
@@ -102,11 +111,23 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
   const [activeCity, setActiveCity] = React.useState(OBSERVER_CITIES[0].name);
   const [fieldOfView, setFieldOfView] = React.useState<FieldOfViewInput>();
   const [gridLines, setGridLines] = React.useState(DEFAULT_GRID_LINES);
+  const [landscapeId, setLandscapeId] = React.useState(DEFAULT_LANDSCAPE_ID);
+  const [environment, setEnvironment] = React.useState({ cardinals: true, fog: true, turbidity: 3 });
   const close = () => setActive(undefined);
 
   const updateGridLines = React.useCallback((patch: Partial<typeof DEFAULT_GRID_LINES>) => {
     setGridLines(prev => ({ ...prev, ...patch }));
     stellaRef.current?.setGridLines?.(patch);
+  }, [stellaRef]);
+
+  const selectLandscape = React.useCallback((id: string) => {
+    setLandscapeId(id);
+    stellaRef.current?.setLandscape?.(id);
+  }, [stellaRef]);
+
+  const updateEnvironment = React.useCallback((patch: Partial<typeof environment>) => {
+    setEnvironment(prev => ({ ...prev, ...patch }));
+    stellaRef.current?.setEnvironment?.(patch);
   }, [stellaRef]);
 
   return {
@@ -116,13 +137,16 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     clearFieldOfView: () => setFieldOfView(undefined),
     close,
     currentCulture,
+    environment,
     fieldOfView,
     gridLines,
+    landscapeId,
     open: (next: DrawerFeature) => setActive(next),
     selectCity: (city: typeof OBSERVER_CITIES[number]) => {
       setActiveCity(city.name);
       stellaRef.current?.setLocation?.(city.latitudeDeg, city.longitudeDeg);
     },
+    selectLandscape,
     selectSkyCulture: (id: string, target?: string | null) => {
       setCurrentCulture(id);
       stellaRef.current?.setSkyCulture?.(id, target ?? undefined);
@@ -133,6 +157,7 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
       stellaRef.current?.setGridLines?.(patch);
       return { ...prev, ...patch };
     }),
+    updateEnvironment,
     updateGridLines,
   };
 }
@@ -140,30 +165,38 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
 function StarMapOverlayControls({
   azimuthDeg,
   clock,
+  environment,
   gridLines,
   insets,
+  landscapeId,
   nightMode,
   onOpenMenu,
   onOpenSearch,
   onReturnToNow,
+  onSelectLandscape,
   onToggleGridLine,
   onToggleNightMode,
   onToggleSkyLayer,
+  onUpdateEnvironment,
   onUpdateGridLines,
   onUpdateSkyLayers,
   skyLayers,
 }: {
   azimuthDeg: number;
   clock: Date;
+  environment: { cardinals: boolean; fog: boolean };
   gridLines: typeof DEFAULT_GRID_LINES;
   insets: { bottom: number; top: number };
+  landscapeId: string;
   nightMode: boolean;
   onOpenMenu: () => void;
   onOpenSearch: () => void;
   onReturnToNow: () => void;
+  onSelectLandscape: (id: string) => void;
   onToggleGridLine: (key: GridLineKey) => void;
   onToggleNightMode: () => void;
   onToggleSkyLayer: (key: SkyLayerKey) => void;
+  onUpdateEnvironment: (patch: { cardinals?: boolean; fog?: boolean }) => void;
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
@@ -172,11 +205,15 @@ function StarMapOverlayControls({
   const [activeDetail, setActiveDetail] = React.useState<QuickControlId | null>(null);
 
   const controls = getQuickControls({
+    environment,
+    landscapeId,
     lines: gridLines,
     nightMode,
+    onSelectLandscape,
     onToggleGridLine,
     onToggleNightMode,
     onToggleSkyLayer,
+    onUpdateEnvironment,
     onUpdateGridLines,
     onUpdateSkyLayers,
     skyLayers,
@@ -230,13 +267,90 @@ function StarMapOverlayControls({
 
 type QuickControlId = 'grid-lines' | 'constellation' | 'landscape' | 'atmosphere' | 'labels' | 'night-mode';
 
+/**
+ * A row inside a quick-control detail sheet.
+ *
+ * Rows default to switches. A `stepper` row instead cycles through a list of
+ * options with ‹ › arrows, keeping the choice inside the sheet.
+ */
 type QuickSubItem = {
   active: boolean;
   hint: string;
   id: string;
   label: string;
   onToggle: () => void;
+  stepper?: QuickStepper;
 };
+
+type QuickStepper = {
+  onStep: (delta: number) => void;
+  position: string;
+  value: string;
+};
+
+function QuickDetailStepperRow({ item, stepper }: { item: QuickSubItem; stepper: QuickStepper }) {
+  return (
+    <View style={styles.quickDetailRow} testID={`deep-space-quick-detail-stepper-${item.id}`}>
+      <View style={styles.quickDetailRowText}>
+        <Text style={styles.quickDetailRowLabel}>{item.label}</Text>
+        <Text style={styles.quickDetailRowHint}>{stepper.position}</Text>
+      </View>
+      <View style={styles.quickStepper}>
+        <Pressable
+          accessibilityLabel={`上一个${item.label}`}
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => stepper.onStep(-1)}
+          style={styles.quickStepperArrow}
+          testID={`deep-space-quick-detail-stepper-${item.id}-prev`}
+        >
+          <Text style={styles.quickStepperArrowText}>‹</Text>
+        </Pressable>
+        <Text
+          numberOfLines={1}
+          style={styles.quickStepperValue}
+          testID={`deep-space-quick-detail-stepper-${item.id}-value`}
+        >
+          {stepper.value}
+        </Text>
+        <Pressable
+          accessibilityLabel={`下一个${item.label}`}
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => stepper.onStep(1)}
+          style={styles.quickStepperArrow}
+          testID={`deep-space-quick-detail-stepper-${item.id}-next`}
+        >
+          <Text style={styles.quickStepperArrowText}>›</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function QuickDetailRow({ item }: { item: QuickSubItem }) {
+  if (item.stepper)
+    return <QuickDetailStepperRow item={item} stepper={item.stepper} />;
+
+  return (
+    <Pressable
+      accessibilityLabel={item.label}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: item.active }}
+      onPress={item.onToggle}
+      style={styles.quickDetailRow}
+      testID={`deep-space-quick-detail-toggle-${item.id}`}
+    >
+      <View style={styles.quickDetailRowText}>
+        <Text style={styles.quickDetailRowLabel}>{item.label}</Text>
+        <Text style={styles.quickDetailRowHint}>{item.hint}</Text>
+      </View>
+      <View style={[styles.quickDetailSwitch, item.active && styles.quickDetailSwitchActive]}>
+        <View style={[styles.quickDetailKnob, item.active && styles.quickDetailKnobActive]} />
+      </View>
+    </Pressable>
+  );
+}
 
 function QuickControlDetailSheet({
   items,
@@ -270,25 +384,7 @@ function QuickControlDetailSheet({
         </View>
         <View style={styles.quickDetailDivider} />
         <View style={styles.quickDetailList}>
-          {items.map(item => (
-            <Pressable
-              accessibilityLabel={item.label}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: item.active }}
-              key={item.id}
-              onPress={item.onToggle}
-              style={styles.quickDetailRow}
-              testID={`deep-space-quick-detail-toggle-${item.id}`}
-            >
-              <View style={styles.quickDetailRowText}>
-                <Text style={styles.quickDetailRowLabel}>{item.label}</Text>
-                <Text style={styles.quickDetailRowHint}>{item.hint}</Text>
-              </View>
-              <View style={[styles.quickDetailSwitch, item.active && styles.quickDetailSwitchActive]}>
-                <View style={[styles.quickDetailKnob, item.active && styles.quickDetailKnobActive]} />
-              </View>
-            </Pressable>
-          ))}
+          {items.map(item => <QuickDetailRow item={item} key={item.id} />)}
         </View>
       </View>
     </View>
@@ -306,117 +402,156 @@ type QuickControlEntry = {
   onPress: () => void;
 };
 
-function getGridAndConstellationControls({
+function getGridControls({
   lines,
   onToggleGridLine,
-  onToggleSkyLayer,
   onUpdateGridLines,
+}: Pick<QuickControlParams, 'lines' | 'onToggleGridLine' | 'onUpdateGridLines'>): QuickControlEntry {
+  const gridsActive = lines.azimuthal || lines.equatorial_jnow || lines.equatorial_j2000 || lines.ecliptic || lines.equator || lines.meridian;
+
+  return {
+    active: gridsActive,
+    detailItems: [
+      {
+        active: lines.azimuthal,
+        hint: '以地平线与天顶为基准的仰角与方位网格',
+        id: 'azimuthal',
+        label: '地平坐标网格 (Azimuthal)',
+        onToggle: () => onToggleGridLine('azimuthal'),
+      },
+      {
+        active: lines.equatorial_jnow,
+        hint: '随天球旋转的即时天赤道与赤经赤纬网格',
+        id: 'equatorial_jnow',
+        label: '赤道坐标网格 (JNow)',
+        onToggle: () => onToggleGridLine('equatorial_jnow'),
+      },
+      {
+        active: lines.equatorial_j2000,
+        hint: '基于 J2000.0 标准固定参考系的赤经赤纬网格',
+        id: 'equatorial_j2000',
+        label: '赤道坐标网格 (J2000)',
+        onToggle: () => onToggleGridLine('equatorial_j2000'),
+      },
+      {
+        active: lines.ecliptic,
+        hint: '太阳在天球上的视周年运动轨迹（黄道大圆）',
+        id: 'ecliptic',
+        label: '黄道线 (Ecliptic)',
+        onToggle: () => onToggleGridLine('ecliptic'),
+      },
+      {
+        active: lines.equator,
+        hint: '地球赤道面延伸至天球的投影（赤纬 0° 线）',
+        id: 'equator',
+        label: '天赤道 (Celestial Equator)',
+        onToggle: () => onToggleGridLine('equator'),
+      },
+      {
+        active: lines.meridian,
+        hint: '连接天顶与正南正北地平圈点的天球大圆',
+        id: 'meridian',
+        label: '子午线 (Meridian)',
+        onToggle: () => onToggleGridLine('meridian'),
+      },
+    ],
+    detailSubtitle: '天球与地平参考坐标网格与基准线',
+    detailTitle: '网格和线条设置',
+    icon: 'grid-lines',
+    id: 'grid-lines',
+    label: '网格和线条',
+    onPress: () => {
+      if (gridsActive) {
+        onUpdateGridLines({
+          azimuthal: false,
+          ecliptic: false,
+          equator: false,
+          equatorial_j2000: false,
+          equatorial_jnow: false,
+          meridian: false,
+        });
+      }
+      else {
+        onUpdateGridLines({
+          azimuthal: true,
+          equatorial_jnow: true,
+        });
+      }
+    },
+  };
+}
+
+function getConstellationControls({
+  onToggleSkyLayer,
   onUpdateSkyLayers,
   skyLayers,
-}: Pick<QuickControlParams, 'lines' | 'onToggleGridLine' | 'onToggleSkyLayer' | 'onUpdateGridLines' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry[] {
-  const gridsActive = lines.azimuthal && lines.equatorial_jnow;
+}: Pick<QuickControlParams, 'onToggleSkyLayer' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry {
   const constellationActive = skyLayers.constellationLines || skyLayers.constellationArt;
 
-  return [
-    {
-      active: gridsActive,
-      detailItems: [
-        {
-          active: lines.azimuthal,
-          hint: '以地平线与天顶为基准的仰角与方位网格',
-          id: 'azimuthal',
-          label: '地平坐标网格 (Azimuthal)',
-          onToggle: () => onToggleGridLine('azimuthal'),
-        },
-        {
-          active: lines.equatorial_jnow,
-          hint: '随天球旋转的即时天赤道与赤经赤纬网格',
-          id: 'equatorial_jnow',
-          label: '赤道坐标网格 (JNow)',
-          onToggle: () => onToggleGridLine('equatorial_jnow'),
-        },
-        {
-          active: lines.meridian,
-          hint: '连接天顶与正南正北地平圈的天球大圆',
-          id: 'meridian',
-          label: '子午线 (Meridian)',
-          onToggle: () => onToggleGridLine('meridian'),
-        },
-      ],
-      detailSubtitle: '天球与地平参考坐标网格',
-      detailTitle: '网格和线条设置',
-      icon: 'grid-lines',
-      id: 'grid-lines',
-      label: '网格和线条',
-      onPress: () => {
-        const next = !gridsActive;
-        onUpdateGridLines({
-          azimuthal: next,
-          equatorial_jnow: next,
-        });
+  return {
+    active: constellationActive,
+    detailItems: [
+      {
+        active: skyLayers.constellationLines,
+        hint: '连接主要明亮恒星的几何线条骨架',
+        id: 'constellationLines',
+        label: '星座连线',
+        onToggle: () => onToggleSkyLayer('constellationLines'),
       },
-    },
-    {
-      active: constellationActive,
-      detailItems: [
-        {
-          active: skyLayers.constellationLines,
-          hint: '连接主要明亮恒星的几何线条骨架',
-          id: 'constellationLines',
-          label: '星座连线',
-          onToggle: () => onToggleSkyLayer('constellationLines'),
-        },
-        {
-          active: skyLayers.constellationArt,
-          hint: '古典神话星图的手绘形象画像',
-          id: 'constellationArt',
-          label: '星座古典艺术画',
-          onToggle: () => onToggleSkyLayer('constellationArt'),
-        },
-        {
-          active: skyLayers.constellationLabels,
-          hint: '在星空中标注所有星座的名称',
-          id: 'constellationLabels',
-          label: '星座名称注记',
-          onToggle: () => onToggleSkyLayer('constellationLabels'),
-        },
-        {
-          active: skyLayers.constellationBoundaries,
-          hint: '国际天文联合会 1928 年划定的 88 星座天区界线',
-          id: 'constellationBoundaries',
-          label: '星座边界',
-          onToggle: () => onToggleSkyLayer('constellationBoundaries'),
-        },
-        {
-          active: skyLayers.constellationOnlyPointed,
-          hint: '只绘制视野中心指向的那个星座，其余星座隐藏',
-          id: 'constellationOnlyPointed',
-          label: '仅显示指向星座',
-          onToggle: () => onToggleSkyLayer('constellationOnlyPointed'),
-        },
-      ],
-      detailSubtitle: '星座连线、艺术图画、名称、边界与聚焦',
-      detailTitle: '星座显示设置',
-      icon: 'constellation',
-      id: 'constellation',
-      label: '星座',
-      onPress: () => {
-        const next = !constellationActive;
-        onUpdateSkyLayers({
-          constellationArt: next,
-          constellationLines: next,
-        });
+      {
+        active: skyLayers.constellationArt,
+        hint: '古典神话星图的手绘形象画像',
+        id: 'constellationArt',
+        label: '星座古典艺术画',
+        onToggle: () => onToggleSkyLayer('constellationArt'),
       },
+      {
+        active: skyLayers.constellationLabels,
+        hint: '在星空中标注所有星座的名称',
+        id: 'constellationLabels',
+        label: '星座名称注记',
+        onToggle: () => onToggleSkyLayer('constellationLabels'),
+      },
+      {
+        active: skyLayers.constellationBoundaries,
+        hint: '国际天文联合会 1928 年划定的 88 星座天区界线',
+        id: 'constellationBoundaries',
+        label: '星座边界',
+        onToggle: () => onToggleSkyLayer('constellationBoundaries'),
+      },
+      {
+        active: skyLayers.constellationOnlyPointed,
+        hint: '只绘制视野中心指向的那个星座，其余星座隐藏',
+        id: 'constellationOnlyPointed',
+        label: '仅显示指向星座',
+        onToggle: () => onToggleSkyLayer('constellationOnlyPointed'),
+      },
+    ],
+    detailSubtitle: '星座连线、艺术图画、名称、边界与聚焦',
+    detailTitle: '星座显示设置',
+    icon: 'constellation',
+    id: 'constellation',
+    label: '星座',
+    onPress: () => {
+      const next = !constellationActive;
+      onUpdateSkyLayers({
+        constellationArt: next,
+        constellationLines: next,
+      });
     },
-  ];
+  };
 }
 
 function getEnvironmentAndNightControls({
+  environment,
+  landscapeId,
   nightMode,
+  onSelectLandscape,
   onToggleNightMode,
   onToggleSkyLayer,
+  onUpdateEnvironment,
   skyLayers,
-}: Pick<QuickControlParams, 'nightMode' | 'onToggleNightMode' | 'onToggleSkyLayer' | 'skyLayers'>): QuickControlEntry[] {
+}: Pick<QuickControlParams, 'environment' | 'landscapeId' | 'nightMode' | 'onSelectLandscape' | 'onToggleNightMode' | 'onToggleSkyLayer' | 'onUpdateEnvironment' | 'skyLayers'>): QuickControlEntry[] {
   return [
     {
       active: skyLayers.landscape,
@@ -427,6 +562,21 @@ function getEnvironmentAndNightControls({
           id: 'landscape',
           label: '地面全景景观',
           onToggle: () => onToggleSkyLayer('landscape'),
+        },
+        {
+          active: environment.cardinals,
+          hint: '显示红色的方位标示',
+          id: 'cardinals',
+          label: '基本点',
+          onToggle: () => onUpdateEnvironment({ cardinals: !environment.cardinals }),
+        },
+        {
+          active: true,
+          hint: '',
+          id: 'landscape-library',
+          label: '地景',
+          onToggle: () => {},
+          stepper: landscapeStepper(landscapeId, onSelectLandscape),
         },
       ],
       detailSubtitle: '真实地面地景与地平线模拟',
@@ -443,12 +593,19 @@ function getEnvironmentAndNightControls({
           active: skyLayers.atmosphere,
           hint: '模拟日光散射、晨昏蒙影与天光消光',
           id: 'atmosphere',
-          label: '大气散射光',
+          label: '大气散射与消光',
           onToggle: () => onToggleSkyLayer('atmosphere'),
         },
+        {
+          active: environment.fog,
+          hint: '在地景上显示雾气',
+          id: 'fog',
+          label: '雾',
+          onToggle: () => onUpdateEnvironment({ fog: !environment.fog }),
+        },
       ],
-      detailSubtitle: '日照散射与大气环境模拟',
-      detailTitle: '大气层设置',
+      detailSubtitle: '日照散射、晨昏蒙影、天光消光与地景雾气',
+      detailTitle: '大气层与光污染设置',
       icon: 'atmosphere',
       id: 'atmosphere',
       label: '大气层',
@@ -494,11 +651,15 @@ function getEnvironmentAndNightControls({
 }
 
 type QuickControlParams = {
+  environment: { cardinals: boolean; fog: boolean };
+  landscapeId: string;
   lines: typeof DEFAULT_GRID_LINES;
   nightMode: boolean;
+  onSelectLandscape: (id: string) => void;
   onToggleNightMode: () => void;
   onToggleGridLine: (key: GridLineKey) => void;
   onToggleSkyLayer: (key: SkyLayerKey) => void;
+  onUpdateEnvironment: (patch: { cardinals?: boolean; fog?: boolean }) => void;
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
@@ -506,7 +667,8 @@ type QuickControlParams = {
 
 function getQuickControls(params: QuickControlParams): QuickControlEntry[] {
   return [
-    ...getGridAndConstellationControls(params),
+    getGridControls(params),
+    getConstellationControls(params),
     ...getEnvironmentAndNightControls(params),
   ];
 }
@@ -794,6 +956,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const [azimuthDeg, setAzimuthDeg] = React.useState(0);
   const [clock, setClock] = React.useState(() => new Date());
   const [currentCulture, setCurrentCulture] = React.useState('western');
+  const [selectedObject, setSelectedObject] = React.useState<SelectedCelestialObject | null>(null);
   const drawerFeature = useDrawerFeature({ currentCulture, setCurrentCulture, stellaRef });
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [nightMode, setNightMode] = React.useState(false);
@@ -804,7 +967,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
     const interval = globalThis.setInterval(() => setClock(new Date()), 60_000);
     return () => globalThis.clearInterval(interval);
   }, []);
-  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open;
+  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selectedObject;
 
   return (
     <View testID="deep-space-map-shell" style={styles.root}>
@@ -814,6 +977,8 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         onBearingChange={setAzimuthDeg}
         onReady={() => stellaRef.current?.setSkyLayers?.(skyLayers)}
         onCommandError={() => search.setError(true)}
+        onObjectSelected={setSelectedObject}
+        onSelectionCleared={() => setSelectedObject(null)}
         onTargetFound={search.closeSearch}
         onTargetNotFound={() => search.setError(true)}
       />
@@ -822,15 +987,19 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
       <StarMapOverlayControls
         azimuthDeg={azimuthDeg}
         clock={clock}
+        environment={drawerFeature.environment}
         gridLines={drawerFeature.gridLines}
         insets={insets}
+        landscapeId={drawerFeature.landscapeId}
         nightMode={nightMode}
         onOpenMenu={() => setDrawerOpen(true)}
         onOpenSearch={() => search.openSearch(() => setDrawerOpen(false))}
         onReturnToNow={() => setClock(new Date())}
+        onSelectLandscape={drawerFeature.selectLandscape}
         onToggleGridLine={drawerFeature.toggleGridLine}
         onToggleNightMode={() => setNightMode(value => !value)}
         onToggleSkyLayer={toggleSkyLayer}
+        onUpdateEnvironment={drawerFeature.updateEnvironment}
         onUpdateGridLines={drawerFeature.updateGridLines}
         onUpdateSkyLayers={updateSkyLayers}
         skyLayers={skyLayers}
@@ -859,6 +1028,22 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         onPreviewCulture={id => stellaRef.current?.setSkyCulture?.(id)}
         stellaRef={stellaRef}
       />
+      {selectedObject && !drawerOpen && !drawerFeature.active && !search.open && (
+        <ObjectInfoSheet
+          object={selectedObject}
+          onCenter={obj => stellaRef.current?.pointAndLock(obj.id)}
+          onClose={() => {
+            setSelectedObject(null);
+            stellaRef.current?.clearSelection?.();
+          }}
+          onGoto={(raHours, decDeg) => {
+            setSelectedObject(null);
+            drawerFeature.open('tools');
+            stellaRef.current?.gotoRaDec(raHours * 15, decDeg);
+          }}
+          onZoomIn={() => stellaRef.current?.zoomTo(15)}
+        />
+      )}
       {search.open && (
         <ReferenceSearchSheet
           error={search.error}
@@ -1038,49 +1223,6 @@ function ReferenceDrawerRow({ icon, label, onPress, showChevron = true }: { icon
     <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={styles.drawerRow}>
       {content}
     </Pressable>
-  );
-}
-
-function FeatureSheet({
-  children,
-  headerLeft,
-  onClose,
-  scrollable = false,
-  testID,
-  title,
-}: {
-  children: React.ReactNode;
-  headerLeft?: React.ReactNode;
-  onClose: () => void;
-  scrollable?: boolean;
-  testID: string;
-  title: string;
-}) {
-  return (
-    <View pointerEvents="box-none" style={styles.featureOverlay}>
-      <Pressable accessibilityLabel={title} accessibilityRole="button" onPress={onClose} style={styles.sheetTopScrim} />
-      <View testID={testID} style={[styles.featureSheet, scrollable && styles.featureSheetTall]}>
-        <View style={styles.featureHeader}>
-          {headerLeft}
-          <Text style={styles.featureTitle}>{title}</Text>
-          <Pressable accessibilityLabel={translate('deep_space.back')} accessibilityRole="button" onPress={onClose} style={styles.featureClose}>
-            <CloseIcon />
-          </Pressable>
-        </View>
-        {scrollable
-          ? (
-              <ScrollView
-                bounces={false}
-                contentContainerStyle={styles.featureScrollContent}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-              >
-                {children}
-              </ScrollView>
-            )
-          : children}
-      </View>
-    </View>
   );
 }
 
@@ -1353,7 +1495,7 @@ function ToolsPanel({
 }) {
   const [activeTool, setActiveTool] = React.useState<'home' | 'telescope' | 'fov'>('home');
   const backButton = (
-    <Pressable accessibilityLabel="返回观测工具" accessibilityRole="button" onPress={() => setActiveTool('home')} style={styles.featureClose}>
+    <Pressable accessibilityLabel="返回观测工具" accessibilityRole="button" onPress={() => setActiveTool('home')} style={featureSheetStyles.featureClose}>
       <Text style={styles.toolBack}>‹</Text>
     </Pressable>
   );
@@ -1379,24 +1521,24 @@ function ToolsPanel({
   }
   return (
     <FeatureSheet onClose={onClose} testID="deep-space-tools-panel" title="观测工具">
-      <Pressable accessibilityLabel="望远镜控制" accessibilityRole="button" onPress={() => setActiveTool('telescope')} style={styles.featureRow} testID="deep-space-tools-telescope">
-        <View style={styles.featureRowText}>
-          <Text style={styles.featureRowLabel}>望远镜控制</Text>
-          <Text style={styles.featureRowHint}>按赤经和赤纬控制星图指向</Text>
+      <Pressable accessibilityLabel="望远镜控制" accessibilityRole="button" onPress={() => setActiveTool('telescope')} style={featureSheetStyles.featureRow} testID="deep-space-tools-telescope">
+        <View style={featureSheetStyles.featureRowText}>
+          <Text style={featureSheetStyles.featureRowLabel}>望远镜控制</Text>
+          <Text style={featureSheetStyles.featureRowHint}>按赤经和赤纬控制星图指向</Text>
         </View>
-        <Text style={styles.featureSelected}>›</Text>
+        <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
-      <Pressable accessibilityLabel="视场模拟" accessibilityRole="button" onPress={() => setActiveTool('fov')} style={styles.featureRow} testID="deep-space-tools-fov">
-        <View style={styles.featureRowText}>
-          <Text style={styles.featureRowLabel}>视场模拟</Text>
-          <Text style={styles.featureRowHint}>按焦距和传感器尺寸生成取景框</Text>
+      <Pressable accessibilityLabel="视场模拟" accessibilityRole="button" onPress={() => setActiveTool('fov')} style={featureSheetStyles.featureRow} testID="deep-space-tools-fov">
+        <View style={featureSheetStyles.featureRowText}>
+          <Text style={featureSheetStyles.featureRowLabel}>视场模拟</Text>
+          <Text style={featureSheetStyles.featureRowHint}>按焦距和传感器尺寸生成取景框</Text>
         </View>
-        <Text style={styles.featureSelected}>›</Text>
+        <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
       {fieldOfViewActive && (
-        <Pressable accessibilityLabel="关闭视场模拟" accessibilityRole="button" onPress={onClearFieldOfView} style={styles.featureRow} testID="deep-space-tools-fov-clear">
-          <Text style={styles.featureRowLabel}>关闭视场模拟</Text>
-          <Text style={styles.featureSelected}>×</Text>
+        <Pressable accessibilityLabel="关闭视场模拟" accessibilityRole="button" onPress={onClearFieldOfView} style={featureSheetStyles.featureRow} testID="deep-space-tools-fov-clear">
+          <Text style={featureSheetStyles.featureRowLabel}>关闭视场模拟</Text>
+          <Text style={featureSheetStyles.featureSelected}>×</Text>
         </Pressable>
       )}
     </FeatureSheet>
@@ -1406,7 +1548,7 @@ function ToolsPanel({
 function SettingsPanel({ activeCity, onClose, onSelect }: { activeCity: string; onClose: () => void; onSelect: (city: typeof OBSERVER_CITIES[number]) => void }) {
   return (
     <FeatureSheet onClose={onClose} testID="deep-space-settings-panel" title="设置">
-      <Text style={styles.featureRowHint}>观测地点</Text>
+      <Text style={featureSheetStyles.featureRowHint}>观测地点</Text>
       {OBSERVER_CITIES.map(city => (
         <Pressable
           accessibilityLabel={city.name}
@@ -1414,14 +1556,14 @@ function SettingsPanel({ activeCity, onClose, onSelect }: { activeCity: string; 
           accessibilityState={{ selected: city.name === activeCity }}
           key={city.name}
           onPress={() => onSelect(city)}
-          style={styles.featureRow}
+          style={featureSheetStyles.featureRow}
           testID={`deep-space-settings-location-${city.name}`}
         >
-          <View style={styles.featureRowText}>
-            <Text style={styles.featureRowLabel}>{city.name}</Text>
-            <Text style={styles.featureRowHint}>{`${city.latitudeDeg.toFixed(2)}°, ${city.longitudeDeg.toFixed(2)}°`}</Text>
+          <View style={featureSheetStyles.featureRowText}>
+            <Text style={featureSheetStyles.featureRowLabel}>{city.name}</Text>
+            <Text style={featureSheetStyles.featureRowHint}>{`${city.latitudeDeg.toFixed(2)}°, ${city.longitudeDeg.toFixed(2)}°`}</Text>
           </View>
-          {city.name === activeCity && <Text style={styles.featureSelected}>✓</Text>}
+          {city.name === activeCity && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
         </Pressable>
       ))}
     </FeatureSheet>
@@ -1608,7 +1750,7 @@ function GridIcon() {
 function GridLinesIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={46} viewBox="0 0 48 48" width={46}>
+    <Svg height={28} viewBox="0 0 48 48" width={28}>
       <Circle cx={24} cy={24} fill="none" r={16} stroke={color} strokeWidth={1.5} />
       <Path d="M8 24 C 13 18, 35 18, 40 24" fill="none" stroke={color} strokeWidth={1.4} />
       <Path d="M8 24 C 13 30, 35 30, 40 24" fill="none" opacity={0.55} stroke={color} strokeWidth={1.2} />
@@ -1625,7 +1767,7 @@ function GridLinesIcon({ active }: { active: boolean }) {
 function ConstellationIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={46} viewBox="0 0 48 48" width={46}>
+    <Svg height={28} viewBox="0 0 48 48" width={28}>
       <Path
         d="M12 20 L13 32 L22 34 L24 23 Z M24 23 L31 22 L37 26 L42 33"
         fill="none"
@@ -1651,7 +1793,7 @@ function ConstellationIcon({ active }: { active: boolean }) {
 function LandscapeIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={46} viewBox="0 0 48 48" width={46}>
+    <Svg height={28} viewBox="0 0 48 48" width={28}>
       <Path
         d="M6 34 L15 24 L23 31 L32 19 L42 34"
         fill="none"
@@ -1672,7 +1814,7 @@ function LandscapeIcon({ active }: { active: boolean }) {
 function AtmosphereIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={46} viewBox="0 0 48 48" width={46}>
+    <Svg height={28} viewBox="0 0 48 48" width={28}>
       <Line stroke={color} strokeLinecap="round" strokeWidth={1.5} x1={6} x2={42} y1={36} y2={36} />
       <Path d="M18 36 A6 6 0 0 1 30 36 Z" fill={color} opacity={0.9} />
       <Line stroke={color} strokeLinecap="round" strokeWidth={1.3} x1={24} x2={24} y1={26} y2={22} />
@@ -1688,7 +1830,7 @@ function AtmosphereIcon({ active }: { active: boolean }) {
 function LabelsIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={46} viewBox="0 0 48 48" width={46}>
+    <Svg height={28} viewBox="0 0 48 48" width={28}>
       <Circle cx={13} cy={30} fill={color} r={2.2} />
       <Line opacity={0.7} stroke={color} strokeLinecap="round" strokeWidth={1.2} x1={13} x2={13} y1={24} y2={36} />
       <Line opacity={0.7} stroke={color} strokeLinecap="round" strokeWidth={1.2} x1={7} x2={19} y1={30} y2={30} />
@@ -1703,7 +1845,7 @@ function LabelsIcon({ active }: { active: boolean }) {
 function NightModeIcon({ active }: { active: boolean }) {
   const color = active ? '#FF5C5C' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={46} viewBox="0 0 48 48" width={46}>
+    <Svg height={28} viewBox="0 0 48 48" width={28}>
       <Path d="M7 24 C 12 16, 26 16, 31 24 C 26 32, 12 32, 7 24 Z" fill="none" stroke={color} strokeLinejoin="round" strokeWidth={1.5} />
       <Circle cx={19} cy={24} fill="none" r={4.5} stroke={color} strokeWidth={1.3} />
       <Circle cx={19} cy={24} fill={color} r={2} />
@@ -1727,15 +1869,6 @@ function QuickControlIcon({ active, kind }: { active: boolean; kind: 'grid-lines
     case 'night':
       return <NightModeIcon active={active} />;
   }
-}
-
-function CloseIcon() {
-  return (
-    <Svg height={26} viewBox="0 0 26 26" width={26}>
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={2} x1={6} x2={20} y1={6} y2={20} />
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={2} x1={20} x2={6} y1={6} y2={20} />
-    </Svg>
-  );
 }
 
 function GlossaryIcon() {
@@ -1864,58 +1997,57 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(167, 206, 255, 0.75)',
   },
   gridQuickMenu: {
-    backgroundColor: 'rgba(18, 22, 28, 0.90)',
+    backgroundColor: 'rgba(16, 20, 26, 0.86)',
     borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 22,
+    borderRadius: 26,
     borderWidth: 1,
-    bottom: 58,
+    bottom: 54,
     elevation: 16,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    left: -10,
+    flexWrap: 'nowrap',
+    left: 0,
     overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 3,
     position: 'absolute',
     shadowColor: '#000000',
-    shadowOffset: { height: 10, width: 0 },
-    shadowOpacity: 0.55,
-    shadowRadius: 20,
-    width: 356,
+    shadowOffset: { height: 6, width: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
   },
   gridQuickMenuHighlight: {
     backgroundColor: 'rgba(255, 255, 255, 0.18)',
     height: 1,
-    left: 20,
+    left: 14,
     position: 'absolute',
-    right: 20,
+    right: 14,
     top: 0,
   },
   quickControlButton: {
     alignItems: 'center',
-    height: 88,
+    height: 52,
     justifyContent: 'center',
-    paddingHorizontal: 3,
-    paddingVertical: 3,
-    width: '33.333333%',
+    paddingHorizontal: 2,
+    paddingVertical: 2,
+    width: 52,
   },
   quickControlButtonPressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.96 }],
+    transform: [{ scale: 0.94 }],
   },
   quickControlCell: {
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: 12,
     height: '100%',
     justifyContent: 'center',
     width: '100%',
   },
   quickIconWrapper: {
     alignItems: 'center',
-    height: 48,
+    height: 30,
     justifyContent: 'center',
     position: 'relative',
-    width: 48,
+    width: 30,
   },
   progressRingWrapper: {
     ...StyleSheet.absoluteFillObject,
@@ -1926,21 +2058,20 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-90deg' }],
   },
   quickControlCellActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(255, 255, 255, 0.10)',
+    borderColor: 'rgba(255, 255, 255, 0.16)',
     borderWidth: StyleSheet.hairlineWidth,
   },
   quickControlCellNightActive: {
-    backgroundColor: 'rgba(235, 60, 60, 0.16)',
-    borderColor: 'rgba(255, 90, 90, 0.35)',
+    backgroundColor: 'rgba(235, 60, 60, 0.18)',
+    borderColor: 'rgba(255, 90, 90, 0.4)',
     borderWidth: StyleSheet.hairlineWidth,
   },
   quickControlLabel: {
-    color: 'rgba(255, 255, 255, 0.46)',
-    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.50)',
+    fontSize: 9.5,
     fontWeight: '400',
-    letterSpacing: 0.3,
-    marginTop: 5,
+    marginTop: 2,
   },
   quickControlLabelActive: {
     color: '#FFFFFF',
@@ -1948,42 +2079,42 @@ const styles = StyleSheet.create({
   },
   quickControlLabelNightActive: {
     color: '#FF6B6B',
-    fontWeight: '600',
   },
   quickDetailOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 72,
+    // Clears the quick bar below, which is tall enough to swallow the last row.
+    paddingBottom: 210,
     paddingHorizontal: 16,
     zIndex: 99,
   },
   quickDetailScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: 'transparent',
   },
   quickDetailCard: {
-    backgroundColor: 'rgba(20, 24, 30, 0.95)',
+    backgroundColor: 'rgba(20, 24, 30, 0.88)',
     borderColor: 'rgba(255, 255, 255, 0.16)',
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 1,
     elevation: 20,
-    maxWidth: 440,
+    maxWidth: 420,
     overflow: 'hidden',
-    paddingBottom: 8,
+    paddingBottom: 6,
     shadowColor: '#000000',
-    shadowOffset: { height: 8, width: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 24,
+    shadowOffset: { height: 6, width: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
     width: '100%',
   },
   quickDetailHeader: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 14,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
   },
   quickDetailTitleBlock: {
     flex: 1,
@@ -1991,73 +2122,97 @@ const styles = StyleSheet.create({
   },
   quickDetailTitle: {
     color: '#FFFFFF',
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '700',
-    letterSpacing: 0.3,
   },
   quickDetailSubtitle: {
     color: 'rgba(255, 255, 255, 0.52)',
-    fontSize: 12,
-    marginTop: 3,
+    fontSize: 11,
+    marginTop: 2,
   },
   quickDetailClose: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 18,
-    height: 36,
+    borderRadius: 15,
+    height: 30,
     justifyContent: 'center',
-    width: 36,
+    width: 30,
   },
   quickDetailDivider: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     height: 1,
-    marginHorizontal: 16,
+    marginHorizontal: 14,
   },
   quickDetailList: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
   },
   quickDetailRow: {
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: 12,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 56,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    minHeight: 46,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  quickStepper: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 14,
+    flexDirection: 'row',
+    paddingHorizontal: 2,
+  },
+  quickStepperArrow: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    width: 28,
+  },
+  quickStepperArrowText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '500',
+    lineHeight: 24,
+  },
+  quickStepperValue: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+    minWidth: 56,
+    textAlign: 'center',
   },
   quickDetailRowText: {
     flex: 1,
-    paddingRight: 16,
+    paddingRight: 14,
   },
   quickDetailRowLabel: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    letterSpacing: 0.2,
   },
   quickDetailRowHint: {
     color: 'rgba(255, 255, 255, 0.48)',
-    fontSize: 12,
-    lineHeight: 16,
+    fontSize: 11,
+    lineHeight: 15,
     marginTop: 2,
   },
   quickDetailSwitch: {
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 14,
-    height: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 12,
+    height: 24,
     justifyContent: 'center',
-    paddingHorizontal: 3,
-    width: 48,
+    paddingHorizontal: 2,
+    width: 40,
   },
   quickDetailSwitchActive: {
-    backgroundColor: 'rgba(194, 218, 255, 0.75)',
+    backgroundColor: '#2B82F6',
   },
   quickDetailKnob: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 11,
-    height: 22,
-    width: 22,
+    borderRadius: 10,
+    height: 20,
+    width: 20,
   },
   quickDetailKnobActive: {
     alignSelf: 'flex-end',
@@ -2254,20 +2409,6 @@ const styles = StyleSheet.create({
   },
   searchOverlay: {
     ...StyleSheet.absoluteFillObject,
-  },
-  featureOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-  },
-  sheetTopScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-  },
-  featureSheetTall: {
-    maxHeight: '82%',
-  },
-  featureScrollContent: {
-    paddingBottom: 40,
   },
   glossaryRegion: {
     color: OVERLAY.muted,
@@ -2613,66 +2754,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: 'center',
   },
-  featureSheet: {
-    backgroundColor: OVERLAY.drawer,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    paddingBottom: 28,
-  },
-  featureHeader: {
-    alignItems: 'center',
-    borderBottomColor: OVERLAY.hairline,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    minHeight: 62,
-    paddingHorizontal: 20,
-  },
-  featureTitle: {
-    color: OVERLAY.text,
-    flex: 1,
-    fontSize: 19,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  featureClose: {
-    alignItems: 'center',
-    height: 38,
-    justifyContent: 'center',
-    width: 38,
-  },
   featureValue: {
     color: OVERLAY.text,
     fontSize: 18,
     paddingHorizontal: 20,
     paddingTop: 16,
     textAlign: 'center',
-  },
-  featureRow: {
-    alignItems: 'center',
-    borderBottomColor: OVERLAY.hairline,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 56,
-    paddingHorizontal: 20,
-  },
-  featureRowText: {
-    flex: 1,
-  },
-  featureRowLabel: {
-    color: OVERLAY.text,
-    fontSize: 16,
-  },
-  featureRowHint: {
-    color: OVERLAY.muted,
-    fontSize: 12,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-  },
-  featureSelected: {
-    color: '#83B4FF',
-    fontSize: 16,
-    fontWeight: '700',
   },
   toolBack: {
     color: OVERLAY.text,

@@ -1,0 +1,58 @@
+{
+  "landscapes": [
+    {
+      "id": "guereins",
+      "titleZh": "盖兰",
+      "title": "Guéreins",
+      "descriptionZh": "法国索恩河谷的小村庄，Stellarium 的诞生地。",
+      "credit": null,
+      "hipsOrder": 2,
+      "sizeMB": 5.1
+    },
+    {
+      "id": "winterfield",
+      "titleZh": "冬日原野",
+      "title": "Winter Field",
+      "descriptionZh": "德国巴伐利亚的户外雪原视角。",
+      "credit": null,
+      "hipsOrder": 2,
+      "sizeMB": 3.7
+    },
+    {
+      "id": "champagne_castle",
+      "titleZh": "香槟城堡",
+      "title": "Champagne Castle",
+      "descriptionZh": "南非巨人城堡禁猎区的山地视角。",
+      "credit": null,
+      "hipsOrder": 2,
+      "sizeMB": 2.6
+    },
+    {
+      "id": "kloppenheim",
+      "titleZh": "克洛彭海姆",
+      "title": "Kloppenheim",
+      "descriptionZh": "南非克洛彭海姆的开阔视角。",
+      "credit": null,
+      "hipsOrder": 2,
+      "sizeMB": 2.3
+    },
+    {
+      "id": "garching",
+      "titleZh": "加兴",
+      "title": "Garching",
+      "descriptionZh": "德国慕尼黑北部 ESO 总部一景。",
+      "credit": "Fabien Chéreau",
+      "hipsOrder": 0,
+      "sizeMB": 0.5
+    },
+    {
+      "id": "ocean",
+      "titleZh": "海洋",
+      "title": "Ocean",
+      "descriptionZh": "由 Terragen 生成的开阔海面。",
+      "credit": "Michael Smith",
+      "hipsOrder": 0,
+      "sizeMB": 0.1
+    }
+  ]
+}

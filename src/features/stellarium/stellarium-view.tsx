@@ -1,5 +1,5 @@
 import type { WebViewMessageEvent, WebViewProps } from 'react-native-webview';
-import type { StellariumBridge } from './stellarium-service';
+import type { SelectedCelestialObject, StellariumBridge } from './stellarium-service';
 import * as React from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -19,25 +19,38 @@ const STELLARIUM_SOURCE = Platform.select({
 export type StellariumViewHandle = StellariumBridge;
 export type StellariumViewProps = {
   onBearingChange?: (azimuthDeg: number) => void;
-  onReady?: () => void;
-  onError?: (message: string) => void;
   onCommandError?: (message: string) => void;
+  onError?: (message: string) => void;
+  onObjectSelected?: (object: SelectedCelestialObject) => void;
+  onReady?: () => void;
+  onSelectionCleared?: () => void;
   onTargetFound?: () => void;
   onTargetNotFound?: () => void;
   style?: WebViewProps['style'];
 };
 
-export function StellariumView({ ref, onBearingChange, onCommandError, onError, onReady, onTargetFound, onTargetNotFound, style }: StellariumViewProps & { ref?: React.RefObject<StellariumViewHandle | null> }) {
-  const webViewRef = React.useRef<WebView>(null);
+function useStellariumLifecycle({
+  onCommandError,
+  onError,
+  onReady,
+  webViewRef,
+}: {
+  onCommandError?: (message: string) => void;
+  onError?: (message: string) => void;
+  onReady?: () => void;
+  webViewRef: React.RefObject<WebView | null>;
+}) {
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const readyRef = React.useRef(false);
   const [error, setError] = React.useState<string>();
   const [loading, setLoading] = React.useState(true);
+
   const clearTimeout = React.useCallback(() => {
     if (timeoutRef.current)
       globalThis.clearTimeout(timeoutRef.current);
     timeoutRef.current = undefined;
   }, []);
+
   const reportError = React.useCallback((message: string) => {
     clearTimeout();
     bridge.current.setReady(false);
@@ -45,9 +58,9 @@ export function StellariumView({ ref, onBearingChange, onCommandError, onError, 
     setError(translate('deep_space.map_error'));
     onError?.(message);
   }, [clearTimeout, onError]);
+
   const bridge = React.useRef(createStellariumBridge(webViewRef, {
     onError: (message) => {
-      // After the map is up, a rejected command must not tear down the whole view.
       if (readyRef.current)
         onCommandError?.(message);
       else
@@ -55,6 +68,7 @@ export function StellariumView({ ref, onBearingChange, onCommandError, onError, 
     },
     onReload: () => webViewRef.current?.reload(),
   }));
+
   const beginLoading = React.useCallback(() => {
     clearTimeout();
     readyRef.current = false;
@@ -66,6 +80,7 @@ export function StellariumView({ ref, onBearingChange, onCommandError, onError, 
         reportError('Stellarium initialization timed out.');
     }, READY_TIMEOUT_MS);
   }, [clearTimeout, reportError]);
+
   const markReady = React.useCallback(() => {
     clearTimeout();
     bridge.current.setReady(true);
@@ -76,17 +91,45 @@ export function StellariumView({ ref, onBearingChange, onCommandError, onError, 
       onReady?.();
     }
   }, [clearTimeout, onReady]);
+
   React.useEffect(() => clearTimeout, [clearTimeout]);
+
+  return { beginLoading, bridge, error, loading, markReady, readyRef, reportError };
+}
+
+export function StellariumView({
+  onBearingChange,
+  onCommandError,
+  onError,
+  onObjectSelected,
+  onReady,
+  onSelectionCleared,
+  onTargetFound,
+  onTargetNotFound,
+  ref,
+  style,
+}: StellariumViewProps & { ref?: React.RefObject<StellariumViewHandle | null> }) {
+  const webViewRef = React.useRef<WebView>(null);
+  const { beginLoading, bridge, error, loading, markReady, readyRef, reportError } = useStellariumLifecycle({
+    onCommandError,
+    onError,
+    onReady,
+    webViewRef,
+  });
+
   if (ref && typeof ref === 'object' && 'current' in ref && !ref.current) {
     (ref as React.MutableRefObject<StellariumViewHandle | null>).current = bridge.current;
   }
-  React.useImperativeHandle(ref, () => bridge.current, []);
+  React.useImperativeHandle(ref, () => bridge.current, [bridge]);
+
   const onMessage = React.useCallback((event: WebViewMessageEvent) => {
     try {
       dispatchSceneMessage(JSON.parse(event.nativeEvent.data), {
         markReady,
         onBearingChange,
         onCommandError,
+        onObjectSelected,
+        onSelectionCleared,
         onTargetFound,
         onTargetNotFound,
         reportError,
@@ -95,7 +138,7 @@ export function StellariumView({ ref, onBearingChange, onCommandError, onError, 
       });
     }
     catch { reportError('Received an unreadable Stellarium message.'); }
-  }, [markReady, onBearingChange, onCommandError, onTargetFound, onTargetNotFound, reportError]);
+  }, [bridge, markReady, onBearingChange, onCommandError, onObjectSelected, onSelectionCleared, onTargetFound, onTargetNotFound, readyRef, reportError]);
   return (
     <View style={styles.root}>
       <WebView
@@ -134,6 +177,8 @@ type SceneMessageHandlers = {
   markReady: () => void;
   onBearingChange?: (azimuthDeg: number) => void;
   onCommandError?: (message: string) => void;
+  onObjectSelected?: (object: SelectedCelestialObject) => void;
+  onSelectionCleared?: () => void;
   onTargetFound?: () => void;
   onTargetNotFound?: () => void;
   reportError: (message: string) => void;
@@ -148,6 +193,10 @@ function dispatchSceneMessage(message: { type: string; [key: string]: unknown },
       return handlers.markReady();
     case 'view_bearing':
       return handlers.onBearingChange?.(message.azimuthDeg as number);
+    case 'object_selected':
+      return handlers.onObjectSelected?.(message.object as SelectedCelestialObject);
+    case 'selection_cleared':
+      return handlers.onSelectionCleared?.();
     case 'target_found':
       return handlers.onTargetFound?.();
     case 'target_not_found':
