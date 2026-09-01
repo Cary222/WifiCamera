@@ -519,10 +519,9 @@ const _useCameraStore = create<CameraState>(set => ({
   landscapeCountdownRemaining: 0,
   landscapeCapturePendingId: null,
   landscapeAutoMode: true,
-  // 1/1000s + 0dB never blows out in daylight; the board seeds real AE values
-  // before manual mode is entered, so this is only a safe fallback.
-  landscapeManualExposure: 0.001,
-  landscapeManualGain: 0,
+  // Indoor AUTO freeze: ~0.04s, analog_gain ~3x → App 30 dB (10^(dB*0.015)).
+  landscapeManualExposure: 0.04,
+  landscapeManualGain: 30,
   landscapeWhiteBalance: 0,
   landscapeEv: 0,
   landscapeWatermark: true,
