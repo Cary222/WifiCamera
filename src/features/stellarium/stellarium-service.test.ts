@@ -15,7 +15,7 @@ function createBridgeHarness() {
   };
 }
 
-describe('stellarium service', () => {
+describe('stellarium sky layers and culture bridge', () => {
   it('posts typed sky-layer changes after the engine is ready', () => {
     const { bridge, postMessage } = createBridgeHarness();
     bridge.setReady(true);
@@ -27,7 +27,15 @@ describe('stellarium service', () => {
       constellationLabels: true,
       constellationLines: true,
       constellationOnlyPointed: false,
+      dsoHintsOffset: 1.5,
+      dsoLabels: true,
       landscape: true,
+      planetHintsOffset: 0,
+      planetLabels: true,
+      satelliteHintsOffset: -2.0,
+      satelliteLabels: true,
+      starHintsOffset: 2.5,
+      starLabels: true,
     });
 
     expect(postMessage).toHaveBeenCalledWith(JSON.stringify({
@@ -38,8 +46,29 @@ describe('stellarium service', () => {
       constellationLabels: true,
       constellationLines: true,
       constellationOnlyPointed: false,
+      dsoHintsOffset: 1.5,
+      dsoLabels: true,
       landscape: true,
+      planetHintsOffset: 0,
+      planetLabels: true,
+      satelliteHintsOffset: -2.0,
+      satelliteLabels: true,
+      starHintsOffset: 2.5,
+      starLabels: true,
     }));
+  });
+
+  it('rejects an out-of-range hint magnitude offset', () => {
+    const onError = jest.fn();
+    const postMessage = jest.fn();
+    const webViewRef = { current: { postMessage } } as unknown as RefObject<WebView | null>;
+    const bridge = createStellariumBridge(webViewRef, { onError });
+    bridge.setReady(true);
+
+    bridge.setSkyLayers({ starHintsOffset: 50 });
+
+    expect(onError).toHaveBeenCalledWith('Hint magnitude offset must be a finite number between -20 and 20.');
+    expect(postMessage).not.toHaveBeenCalled();
   });
 
   it('sends an optional culture target only for an explicit glossary use action', () => {
@@ -54,7 +83,9 @@ describe('stellarium service', () => {
       target: 'CON chinese 236',
     }));
   });
+});
 
+describe('stellarium observer and grid bridge', () => {
   it('posts the observer time chosen from the calendar', () => {
     const { bridge, postMessage } = createBridgeHarness();
     bridge.setReady(true);
@@ -138,10 +169,11 @@ describe('stellarium landscape and environment bridge', () => {
     const { bridge, postMessage } = createBridgeHarness();
     bridge.setReady(true);
 
-    bridge.setEnvironment({ cardinals: false, fog: false, turbidity: 6 });
+    bridge.setEnvironment({ bortleIndex: 1, cardinals: false, fog: false, turbidity: 6 });
 
     expect(postMessage).toHaveBeenCalledWith(JSON.stringify({
       type: 'set_environment',
+      bortleIndex: 1,
       cardinals: false,
       fog: false,
       turbidity: 6,
@@ -157,8 +189,35 @@ describe('stellarium landscape and environment bridge', () => {
 
     bridge.setEnvironment({ turbidity: 40 });
 
-    expect(onError).toHaveBeenCalledWith('Turbidity must be between 1 and 10.');
+    expect(onError).toHaveBeenCalledWith('Turbidity must be between 0 and 10.');
     expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('rejects Bortle values outside the engine range', () => {
+    const onError = jest.fn();
+    const postMessage = jest.fn();
+    const webViewRef = { current: { postMessage } } as unknown as RefObject<WebView | null>;
+    const bridge = createStellariumBridge(webViewRef, { onError });
+    bridge.setReady(true);
+
+    bridge.setEnvironment({ bortleIndex: 0 });
+
+    expect(onError).toHaveBeenCalledWith('Bortle index must be an integer between 1 and 9.');
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
+  it('accepts the engine\'s own default turbidity', () => {
+    // Measured against a live engine instance: atmosphere.turbidity starts at
+    // 0.96, which the previous floor of 1 rejected outright.
+    const { bridge, postMessage } = createBridgeHarness();
+    bridge.setReady(true);
+
+    bridge.setEnvironment({ turbidity: 0.96 });
+
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({
+      type: 'set_environment',
+      turbidity: 0.96,
+    }));
   });
 });
 

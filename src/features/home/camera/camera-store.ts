@@ -11,6 +11,7 @@ import type { CameraSerial, CameraVersion } from './types';
 import { create } from 'zustand';
 import { createSelectors } from '@/lib/utils';
 import { getCameraWebSocketUrl } from './config';
+import { syncBoardTime } from './services/startup-service';
 import { CameraWebSocketService } from './services/websocket-service';
 import {
   getActiveTransport,
@@ -549,6 +550,10 @@ const _useCameraStore = create<CameraState>(set => ({
             : { connectionStatus: status });
           if (status === 'open') {
             disconnectedSince = null;
+            // The board boots at 2021 with no RTC, which corrupts capture
+            // mtimes and hides new photos from the album's /list_images feed.
+            // Fire-and-forget: syncBoardTime never rejects.
+            void syncBoardTime();
             _useCameraStore.getState().requestCameraState();
             _useCameraStore.getState().requestCameraStatus();
           }

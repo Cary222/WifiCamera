@@ -6,6 +6,7 @@ export {
   getSerial,
   getVersion,
   postUpdateTime,
+  syncBoardTime,
 } from './services/startup-service';
 export type {
   GetSerialResponse,

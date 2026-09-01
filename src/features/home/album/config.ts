@@ -1,7 +1,7 @@
 /**
  * Album / file API endpoints — mirrors the camera firmware contract.
  */
-import Env from 'env';
+import { getCameraBaseUrl } from '../camera/config';
 
 export const ALBUM_ENDPOINTS = {
   listImages: '/list_images',
@@ -17,6 +17,16 @@ export const ALBUM_ENDPOINTS = {
 
 export const ALBUM_REQUEST_TIMEOUT_MS = 15_000;
 
+/**
+ * Album requests must target the same endpoint as preview/capture.
+ *
+ * This used to read `Env.EXPO_PUBLIC_CAMERA_BASE_URL` directly, which is the
+ * USB/emulator forward (`10.0.2.2:18999`) and is unreachable on a real device
+ * over the board's WiFi AP — every album request failed and the screen silently
+ * fell back to mock data. Delegating to `getCameraBaseUrl()` follows the active
+ * transport (USB vs WiFi, including a user-configured camera IP) and keeps the
+ * web dev proxy path working.
+ */
 export function getAlbumBaseUrl(): string {
-  return Env.EXPO_PUBLIC_CAMERA_BASE_URL;
+  return getCameraBaseUrl();
 }

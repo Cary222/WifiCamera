@@ -613,6 +613,32 @@
               setModuleFlag(stel.core.constellations, 'show_only_pointed', message.constellationOnlyPointed);
             if (typeof message.constellationLines === 'boolean')
               setModuleFlag(stel.core.constellations, 'lines_visible', message.constellationLines);
+            if (typeof message.planetLabels === 'boolean')
+              setModuleFlag(stel.core.planets, 'hints_visible', message.planetLabels);
+            if (typeof message.starLabels === 'boolean')
+              setModuleFlag(stel.core.stars, 'hints_visible', message.starLabels);
+            if (typeof message.dsoLabels === 'boolean') {
+              setModuleFlag(stel.core.dsos, 'hints_visible', message.dsoLabels);
+              setModuleFlag(stel.core.dsos, 'visible', message.dsoLabels);
+            }
+            if (typeof message.satelliteLabels === 'boolean')
+              setModuleFlag(stel.core.satellites, 'hints_visible', message.satelliteLabels);
+            if (typeof message.starHintsOffset === 'number') {
+              setModuleFlag(stel.core.stars, 'hints_mag_offset', message.starHintsOffset);
+              const limit = message.starHintsOffset <= 0
+                ? 6.5 + message.starHintsOffset * 1.0
+                : 6.5 + message.starHintsOffset * 13.0;
+              setModuleFlag(stel.core, 'display_limit_mag', Math.max(3.5, Math.min(99, limit)));
+            }
+            if (typeof message.planetHintsOffset === 'number') {
+              setModuleFlag(stel.core.planets, 'hints_mag_offset', message.planetHintsOffset);
+              setModuleFlag(stel.core.minor_planets, 'hints_mag_offset', message.planetHintsOffset);
+              setModuleFlag(stel.core.comets, 'hints_mag_offset', message.planetHintsOffset);
+            }
+            if (typeof message.dsoHintsOffset === 'number')
+              setModuleFlag(stel.core.dsos, 'hints_mag_offset', message.dsoHintsOffset);
+            if (typeof message.satelliteHintsOffset === 'number')
+              setModuleFlag(stel.core.satellites, 'hints_mag_offset', message.satelliteHintsOffset);
             forceRender();
             return;
           case 'set_landscape': {
@@ -632,6 +658,18 @@
             return;
           }
           case 'set_environment':
+            if (typeof message.bortleIndex === 'number') {
+              const b = Math.max(1, Math.min(9, message.bortleIndex));
+              setModuleFlag(stel.core, 'bortle_index', b);
+              // Astronomical naked-eye limiting magnitude (NELM) mapping per Bortle class:
+              // Bortle 1: pristine dark sky (mag 7.6+, 99 = full catalog), down to Bortle 9: city center (mag ~3.5)
+              const nelmMappings = [99, 7.3, 6.8, 6.3, 5.8, 5.3, 4.8, 4.2, 3.4];
+              setModuleFlag(stel.core, 'display_limit_mag', nelmMappings[b - 1] ?? 99);
+              // Milky Way visibility: brilliant in dark skies (Bortle 1-4), faint in suburbs (5-6), washed out in city (7-9)
+              setModuleFlag(stel.core.milkyway, 'visible', b <= 6);
+              // Scale aerosol turbidity with urban air quality / Bortle rating
+              setModuleFlag(stel.core.atmosphere, 'turbidity', 0.96 + (b - 1) * 0.55);
+            }
             if (typeof message.fog === 'boolean')
               setModuleFlag(stel.core.landscapes, 'fog_visible', message.fog);
             if (typeof message.cardinals === 'boolean')
@@ -754,6 +792,8 @@
           core.constellations.images_visible = true;
           core.constellations.lines_visible = true;
           core.constellations.bounds_visible = false;
+          core.dsos.visible = true;
+          core.dsos.hints_visible = true;
           // Desktop Stellarium labels every constellation, not just the selected one.
           core.constellations.show_only_pointed = false;
           core.constellations.labels_visible = true;

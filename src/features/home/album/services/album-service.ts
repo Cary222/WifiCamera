@@ -69,8 +69,10 @@ export async function listPicFolders(): Promise<PicFolder[]> {
       }));
     }
   }
-  catch {
-    // /list_images not available, try legacy
+  catch (error) {
+    // Not fatal: fall through to the legacy endpoint. Logged because a silent
+    // failure here is indistinguishable from "the camera has no photos".
+    console.warn('[album] /list_images failed', error);
   }
 
   // 2. Fall back to legacy /FileCopy/list_pic_folders/
@@ -84,11 +86,12 @@ export async function listPicFolders(): Promise<PicFolder[]> {
       return unwrapped.pic_folders;
     }
   }
-  catch {
-    // Camera unreachable — return mock folder list
+  catch (error) {
+    console.warn('[album] legacy /FileCopy/list_pic_folders/ failed', error);
   }
 
   // 3. Mock fallback
+  console.warn(`[album] both endpoints returned nothing at ${baseUrl} — showing mock data`);
   return MOCK_ALBUM_DATA.groups.flatMap(group =>
     group.items.map(item => ({
       name: item.target,
@@ -109,7 +112,8 @@ export async function listPicFiles(sourceDir: string): Promise<PicFile[]> {
     );
     return unwrapCamera(res.data, 'POST', url).pic_files;
   }
-  catch {
+  catch (error) {
+    console.warn(`[album] listPicFiles failed for ${sourceDir}`, error);
     return [];
   }
 }

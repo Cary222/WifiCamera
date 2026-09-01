@@ -29,6 +29,14 @@ describe('stellarium default scene', () => {
     expect(sceneHtml).toContain('setModuleFlag(stel.core.constellations, \'labels_visible\', message.constellationLabels);');
     expect(sceneHtml).toContain('setModuleFlag(stel.core.constellations, \'bounds_visible\', message.constellationBoundaries);');
     expect(sceneHtml).toContain('setModuleFlag(stel.core.constellations, \'show_only_pointed\', message.constellationOnlyPointed);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.planets, \'hints_visible\', message.planetLabels);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.stars, \'hints_visible\', message.starLabels);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.dsos, \'hints_visible\', message.dsoLabels);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.satellites, \'hints_visible\', message.satelliteLabels);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.stars, \'hints_mag_offset\', message.starHintsOffset);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.planets, \'hints_mag_offset\', message.planetHintsOffset);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.dsos, \'hints_mag_offset\', message.dsoHintsOffset);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core.satellites, \'hints_mag_offset\', message.satelliteHintsOffset);');
     // An unsupported optional flag must not abort the remaining layers in the same batch.
     expect(sceneHtml).toContain('try { module[key] = value; } catch {}');
   });
@@ -130,6 +138,7 @@ describe('stellarium scene commands and overlays', () => {
     // Verified at runtime: fog_visible, cardinals.visible, atmosphere.turbidity and
     // landscape color are writable; rotation/brightness/opacity do not exist.
     expect(sceneHtml).toContain('case \'set_environment\':');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core, \'bortle_index\', b);');
     expect(sceneHtml).toContain('setModuleFlag(stel.core.landscapes, \'fog_visible\', message.fog);');
     expect(sceneHtml).toContain('setModuleFlag(stel.core.cardinals, \'visible\', message.cardinals);');
     expect(sceneHtml).toContain('setModuleFlag(stel.core.atmosphere, \'turbidity\', message.turbidity);');

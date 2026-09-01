@@ -45,3 +45,39 @@ export async function postUpdateTime(input: UpdateTimePayload): Promise<void> {
   );
   unwrapCamera(payload, 'post', CAMERA_ENDPOINTS.postUpdateTime);
 }
+
+/** Format as `YYYY-MM-DD HH:mm:ss` in local time — the form the firmware accepts. */
+function formatBoardTime(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
+    + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/**
+ * Push the phone's clock to the board.
+ *
+ * The board has no RTC battery and boots at 2021-01-01, so every file it writes
+ * gets a stale mtime. `/list_images` sorts by mtime and truncates to the newest
+ * 100 entries, which pushes freshly captured photos *behind* older correctly
+ * dated ones — they vanish from the album even though they exist on disk.
+ * Syncing on connect keeps capture timestamps monotonic with real time.
+ *
+ * Never throws: a failed sync must not block the control channel coming up.
+ */
+export async function syncBoardTime(): Promise<boolean> {
+  try {
+    const now = new Date();
+    // getTimezoneOffset() counts minutes *behind* UTC, so invert it to get the
+    // conventional east-positive offset in hours (UTC+8 -> 8).
+    await postUpdateTime({
+      time: formatBoardTime(now),
+      time_zone: -now.getTimezoneOffset() / 60,
+    });
+    console.info('[camera] board clock synced', formatBoardTime(now));
+    return true;
+  }
+  catch (error) {
+    console.warn('[camera] board clock sync failed', error);
+    return false;
+  }
+}

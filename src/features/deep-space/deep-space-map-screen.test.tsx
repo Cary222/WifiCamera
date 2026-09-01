@@ -1,7 +1,7 @@
 import type { TonightReport } from '@/features/stellarium/stellarium-service';
 import * as React from 'react';
 
-import { act, cleanup, screen, setup } from '@/lib/test-utils';
+import { act, cleanup, fireEvent, screen, setup } from '@/lib/test-utils';
 
 import { DeepSpaceMapScreen } from './deep-space-map-screen';
 
@@ -161,6 +161,7 @@ afterEach(() => {
   mockComputeTonight.mockClear();
   mockReload.mockClear();
   mockSearchTarget.mockClear();
+  mockSetEnvironment.mockClear();
   mockSetGridLines.mockClear();
   mockSetLocation.mockClear();
   mockSetSkyCulture.mockClear();
@@ -427,6 +428,25 @@ describe('deep space 3x2 quick controls', () => {
     expect(screen.getByTestId('deep-space-night-mode-overlay')).toBeOnTheScreen();
   });
 
+  it('toggles all labels on quick button press and keeps the landscape enabled', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+
+    expect(screen.getByTestId('deep-space-grid-quick-landscape').props.accessibilityState.checked).toBe(true);
+    await user.press(screen.getByTestId('deep-space-grid-quick-labels'));
+
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({
+      dsoLabels: false,
+      planetLabels: false,
+      satelliteLabels: false,
+      starLabels: false,
+    });
+    expect(mockSetSkyLayers).not.toHaveBeenCalledWith({ landscape: false });
+    expect(screen.getByTestId('deep-space-grid-quick-landscape').props.accessibilityState.checked).toBe(true);
+  });
+});
+
+describe('deep space quick detail sheets', () => {
   it('opens secondary detail settings sheet on long pressing quick controls', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
@@ -496,24 +516,130 @@ describe('deep space 3x2 quick controls', () => {
     await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
 
     expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
-    expect(screen.getByText('大气层与光污染设置')).toBeOnTheScreen();
+    expect(screen.getByText('大气层与空气质量设置')).toBeOnTheScreen();
     expect(screen.getByText('大气散射与消光')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-quick-detail-toggle-fog')).toBeOnTheScreen();
 
     await user.press(screen.getByTestId('deep-space-quick-detail-toggle-fog'));
     expect(mockSetEnvironment).toHaveBeenLastCalledWith({ fog: false });
   });
+});
 
-  it('keeps the landscape enabled when toggling labels', async () => {
+describe('deep space labels detail sheet', () => {
+  it('opens Stellarium labels detail sheet on long press with 4 sliders and reset button', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-labels'));
 
-    expect(screen.getByTestId('deep-space-grid-quick-landscape').props.accessibilityState.checked).toBe(true);
-    await user.press(screen.getByTestId('deep-space-grid-quick-labels'));
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByText('标签和注记数量')).toBeOnTheScreen();
+    expect(screen.getByText('恒星')).toBeOnTheScreen();
+    expect(screen.getByText('行星')).toBeOnTheScreen();
+    expect(screen.getByText('深空天体')).toBeOnTheScreen();
+    expect(screen.getByText('人造卫星')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-labels-reset-button')).toBeOnTheScreen();
+    expect(screen.getByText('重置数值')).toBeOnTheScreen();
+    expect(screen.queryByText('星座标签')).not.toBeOnTheScreen();
 
-    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ constellationLabels: false });
-    expect(mockSetSkyLayers).not.toHaveBeenCalledWith({ landscape: false });
-    expect(screen.getByTestId('deep-space-grid-quick-landscape').props.accessibilityState.checked).toBe(true);
+    fireEvent(screen.getByTestId('deep-space-label-slider-stars'), 'accessibilityAction', {
+      nativeEvent: { actionName: 'increment' },
+    });
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({
+      starHintsOffset: 0.5,
+      starLabels: true,
+    });
+
+    await user.press(screen.getByTestId('deep-space-labels-reset-button'));
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({
+      dsoHintsOffset: 0,
+      dsoLabels: true,
+      planetHintsOffset: 0,
+      planetLabels: true,
+      satelliteHintsOffset: 0,
+      satelliteLabels: true,
+      starHintsOffset: 0,
+      starLabels: true,
+    });
+  });
+
+  it('resets grid lines from quick detail reset button', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-grid-lines'));
+
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-reset')).toBeOnTheScreen();
+    expect(screen.getByText('重置坐标网格')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-reset'));
+    expect(mockSetGridLines).toHaveBeenLastCalledWith({
+      azimuthal: false,
+      ecliptic: false,
+      equator: false,
+      equatorial_j2000: false,
+      equatorial_jnow: false,
+      meridian: false,
+    });
+  });
+
+  it('resets atmosphere and air quality from quick detail reset button', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
+
+    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-reset')).toBeOnTheScreen();
+    expect(screen.getByText('重置大气与空气质量')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-reset'));
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ atmosphere: true });
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith({
+      bortleIndex: 1,
+      fog: false,
+      turbidity: 0.96,
+    });
+  });
+});
+
+describe('deep space interactive time control', () => {
+  it('opens time control bar when tapping time capsule', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-time'));
+    expect(screen.getByTestId('deep-space-time-slider-sheet')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-time-slider')).toBeOnTheScreen();
+  });
+
+  it('steps date forward and backward in time control bar', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-time'));
+
+    await user.press(screen.getByTestId('deep-space-time-date-next'));
+    expect(mockSetTime).toHaveBeenCalled();
+
+    await user.press(screen.getByTestId('deep-space-time-date-prev'));
+    expect(mockSetTime).toHaveBeenCalled();
+  });
+
+  it('steps hour forward and backward in time control bar', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-time'));
+
+    await user.press(screen.getByTestId('deep-space-time-hour-next'));
+    expect(mockSetTime).toHaveBeenCalled();
+
+    await user.press(screen.getByTestId('deep-space-time-hour-prev'));
+    expect(mockSetTime).toHaveBeenCalled();
+  });
+
+  it('returns to now and closes time control bar', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-time'));
+
+    await user.press(screen.getByTestId('deep-space-time-now-button'));
+    expect(mockSetTime).toHaveBeenCalled();
+
+    await user.press(screen.getByTestId('deep-space-time-close-button'));
+    expect(screen.queryByTestId('deep-space-time-slider-sheet')).not.toBeOnTheScreen();
   });
 });
 
@@ -598,6 +724,31 @@ describe('deep space observation tools and search', () => {
     act(() => mockOnCommandError?.());
     expect(screen.getByTestId('deep-space-map-shell')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-map-search-error')).toHaveTextContent('未找到该天体，请改用标准名称或编号');
+  });
+});
+
+describe('deep space air quality integration', () => {
+  it('defaults air quality to Bortle 1 and cycles it through the existing stepper', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    expect(mockSetEnvironment).toHaveBeenCalledWith({
+      bortleIndex: 1,
+      cardinals: true,
+      fog: true,
+      turbidity: 0.96,
+    });
+
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
+
+    expect(screen.getByTestId('deep-space-quick-detail-stepper-air-quality')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-stepper-air-quality-value')).toHaveTextContent('Bortle 1 · 极佳暗空');
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-stepper-air-quality-next'));
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith({ bortleIndex: 2 });
+
+    await user.press(screen.getByTestId('deep-space-quick-detail-stepper-air-quality-prev'));
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith({ bortleIndex: 1 });
   });
 });
 

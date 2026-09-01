@@ -2,7 +2,7 @@ import type { FieldOfViewInput } from '@/features/deep-space/tools/field-of-view
 import type { SelectedCelestialObject, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import * as React from 'react';
-import { Animated, Easing, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Animated, Easing, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Polygon, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import SKY_CULTURES_DATA from '@/assets/stellar/skycultures-full.json';
@@ -27,8 +27,64 @@ const DEFAULT_SKY_LAYERS: Required<StellariumSkyLayers> = {
   constellationLabels: true,
   constellationLines: true,
   constellationOnlyPointed: false,
+  dsoHintsOffset: 0,
+  dsoLabels: true,
   landscape: true,
+  planetHintsOffset: 0,
+  planetLabels: true,
+  satelliteHintsOffset: 0,
+  satelliteLabels: true,
+  starHintsOffset: 0,
+  starLabels: true,
 };
+
+type LabelHintValues = {
+  stars: number;
+  planets: number;
+  dsos: number;
+  satellites: number;
+};
+
+const DEFAULT_LABEL_HINTS: LabelHintValues = {
+  dsos: 30,
+  planets: 30,
+  satellites: 30,
+  stars: 30,
+};
+
+function sliderToMagOffset(value: number): number {
+  return Number(((value - 30) / 10).toFixed(2));
+}
+
+function hintsOffsetToPatch(key: keyof LabelHintValues, value: number): Partial<StellariumSkyLayers> {
+  const visible = value > 0;
+  const offset = key === 'dsos'
+    ? (value <= 30 ? Number(((value - 30) / 10).toFixed(2)) : Number((((value - 30) / 70) * 12.0).toFixed(2)))
+    : sliderToMagOffset(value);
+  switch (key) {
+    case 'stars':
+      return { starHintsOffset: offset, starLabels: visible };
+    case 'planets':
+      return { planetHintsOffset: offset, planetLabels: visible };
+    case 'dsos':
+      return { dsoHintsOffset: offset, dsoLabels: visible };
+    case 'satellites':
+      return { satelliteHintsOffset: offset, satelliteLabels: visible };
+  }
+}
+
+function resetAllHints(): Partial<StellariumSkyLayers> {
+  return {
+    dsoHintsOffset: 0,
+    dsoLabels: true,
+    planetHintsOffset: 0,
+    planetLabels: true,
+    satelliteHintsOffset: 0,
+    satelliteLabels: true,
+    starHintsOffset: 0,
+    starLabels: true,
+  };
+}
 
 const DEFAULT_GRID_LINES: Record<'azimuthal' | 'ecliptic' | 'equator' | 'equatorial_j2000' | 'equatorial_jnow' | 'meridian', boolean> = {
   azimuthal: false,
@@ -40,6 +96,14 @@ const DEFAULT_GRID_LINES: Record<'azimuthal' | 'ecliptic' | 'equator' | 'equator
 };
 
 type GridLineKey = keyof typeof DEFAULT_GRID_LINES;
+
+/**
+ * The atmosphere model's own starting turbidity, read back from a live engine
+ * instance. Keep this in sync with the engine rather than picking a round
+ * number: seeding anything else changes the sky's colour before the user has
+ * touched a single control.
+ */
+const DEFAULT_TURBIDITY = 0.96;
 
 const OBSERVER_CITIES = [
   { latitudeDeg: 39.9, longitudeDeg: 116.41, name: '北京' },
@@ -68,6 +132,34 @@ function landscapeStepper(activeId: string, onSelect: (id: string) => void) {
     },
     position: `第 ${index + 1} / ${LANDSCAPES.length} 套`,
     value: LANDSCAPES[index]?.titleZh ?? activeId,
+  };
+}
+
+const BORTLE_LEVELS = [
+  'Bortle 1 · 极佳暗空',
+  'Bortle 2 · 典型暗空',
+  'Bortle 3 · 乡村暗空',
+  'Bortle 4 · 乡村过渡',
+  'Bortle 5 · 郊区天空',
+  'Bortle 6 · 明亮郊区',
+  'Bortle 7 · 城郊天空',
+  'Bortle 8 · 城市天空',
+  'Bortle 9 · 市中心天空',
+] as const;
+
+/** User-selected safe default: Bortle 1, the lowest skyglow / best dark sky. */
+const DEFAULT_BORTLE_INDEX = 1;
+
+function airQualityStepper(bortleIndex: number, onSelect: (next: number) => void) {
+  const index = Math.min(BORTLE_LEVELS.length - 1, Math.max(0, bortleIndex - 1));
+
+  return {
+    onStep: (delta: number) => {
+      const next = (index + delta + BORTLE_LEVELS.length) % BORTLE_LEVELS.length;
+      onSelect(next + 1);
+    },
+    position: `第 ${index + 1} / ${BORTLE_LEVELS.length} 级`,
+    value: BORTLE_LEVELS[index],
   };
 }
 
@@ -112,7 +204,14 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
   const [fieldOfView, setFieldOfView] = React.useState<FieldOfViewInput>();
   const [gridLines, setGridLines] = React.useState(DEFAULT_GRID_LINES);
   const [landscapeId, setLandscapeId] = React.useState(DEFAULT_LANDSCAPE_ID);
-  const [environment, setEnvironment] = React.useState({ cardinals: true, fog: true, turbidity: 3 });
+  // `turbidity` mirrors the engine's own default (measured: 0.96). Seeding a
+  // different value here would silently re-tint the sky on first render.
+  const [environment, setEnvironment] = React.useState({
+    bortleIndex: DEFAULT_BORTLE_INDEX,
+    cardinals: true,
+    fog: true,
+    turbidity: DEFAULT_TURBIDITY,
+  });
   const close = () => setActive(undefined);
 
   const updateGridLines = React.useCallback((patch: Partial<typeof DEFAULT_GRID_LINES>) => {
@@ -162,33 +261,16 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
   };
 }
 
-function StarMapOverlayControls({
-  azimuthDeg,
-  clock,
-  environment,
-  gridLines,
-  insets,
-  landscapeId,
-  nightMode,
-  onOpenMenu,
-  onOpenSearch,
-  onReturnToNow,
-  onSelectLandscape,
-  onToggleGridLine,
-  onToggleNightMode,
-  onToggleSkyLayer,
-  onUpdateEnvironment,
-  onUpdateGridLines,
-  onUpdateSkyLayers,
-  skyLayers,
-}: {
+type StarMapOverlayControlsProps = {
   azimuthDeg: number;
   clock: Date;
-  environment: { cardinals: boolean; fog: boolean };
+  environment: { bortleIndex: number; cardinals: boolean; fog: boolean; turbidity: number };
   gridLines: typeof DEFAULT_GRID_LINES;
   insets: { bottom: number; top: number };
+  isCustomTime?: boolean;
   landscapeId: string;
   nightMode: boolean;
+  onCloseTimePanel?: () => void;
   onOpenMenu: () => void;
   onOpenSearch: () => void;
   onReturnToNow: () => void;
@@ -196,13 +278,128 @@ function StarMapOverlayControls({
   onToggleGridLine: (key: GridLineKey) => void;
   onToggleNightMode: () => void;
   onToggleSkyLayer: (key: SkyLayerKey) => void;
-  onUpdateEnvironment: (patch: { cardinals?: boolean; fog?: boolean }) => void;
+  onToggleTimePanel?: () => void;
+  onUpdateEnvironment: (patch: { bortleIndex?: number; cardinals?: boolean; fog?: boolean; turbidity?: number }) => void;
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
+  onUpdateTime?: (date: Date) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
+  timePanelOpen?: boolean;
+};
+
+function ActiveDetailSheet({
+  activeDetail,
+  control,
+  labelHints,
+  onChangeHint,
+  onClose,
+  onResetHints,
+}: {
+  activeDetail: QuickControlId | null;
+  control: QuickControlEntry | undefined;
+  labelHints: LabelHintValues;
+  onChangeHint: (key: keyof LabelHintValues, val: number) => void;
+  onClose: () => void;
+  onResetHints: () => void;
 }) {
+  if (activeDetail === 'labels') {
+    return (
+      <LabelsControlDetailSheet
+        hints={labelHints}
+        onChangeHint={onChangeHint}
+        onClose={onClose}
+        onReset={onResetHints}
+      />
+    );
+  }
+  if (!control)
+    return null;
+
+  return (
+    <QuickControlDetailSheet
+      items={control.detailItems}
+      onClose={onClose}
+      onReset={control.onReset}
+      resetLabel={control.resetLabel}
+      subtitle={control.detailSubtitle}
+      title={control.detailTitle}
+    />
+  );
+}
+
+function OverlayBottomBar({
+  clock,
+  controls,
+  insetsBottom,
+  isCustomTime,
+  onLongPressControl,
+  onOpenChange,
+  onReturnToNow,
+  onToggleTimePanel,
+  quickPanelOpen,
+}: {
+  clock: Date;
+  controls: QuickControlEntry[];
+  insetsBottom: number;
+  isCustomTime: boolean;
+  onLongPressControl: (id: QuickControlId) => void;
+  onOpenChange: (next: boolean) => void;
+  onReturnToNow: () => void;
+  onToggleTimePanel?: () => void;
+  quickPanelOpen: boolean;
+}) {
+  return (
+    <View style={[styles.bottomControls, { paddingBottom: insetsBottom + 14 }]} pointerEvents="box-none">
+      <View style={styles.leftQuickBar}>
+        <GridQuickBar
+          controls={controls}
+          onLongPressControl={onLongPressControl}
+          onOpenChange={onOpenChange}
+          open={quickPanelOpen}
+        />
+      </View>
+      <View style={styles.timeControlWrapper}>
+        {!quickPanelOpen && (
+          <TimeControl
+            clock={clock}
+            isCustomTime={isCustomTime}
+            onPress={onToggleTimePanel ?? (() => {})}
+            onReturnToNow={onReturnToNow}
+          />
+        )}
+      </View>
+    </View>
+  );
+}
+
+function StarMapOverlayControls({
+  azimuthDeg,
+  clock,
+  environment,
+  gridLines,
+  insets,
+  isCustomTime = false,
+  landscapeId,
+  nightMode,
+  onCloseTimePanel,
+  onOpenMenu,
+  onOpenSearch,
+  onReturnToNow,
+  onSelectLandscape,
+  onToggleGridLine,
+  onToggleNightMode,
+  onToggleSkyLayer,
+  onToggleTimePanel,
+  onUpdateEnvironment,
+  onUpdateGridLines,
+  onUpdateSkyLayers,
+  onUpdateTime,
+  skyLayers,
+  timePanelOpen = false,
+}: StarMapOverlayControlsProps) {
   const [quickPanelOpen, setQuickPanelOpen] = React.useState(false);
   const [activeDetail, setActiveDetail] = React.useState<QuickControlId | null>(null);
+  const [labelHints, setLabelHints] = React.useState<LabelHintValues>(DEFAULT_LABEL_HINTS);
 
   const controls = getQuickControls({
     environment,
@@ -227,23 +424,21 @@ function StarMapOverlayControls({
       <View style={styles.horizonBearing} pointerEvents="none">
         <Text testID="deep-space-horizon-bearing" style={styles.horizonBearingText}>{bearingLabel(azimuthDeg)}</Text>
       </View>
-      <View style={[styles.bottomControls, { paddingBottom: insets.bottom + 14 }]} pointerEvents="box-none">
-        <View style={styles.leftQuickBar}>
-          <GridQuickBar
-            controls={controls}
-            onLongPressControl={setActiveDetail}
-            onOpenChange={(next) => {
-              if (!next)
-                setActiveDetail(null);
-              setQuickPanelOpen(next);
-            }}
-            open={quickPanelOpen}
-          />
-        </View>
-        <View style={styles.timeControlWrapper}>
-          {!quickPanelOpen && <TimeControl clock={clock} onReturnToNow={onReturnToNow} />}
-        </View>
-      </View>
+      <OverlayBottomBar
+        clock={clock}
+        controls={controls}
+        insetsBottom={insets.bottom}
+        isCustomTime={isCustomTime}
+        onLongPressControl={setActiveDetail}
+        onOpenChange={(next) => {
+          if (!next)
+            setActiveDetail(null);
+          setQuickPanelOpen(next);
+        }}
+        onReturnToNow={onReturnToNow}
+        onToggleTimePanel={onToggleTimePanel}
+        quickPanelOpen={quickPanelOpen}
+      />
       {!quickPanelOpen && (
         <View
           pointerEvents="none"
@@ -253,12 +448,31 @@ function StarMapOverlayControls({
           <Compass azimuthDeg={azimuthDeg} />
         </View>
       )}
-      {currentDetailControl && (
-        <QuickControlDetailSheet
-          items={currentDetailControl.detailItems}
-          onClose={() => setActiveDetail(null)}
-          subtitle={currentDetailControl.detailSubtitle}
-          title={currentDetailControl.detailTitle}
+      <ActiveDetailSheet
+        activeDetail={activeDetail}
+        control={currentDetailControl}
+        labelHints={labelHints}
+        onChangeHint={(key, val) => {
+          setLabelHints((prev) => {
+            const next = { ...prev, [key]: val };
+            onUpdateSkyLayers(hintsOffsetToPatch(key, val));
+            return next;
+          });
+        }}
+        onClose={() => setActiveDetail(null)}
+        onResetHints={() => {
+          setLabelHints(DEFAULT_LABEL_HINTS);
+          onUpdateSkyLayers(resetAllHints());
+        }}
+      />
+      {timePanelOpen && (
+        <TimeSliderSheet
+          clock={clock}
+          insetsBottom={insets.bottom}
+          isCustomTime={isCustomTime}
+          onClose={() => onCloseTimePanel?.()}
+          onReturnToNow={onReturnToNow}
+          onUpdateTime={date => onUpdateTime?.(date)}
         />
       )}
     </View>
@@ -352,14 +566,218 @@ function QuickDetailRow({ item }: { item: QuickSubItem }) {
   );
 }
 
+function useLabelSliderGesture(onChange: (val: number) => void) {
+  const [trackWidth, setTrackWidth] = React.useState(0);
+  const [dragValue, setDragValue] = React.useState<number | null>(null);
+  const trackRef = React.useRef<View>(null);
+  const trackBoundsRef = React.useRef({ pageX: 0, width: 0 });
+  const rafRef = React.useRef<number | null>(null);
+  const latestValueRef = React.useRef(30);
+
+  const measureTrack = React.useCallback((onMeasured?: () => void) => {
+    trackRef.current?.measure((...args: number[]) => {
+      const width = args[2];
+      const pageX = args[4];
+      if (typeof width === 'number' && width > 0 && typeof pageX === 'number') {
+        trackBoundsRef.current = { pageX, width };
+        setTrackWidth(width);
+        onMeasured?.();
+      }
+    });
+  }, []);
+
+  const updateFromPageX = React.useCallback((pageX: number, isFinal = false) => {
+    const { pageX: startX, width } = trackBoundsRef.current;
+    if (width <= 0)
+      return;
+    const ratio = (pageX - startX) / width;
+    const nextVal = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+    setDragValue(nextVal);
+    latestValueRef.current = nextVal;
+
+    if (isFinal) {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      onChange(nextVal);
+    }
+    else if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        onChange(latestValueRef.current);
+      });
+    }
+  }, [onChange]);
+
+  const panResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (event) => {
+          measureTrack(() => updateFromPageX(event.nativeEvent.pageX));
+        },
+        onPanResponderMove: (event) => {
+          updateFromPageX(event.nativeEvent.pageX);
+        },
+        onPanResponderRelease: (event) => {
+          updateFromPageX(event.nativeEvent.pageX, true);
+          setDragValue(null);
+        },
+        onPanResponderTerminate: (event) => {
+          updateFromPageX(event.nativeEvent.pageX, true);
+          setDragValue(null);
+        },
+        onStartShouldSetPanResponder: () => true,
+      }),
+    [measureTrack, updateFromPageX],
+  );
+
+  return { dragValue, measureTrack, panResponder, setTrackWidth, trackRef, trackWidth };
+}
+
+function StellariumLabelSlider({
+  label,
+  onChange,
+  testID,
+  value,
+}: {
+  label: string;
+  onChange: (val: number) => void;
+  testID: string;
+  value: number;
+}) {
+  const clampedValue = Math.max(0, Math.min(100, value));
+  const { dragValue, measureTrack, panResponder, setTrackWidth, trackRef, trackWidth } = useLabelSliderGesture(onChange);
+  const displayValue = dragValue ?? clampedValue;
+
+  return (
+    <View style={styles.labelSliderRow}>
+      <Text style={styles.labelSliderText}>{label}</Text>
+      <View
+        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+        accessibilityLabel={label}
+        accessibilityRole="adjustable"
+        accessibilityValue={{ max: 100, min: 0, now: displayValue }}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent?.actionName === 'increment') {
+            onChange(Math.min(100, displayValue + 5));
+          }
+          if (event.nativeEvent?.actionName === 'decrement') {
+            onChange(Math.max(0, displayValue - 5));
+          }
+        }}
+        onLayout={(e) => {
+          setTrackWidth(e.nativeEvent.layout.width);
+          measureTrack();
+        }}
+        ref={trackRef}
+        style={styles.labelSliderTrackWrapper}
+        testID={testID}
+        {...panResponder.panHandlers}
+      >
+        <View pointerEvents="none" style={styles.labelSliderTrackBg}>
+          <View style={[styles.labelSliderTrackActive, { width: `${displayValue}%` }]} />
+        </View>
+        <View
+          pointerEvents="none"
+          style={[
+            styles.labelSliderThumb,
+            { left: trackWidth > 22 ? (displayValue / 100) * (trackWidth - 22) : `${displayValue}%` },
+          ]}
+          testID={`${testID}-thumb`}
+        />
+      </View>
+    </View>
+  );
+}
+
+function LabelsControlDetailSheet({
+  hints,
+  onChangeHint,
+  onClose,
+  onReset,
+}: {
+  hints: LabelHintValues;
+  onChangeHint: (key: keyof LabelHintValues, value: number) => void;
+  onClose: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <View pointerEvents="box-none" style={styles.quickDetailOverlay}>
+      <Pressable accessibilityLabel="关闭设置" accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
+      <View style={styles.labelsDetailCard} testID="deep-space-quick-detail-sheet">
+        <View style={styles.labelsDetailHeader}>
+          <Pressable
+            accessibilityLabel={translate('deep_space.back')}
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={onClose}
+            style={styles.labelsDetailClose}
+            testID="deep-space-quick-detail-close"
+          >
+            <Text style={styles.labelsDetailBackText}>‹</Text>
+          </Pressable>
+          <Text style={styles.labelsDetailTitle}>标签和注记数量</Text>
+          <View style={styles.labelsDetailHeaderPlaceholder} />
+        </View>
+
+        <View style={styles.labelsDetailBody}>
+          <StellariumLabelSlider
+            label="恒星"
+            onChange={val => onChangeHint('stars', val)}
+            testID="deep-space-label-slider-stars"
+            value={hints.stars}
+          />
+          <StellariumLabelSlider
+            label="行星"
+            onChange={val => onChangeHint('planets', val)}
+            testID="deep-space-label-slider-planets"
+            value={hints.planets}
+          />
+          <StellariumLabelSlider
+            label="深空天体"
+            onChange={val => onChangeHint('dsos', val)}
+            testID="deep-space-label-slider-dsos"
+            value={hints.dsos}
+          />
+          <StellariumLabelSlider
+            label="人造卫星"
+            onChange={val => onChangeHint('satellites', val)}
+            testID="deep-space-label-slider-satellites"
+            value={hints.satellites}
+          />
+        </View>
+
+        <View style={styles.labelsDetailFooter}>
+          <Pressable
+            accessibilityLabel="重置数值"
+            accessibilityRole="button"
+            hitSlop={12}
+            onPress={onReset}
+            style={styles.labelsResetButton}
+            testID="deep-space-labels-reset-button"
+          >
+            <Text style={styles.labelsResetButtonText}>重置数值</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function QuickControlDetailSheet({
   items,
   onClose,
+  onReset,
+  resetLabel,
   subtitle,
   title,
 }: {
   items: QuickSubItem[];
   onClose: () => void;
+  onReset?: () => void;
+  resetLabel?: string;
   subtitle: string;
   title: string;
 }) {
@@ -386,6 +804,20 @@ function QuickControlDetailSheet({
         <View style={styles.quickDetailList}>
           {items.map(item => <QuickDetailRow item={item} key={item.id} />)}
         </View>
+        {onReset && (
+          <View style={styles.quickDetailFooter}>
+            <Pressable
+              accessibilityLabel={resetLabel ?? '重置默认'}
+              accessibilityRole="button"
+              hitSlop={12}
+              onPress={onReset}
+              style={styles.quickDetailResetButton}
+              testID="deep-space-quick-detail-reset"
+            >
+              <Text style={styles.quickDetailResetButtonText}>{resetLabel ?? '重置默认'}</Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -400,6 +832,8 @@ type QuickControlEntry = {
   id: QuickControlId;
   label: string;
   onPress: () => void;
+  onReset?: () => void;
+  resetLabel?: string;
 };
 
 function getGridControls({
@@ -478,6 +912,8 @@ function getGridControls({
         });
       }
     },
+    onReset: () => onUpdateGridLines(DEFAULT_GRID_LINES),
+    resetLabel: '重置坐标网格',
   };
 }
 
@@ -539,6 +975,90 @@ function getConstellationControls({
         constellationLines: next,
       });
     },
+    onReset: () => onUpdateSkyLayers({
+      constellationArt: true,
+      constellationBoundaries: false,
+      constellationLabels: true,
+      constellationLines: true,
+      constellationOnlyPointed: false,
+    }),
+    resetLabel: '重置星座设置',
+  };
+}
+
+function getAtmosphereControl({
+  environment,
+  onToggleSkyLayer,
+  onUpdateEnvironment,
+  onUpdateSkyLayers,
+  skyLayers,
+}: Pick<QuickControlParams, 'environment' | 'onToggleSkyLayer' | 'onUpdateEnvironment' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry {
+  return {
+    active: skyLayers.atmosphere,
+    detailItems: [
+      {
+        active: skyLayers.atmosphere,
+        hint: '模拟日光散射、晨昏蒙影与天光消光',
+        id: 'atmosphere',
+        label: '大气散射与消光',
+        onToggle: () => onToggleSkyLayer('atmosphere'),
+      },
+      {
+        active: environment.fog,
+        hint: '在地景上显示雾气',
+        id: 'fog',
+        label: '雾',
+        onToggle: () => onUpdateEnvironment({ fog: !environment.fog }),
+      },
+      {
+        active: true,
+        hint: 'Bortle 1 为最佳暗空，Bortle 9 为市中心光污染',
+        id: 'air-quality',
+        label: '空气质量',
+        onToggle: () => {},
+        stepper: airQualityStepper(environment.bortleIndex, bortleIndex => onUpdateEnvironment({ bortleIndex })),
+      },
+    ],
+    detailSubtitle: '日照散射、晨昏蒙影、天光消光、空气质量与地景雾气',
+    detailTitle: '大气层与空气质量设置',
+    icon: 'atmosphere',
+    id: 'atmosphere',
+    label: '大气层',
+    onPress: () => onToggleSkyLayer('atmosphere'),
+    onReset: () => {
+      onUpdateSkyLayers({ atmosphere: true });
+      onUpdateEnvironment({ bortleIndex: DEFAULT_BORTLE_INDEX, fog: false, turbidity: DEFAULT_TURBIDITY });
+    },
+    resetLabel: '重置大气与空气质量',
+  };
+}
+
+function getLabelsControl({
+  onUpdateSkyLayers,
+  skyLayers,
+}: Pick<QuickControlParams, 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry {
+  const labelsActive = skyLayers.planetLabels
+    || skyLayers.starLabels
+    || skyLayers.dsoLabels
+    || skyLayers.satelliteLabels;
+
+  return {
+    active: labelsActive,
+    detailItems: [],
+    detailSubtitle: '',
+    detailTitle: '标签',
+    icon: 'labels',
+    id: 'labels',
+    label: '标签',
+    onPress: () => {
+      const next = !labelsActive;
+      onUpdateSkyLayers({
+        dsoLabels: next,
+        planetLabels: next,
+        satelliteLabels: next,
+        starLabels: next,
+      });
+    },
   };
 }
 
@@ -550,8 +1070,9 @@ function getEnvironmentAndNightControls({
   onToggleNightMode,
   onToggleSkyLayer,
   onUpdateEnvironment,
+  onUpdateSkyLayers,
   skyLayers,
-}: Pick<QuickControlParams, 'environment' | 'landscapeId' | 'nightMode' | 'onSelectLandscape' | 'onToggleNightMode' | 'onToggleSkyLayer' | 'onUpdateEnvironment' | 'skyLayers'>): QuickControlEntry[] {
+}: Pick<QuickControlParams, 'environment' | 'landscapeId' | 'nightMode' | 'onSelectLandscape' | 'onToggleNightMode' | 'onToggleSkyLayer' | 'onUpdateEnvironment' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry[] {
   return [
     {
       active: skyLayers.landscape,
@@ -585,50 +1106,24 @@ function getEnvironmentAndNightControls({
       id: 'landscape',
       label: '地景',
       onPress: () => onToggleSkyLayer('landscape'),
+      onReset: () => {
+        onUpdateSkyLayers({ landscape: true });
+        onUpdateEnvironment({ cardinals: false });
+        onSelectLandscape(DEFAULT_LANDSCAPE_ID);
+      },
+      resetLabel: '重置地景设置',
     },
-    {
-      active: skyLayers.atmosphere,
-      detailItems: [
-        {
-          active: skyLayers.atmosphere,
-          hint: '模拟日光散射、晨昏蒙影与天光消光',
-          id: 'atmosphere',
-          label: '大气散射与消光',
-          onToggle: () => onToggleSkyLayer('atmosphere'),
-        },
-        {
-          active: environment.fog,
-          hint: '在地景上显示雾气',
-          id: 'fog',
-          label: '雾',
-          onToggle: () => onUpdateEnvironment({ fog: !environment.fog }),
-        },
-      ],
-      detailSubtitle: '日照散射、晨昏蒙影、天光消光与地景雾气',
-      detailTitle: '大气层与光污染设置',
-      icon: 'atmosphere',
-      id: 'atmosphere',
-      label: '大气层',
-      onPress: () => onToggleSkyLayer('atmosphere'),
-    },
-    {
-      active: skyLayers.constellationLabels,
-      detailItems: [
-        {
-          active: skyLayers.constellationLabels,
-          hint: '标注星空中各星座的中文与英文名称',
-          id: 'constellationLabels',
-          label: '星座标签',
-          onToggle: () => onToggleSkyLayer('constellationLabels'),
-        },
-      ],
-      detailSubtitle: '天体与星座标识注记',
-      detailTitle: '标签设置',
-      icon: 'labels',
-      id: 'labels',
-      label: '标签',
-      onPress: () => onToggleSkyLayer('constellationLabels'),
-    },
+    getAtmosphereControl({
+      environment,
+      onToggleSkyLayer,
+      onUpdateEnvironment,
+      onUpdateSkyLayers,
+      skyLayers,
+    }),
+    getLabelsControl({
+      onUpdateSkyLayers,
+      skyLayers,
+    }),
     {
       active: nightMode,
       detailItems: [
@@ -651,7 +1146,7 @@ function getEnvironmentAndNightControls({
 }
 
 type QuickControlParams = {
-  environment: { cardinals: boolean; fog: boolean };
+  environment: { bortleIndex: number; cardinals: boolean; fog: boolean; turbidity: number };
   landscapeId: string;
   lines: typeof DEFAULT_GRID_LINES;
   nightMode: boolean;
@@ -659,7 +1154,7 @@ type QuickControlParams = {
   onToggleNightMode: () => void;
   onToggleGridLine: (key: GridLineKey) => void;
   onToggleSkyLayer: (key: SkyLayerKey) => void;
-  onUpdateEnvironment: (patch: { cardinals?: boolean; fog?: boolean }) => void;
+  onUpdateEnvironment: (patch: { bortleIndex?: number; cardinals?: boolean; fog?: boolean; turbidity?: number }) => void;
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
@@ -950,63 +1445,116 @@ function useSkyLayers(stellaRef: React.RefObject<StellariumViewHandle | null>) {
   return { skyLayers, toggleSkyLayer, updateSkyLayers };
 }
 
-export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps): React.ReactElement {
-  const insets = useSafeAreaInsets();
-  const stellaRef = React.useRef<StellariumViewHandle>(null);
-  const [azimuthDeg, setAzimuthDeg] = React.useState(0);
+function useInteractiveClock(stellaRef: React.RefObject<StellariumViewHandle | null>) {
   const [clock, setClock] = React.useState(() => new Date());
-  const [currentCulture, setCurrentCulture] = React.useState('western');
-  const [selectedObject, setSelectedObject] = React.useState<SelectedCelestialObject | null>(null);
-  const drawerFeature = useDrawerFeature({ currentCulture, setCurrentCulture, stellaRef });
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [nightMode, setNightMode] = React.useState(false);
-  const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(stellaRef);
-  const search = useStarMapSearch(stellaRef);
+  const [isCustomTime, setIsCustomTime] = React.useState(false);
+  const [timePanelOpen, setTimePanelOpen] = React.useState(false);
+
+  const updateTime = React.useCallback((nextDate: Date) => {
+    setClock(nextDate);
+    setIsCustomTime(true);
+    stellaRef.current?.setTime?.(nextDate);
+  }, [stellaRef]);
+
+  const returnToNow = React.useCallback(() => {
+    const now = new Date();
+    setClock(now);
+    setIsCustomTime(false);
+    stellaRef.current?.setTime?.(now);
+  }, [stellaRef]);
 
   React.useEffect(() => {
-    const interval = globalThis.setInterval(() => setClock(new Date()), 60_000);
+    const interval = globalThis.setInterval(() => {
+      if (!isCustomTime) {
+        const now = new Date();
+        setClock(now);
+        stellaRef.current?.setTime?.(now);
+      }
+    }, 60_000);
     return () => globalThis.clearInterval(interval);
-  }, []);
-  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selectedObject;
+  }, [isCustomTime, stellaRef]);
+
+  return {
+    clock,
+    closeTimePanel: () => setTimePanelOpen(false),
+    isCustomTime,
+    returnToNow,
+    timePanelOpen,
+    toggleTimePanel: () => setTimePanelOpen(prev => !prev),
+    updateTime,
+  };
+}
+
+function SelectedObjectOverlay({
+  drawerActive,
+  drawerOpen,
+  onGotoTools,
+  searchOpen,
+  selectedObject,
+  setSelectedObject,
+  stellaRef,
+}: {
+  drawerActive: boolean;
+  drawerOpen: boolean;
+  onGotoTools: () => void;
+  searchOpen: boolean;
+  selectedObject: SelectedCelestialObject | null;
+  setSelectedObject: (obj: SelectedCelestialObject | null) => void;
+  stellaRef: React.RefObject<StellariumViewHandle | null>;
+}) {
+  if (!selectedObject || drawerOpen || drawerActive || searchOpen)
+    return null;
 
   return (
-    <View testID="deep-space-map-shell" style={styles.root}>
-      <StellariumView
-        ref={stellaRef}
-        style={styles.webView}
-        onBearingChange={setAzimuthDeg}
-        onReady={() => stellaRef.current?.setSkyLayers?.(skyLayers)}
-        onCommandError={() => search.setError(true)}
-        onObjectSelected={setSelectedObject}
-        onSelectionCleared={() => setSelectedObject(null)}
-        onTargetFound={search.closeSearch}
-        onTargetNotFound={() => search.setError(true)}
-      />
-      {drawerFeature.fieldOfView && <FieldOfViewOverlay input={drawerFeature.fieldOfView} stellaRef={stellaRef} />}
-      {nightMode && <View pointerEvents="none" style={styles.nightModeOverlay} testID="deep-space-night-mode-overlay" />}
-      <StarMapOverlayControls
-        azimuthDeg={azimuthDeg}
-        clock={clock}
-        environment={drawerFeature.environment}
-        gridLines={drawerFeature.gridLines}
-        insets={insets}
-        landscapeId={drawerFeature.landscapeId}
-        nightMode={nightMode}
-        onOpenMenu={() => setDrawerOpen(true)}
-        onOpenSearch={() => search.openSearch(() => setDrawerOpen(false))}
-        onReturnToNow={() => setClock(new Date())}
-        onSelectLandscape={drawerFeature.selectLandscape}
-        onToggleGridLine={drawerFeature.toggleGridLine}
-        onToggleNightMode={() => setNightMode(value => !value)}
-        onToggleSkyLayer={toggleSkyLayer}
-        onUpdateEnvironment={drawerFeature.updateEnvironment}
-        onUpdateGridLines={drawerFeature.updateGridLines}
-        onUpdateSkyLayers={updateSkyLayers}
-        skyLayers={skyLayers}
-      />
+    <ObjectInfoSheet
+      object={selectedObject}
+      onCenter={obj => stellaRef.current?.pointAndLock(obj.id)}
+      onClose={() => {
+        setSelectedObject(null);
+        stellaRef.current?.clearSelection?.();
+      }}
+      onGoto={(raHours, decDeg) => {
+        setSelectedObject(null);
+        onGotoTools();
+        stellaRef.current?.gotoRaDec(raHours * 15, decDeg);
+      }}
+      onZoomIn={() => stellaRef.current?.zoomTo(15)}
+    />
+  );
+}
+
+function StarMapModals({
+  currentCulture,
+  drawerFeature,
+  drawerOpen,
+  insetsBottom,
+  search,
+  selectedObject,
+  setCurrentCulture,
+  setDrawerOpen,
+  setSelectedObject,
+  showRestoreFab,
+  stellaRef,
+  timeState,
+}: {
+  currentCulture: string;
+  drawerFeature: ReturnType<typeof useDrawerFeature>;
+  drawerOpen: boolean;
+  insetsBottom: number;
+  search: ReturnType<typeof useStarMapSearch>;
+  selectedObject: SelectedCelestialObject | null;
+  setCurrentCulture: (c: string) => void;
+  setDrawerOpen: (open: boolean) => void;
+  setSelectedObject: (obj: SelectedCelestialObject | null) => void;
+  showRestoreFab: boolean;
+  stellaRef: React.RefObject<StellariumViewHandle | null>;
+  timeState: ReturnType<typeof useInteractiveClock>;
+}) {
+  return (
+    <>
       <RestoreCultureFlow
         currentCulture={currentCulture}
-        insetsBottom={insets.bottom}
+        insetsBottom={insetsBottom}
         onRestore={() => {
           setCurrentCulture('western');
           stellaRef.current?.setSkyCulture?.('western');
@@ -1023,27 +1571,20 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         />
       )}
       <FeaturePanels
-        clock={clock}
+        clock={timeState.clock}
         feature={drawerFeature}
         onPreviewCulture={id => stellaRef.current?.setSkyCulture?.(id)}
         stellaRef={stellaRef}
       />
-      {selectedObject && !drawerOpen && !drawerFeature.active && !search.open && (
-        <ObjectInfoSheet
-          object={selectedObject}
-          onCenter={obj => stellaRef.current?.pointAndLock(obj.id)}
-          onClose={() => {
-            setSelectedObject(null);
-            stellaRef.current?.clearSelection?.();
-          }}
-          onGoto={(raHours, decDeg) => {
-            setSelectedObject(null);
-            drawerFeature.open('tools');
-            stellaRef.current?.gotoRaDec(raHours * 15, decDeg);
-          }}
-          onZoomIn={() => stellaRef.current?.zoomTo(15)}
-        />
-      )}
+      <SelectedObjectOverlay
+        drawerActive={Boolean(drawerFeature.active)}
+        drawerOpen={drawerOpen}
+        onGotoTools={() => drawerFeature.open('tools')}
+        searchOpen={search.open}
+        selectedObject={selectedObject}
+        setSelectedObject={setSelectedObject}
+        stellaRef={stellaRef}
+      />
       {search.open && (
         <ReferenceSearchSheet
           error={search.error}
@@ -1053,6 +1594,88 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
           query={search.query}
         />
       )}
+    </>
+  );
+}
+
+export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps): React.ReactElement {
+  const insets = useSafeAreaInsets();
+  const stellaRef = React.useRef<StellariumViewHandle>(null);
+  const [azimuthDeg, setAzimuthDeg] = React.useState(0);
+  const [currentCulture, setCurrentCulture] = React.useState('western');
+  const [selectedObject, setSelectedObject] = React.useState<SelectedCelestialObject | null>(null);
+  const drawerFeature = useDrawerFeature({ currentCulture, setCurrentCulture, stellaRef });
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [nightMode, setNightMode] = React.useState(false);
+  const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(stellaRef);
+  const search = useStarMapSearch(stellaRef);
+  const timeState = useInteractiveClock(stellaRef);
+
+  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selectedObject;
+
+  return (
+    <View testID="deep-space-map-shell" style={styles.root}>
+      <StellariumView
+        ref={stellaRef}
+        style={styles.webView}
+        onBearingChange={setAzimuthDeg}
+        onReady={() => {
+          stellaRef.current?.setSkyLayers?.(skyLayers);
+          stellaRef.current?.setEnvironment?.(drawerFeature.environment);
+        }}
+        onCommandError={() => search.setError(true)}
+        onObjectSelected={setSelectedObject}
+        onSelectionCleared={() => setSelectedObject(null)}
+        onTargetFound={search.closeSearch}
+        onTargetNotFound={() => search.setError(true)}
+      />
+      {drawerFeature.fieldOfView && <FieldOfViewOverlay input={drawerFeature.fieldOfView} stellaRef={stellaRef} />}
+      {nightMode && <View pointerEvents="none" style={styles.nightModeOverlay} testID="deep-space-night-mode-overlay" />}
+      <StarMapOverlayControls
+        azimuthDeg={azimuthDeg}
+        clock={timeState.clock}
+        environment={drawerFeature.environment}
+        gridLines={drawerFeature.gridLines}
+        insets={insets}
+        isCustomTime={timeState.isCustomTime}
+        landscapeId={drawerFeature.landscapeId}
+        nightMode={nightMode}
+        onCloseTimePanel={timeState.closeTimePanel}
+        onOpenMenu={() => {
+          timeState.closeTimePanel();
+          setDrawerOpen(true);
+        }}
+        onOpenSearch={() => {
+          timeState.closeTimePanel();
+          search.openSearch(() => setDrawerOpen(false));
+        }}
+        onReturnToNow={timeState.returnToNow}
+        onSelectLandscape={drawerFeature.selectLandscape}
+        onToggleGridLine={drawerFeature.toggleGridLine}
+        onToggleNightMode={() => setNightMode(value => !value)}
+        onToggleSkyLayer={toggleSkyLayer}
+        onToggleTimePanel={timeState.toggleTimePanel}
+        onUpdateEnvironment={drawerFeature.updateEnvironment}
+        onUpdateGridLines={drawerFeature.updateGridLines}
+        onUpdateSkyLayers={updateSkyLayers}
+        onUpdateTime={timeState.updateTime}
+        skyLayers={skyLayers}
+        timePanelOpen={timeState.timePanelOpen}
+      />
+      <StarMapModals
+        currentCulture={currentCulture}
+        drawerFeature={drawerFeature}
+        drawerOpen={drawerOpen}
+        insetsBottom={insets.bottom}
+        search={search}
+        selectedObject={selectedObject}
+        setCurrentCulture={setCurrentCulture}
+        setDrawerOpen={setDrawerOpen}
+        setSelectedObject={setSelectedObject}
+        showRestoreFab={showRestoreFab}
+        stellaRef={stellaRef}
+        timeState={timeState}
+      />
     </View>
   );
 }
@@ -1692,22 +2315,258 @@ function Compass({ azimuthDeg }: { azimuthDeg: number }) {
   );
 }
 
-function TimeControl({ clock, onReturnToNow }: { clock: Date; onReturnToNow: () => void }) {
+function TimeControl({
+  clock,
+  isCustomTime = false,
+  onPress,
+  onReturnToNow,
+}: {
+  clock: Date;
+  isCustomTime?: boolean;
+  onPress?: () => void;
+  onReturnToNow: () => void;
+}) {
   const hours = `${clock.getHours()}`.padStart(2, '0');
   const minutes = `${clock.getMinutes()}`.padStart(2, '0');
   const formattedTime = `${hours}:${minutes}`;
 
   return (
-    <View testID="deep-space-reference-time" style={styles.timeControl}>
+    <Pressable
+      accessibilityHint="点击打开时间调节滑块"
+      accessibilityLabel={`当前时间 ${formattedTime}`}
+      accessibilityRole="button"
+      hitSlop={6}
+      onPress={onPress}
+      style={[styles.timeControl, isCustomTime && styles.timeControlCustom]}
+      testID="deep-space-reference-time"
+    >
       <Pressable
         accessibilityLabel={translate('deep_space.return_to_now')}
         accessibilityRole="button"
-        onPress={onReturnToNow}
-        style={styles.historyButton}
+        hitSlop={6}
+        onPress={(e) => {
+          e.stopPropagation();
+          onReturnToNow();
+        }}
+        style={[styles.historyButton, isCustomTime && styles.historyButtonActive]}
       >
-        <HistoryIcon />
+        <HistoryIcon active={isCustomTime} />
       </Pressable>
-      <Text style={styles.timeText}>{formattedTime}</Text>
+      <Text style={[styles.timeText, isCustomTime && styles.timeTextCustom]}>{formattedTime}</Text>
+    </Pressable>
+  );
+}
+
+function TimeSliderTrack({
+  minutesOfDay,
+  onMinutesChange,
+}: {
+  minutesOfDay: number;
+  onMinutesChange: (mins: number) => void;
+}) {
+  const [width, setWidth] = React.useState(300);
+  const widthRef = React.useRef(300);
+  widthRef.current = width;
+
+  const progressRatio = Math.max(0, Math.min(1, minutesOfDay / 1439));
+
+  const updateFromX = (x: number) => {
+    const w = widthRef.current || 1;
+    const ratio = Math.max(0, Math.min(1, x / w));
+    onMinutesChange(Math.round(ratio * 1439));
+  };
+
+  return (
+    <View
+      onLayout={e => setWidth(e.nativeEvent.layout.width)}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={e => updateFromX(e.nativeEvent.locationX)}
+      onResponderMove={e => updateFromX(e.nativeEvent.locationX)}
+      onStartShouldSetResponder={() => true}
+      style={styles.timeSliderTrackContainer}
+      testID="deep-space-time-slider"
+    >
+      <View style={styles.timeSliderRail}>
+        <View style={[styles.timeSliderFill, { width: `${progressRatio * 100}%` }]} />
+      </View>
+      <View
+        pointerEvents="none"
+        style={[
+          styles.timeSliderThumb,
+          { left: Math.max(0, Math.min(width - 22, progressRatio * width - 11)) },
+        ]}
+      >
+        <View style={styles.timeSliderThumbInner} />
+      </View>
+    </View>
+  );
+}
+
+function TimeSliderHeader({
+  clock,
+  isCustomTime,
+  onClose,
+  onReturnToNow,
+  onStepDate,
+}: {
+  clock: Date;
+  isCustomTime: boolean;
+  onClose: () => void;
+  onReturnToNow: () => void;
+  onStepDate: (deltaDays: number) => void;
+}) {
+  const year = clock.getFullYear();
+  const month = clock.getMonth() + 1;
+  const date = clock.getDate();
+  const hours = `${clock.getHours()}`.padStart(2, '0');
+  const minutes = `${clock.getMinutes()}`.padStart(2, '0');
+
+  return (
+    <View style={styles.timeSliderHeader}>
+      <View style={styles.timeDateStepper}>
+        <Pressable
+          accessibilityLabel="前一天"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => onStepDate(-1)}
+          style={styles.timeStepBtn}
+          testID="deep-space-time-date-prev"
+        >
+          <Text style={styles.timeStepBtnText}>‹</Text>
+        </Pressable>
+        <Text style={styles.timeDateValue} testID="deep-space-time-date-value">
+          {`${year}年${month}月${date}日`}
+        </Text>
+        <Pressable
+          accessibilityLabel="后一天"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => onStepDate(1)}
+          style={styles.timeStepBtn}
+          testID="deep-space-time-date-next"
+        >
+          <Text style={styles.timeStepBtnText}>›</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.timeClockBlock}>
+        <Text style={styles.timeClockValue} testID="deep-space-time-clock-value">
+          {`${hours}:${minutes}`}
+        </Text>
+      </View>
+
+      <View style={styles.timeHeaderActions}>
+        <Pressable
+          accessibilityLabel={translate('deep_space.return_to_now')}
+          accessibilityRole="button"
+          hitSlop={6}
+          onPress={onReturnToNow}
+          style={[styles.timeNowButton, isCustomTime && styles.timeNowButtonActive]}
+          testID="deep-space-time-now-button"
+        >
+          <Text style={[styles.timeNowButtonText, isCustomTime && styles.timeNowButtonTextActive]}>
+            {isCustomTime ? '回到实时' : '实时'}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityLabel="关闭时间调节"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={onClose}
+          style={styles.timeCloseButton}
+          testID="deep-space-time-close-button"
+        >
+          <CloseIcon />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function TimeSliderSheet({
+  clock,
+  insetsBottom,
+  isCustomTime,
+  onClose,
+  onReturnToNow,
+  onUpdateTime,
+}: {
+  clock: Date;
+  insetsBottom: number;
+  isCustomTime: boolean;
+  onClose: () => void;
+  onReturnToNow: () => void;
+  onUpdateTime: (date: Date) => void;
+}) {
+  const minutesOfDay = clock.getHours() * 60 + clock.getMinutes();
+
+  const handleStepDate = (deltaDays: number) => {
+    const next = new Date(clock);
+    next.setDate(next.getDate() + deltaDays);
+    onUpdateTime(next);
+  };
+
+  const handleStepHour = (deltaHours: number) => {
+    const next = new Date(clock);
+    next.setHours(next.getHours() + deltaHours);
+    onUpdateTime(next);
+  };
+
+  const handleMinuteChange = (totalMinutes: number) => {
+    const next = new Date(clock);
+    next.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
+    onUpdateTime(next);
+  };
+
+  return (
+    <View pointerEvents="box-none" style={[styles.timeSliderOverlay, { paddingBottom: insetsBottom + 20 }]}>
+      <Pressable accessibilityLabel="关闭时间设置" accessibilityRole="button" onPress={onClose} style={styles.timeSliderScrim} />
+      <View style={styles.timeSliderCard} testID="deep-space-time-slider-sheet">
+        <TimeSliderHeader
+          clock={clock}
+          isCustomTime={isCustomTime}
+          onClose={onClose}
+          onReturnToNow={onReturnToNow}
+          onStepDate={handleStepDate}
+        />
+
+        <View style={styles.timeHourRow}>
+          <Pressable
+            accessibilityLabel="快退1小时"
+            accessibilityRole="button"
+            hitSlop={6}
+            onPress={() => handleStepHour(-1)}
+            style={styles.timeHourBtn}
+            testID="deep-space-time-hour-prev"
+          >
+            <Text style={styles.timeHourBtnText}>‹ -1小时</Text>
+          </Pressable>
+
+          <Text style={styles.timeSliderHint}>左右拖动滑块模拟星空运转</Text>
+
+          <Pressable
+            accessibilityLabel="快进1小时"
+            accessibilityRole="button"
+            hitSlop={6}
+            onPress={() => handleStepHour(1)}
+            style={styles.timeHourBtn}
+            testID="deep-space-time-hour-next"
+          >
+            <Text style={styles.timeHourBtnText}>+1小时 ›</Text>
+          </Pressable>
+        </View>
+
+        <TimeSliderTrack minutesOfDay={minutesOfDay} onMinutesChange={handleMinuteChange} />
+
+        <View style={styles.timeTicksRow}>
+          <Text style={styles.timeTickText}>00:00</Text>
+          <Text style={styles.timeTickText}>06:00</Text>
+          <Text style={styles.timeTickText}>12:00</Text>
+          <Text style={styles.timeTickText}>18:00</Text>
+          <Text style={styles.timeTickText}>24:00</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -1911,10 +2770,11 @@ function SettingsIcon() {
   );
 }
 
-function HistoryIcon() {
+function HistoryIcon({ active = false }: { active?: boolean }) {
+  const color = active ? '#93C5FD' : OVERLAY.text;
   return (
     <Svg height={29} viewBox="0 0 32 32" width={29}>
-      <Path d="M9 12V6l-5 5 5 5v-4a9 9 0 1 1-1 12" fill="none" stroke={OVERLAY.text} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.4} />
+      <Path d="M9 12V6l-5 5 5 5v-4a9 9 0 1 1-1 12" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.4} />
     </Svg>
   );
 }
@@ -2217,6 +3077,26 @@ const styles = StyleSheet.create({
   quickDetailKnobActive: {
     alignSelf: 'flex-end',
   },
+  quickDetailFooter: {
+    alignItems: 'center',
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopWidth: 1,
+    justifyContent: 'center',
+    marginTop: 4,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  quickDetailResetButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  quickDetailResetButtonText: {
+    color: '#88B0F5',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   nightModeOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(145, 0, 0, 0.48)',
@@ -2266,6 +3146,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     minWidth: 78,
   },
+  timeControlCustom: {
+    opacity: 0.95,
+  },
   historyButton: {
     alignItems: 'center',
     backgroundColor: OVERLAY.control,
@@ -2275,12 +3158,199 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     width: 44,
   },
+  historyButtonActive: {
+    backgroundColor: 'rgba(43, 130, 246, 0.85)',
+    borderColor: 'rgba(167, 206, 255, 0.75)',
+    borderWidth: 1,
+  },
   timeText: {
     color: OVERLAY.text,
     fontSize: 24,
     fontVariant: ['tabular-nums'],
     fontWeight: '300',
     letterSpacing: 0.4,
+  },
+  timeTextCustom: {
+    color: '#93C5FD',
+    fontWeight: '600',
+  },
+  timeSliderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+    zIndex: 98,
+  },
+  timeSliderScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
+  },
+  timeSliderCard: {
+    backgroundColor: 'rgba(20, 24, 30, 0.94)',
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderRadius: 22,
+    borderWidth: 1,
+    elevation: 24,
+    maxWidth: 440,
+    overflow: 'hidden',
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    shadowColor: '#000000',
+    shadowOffset: { height: 8, width: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    width: '100%',
+  },
+  timeSliderHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  timeDateStepper: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 14,
+    flexDirection: 'row',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  timeStepBtn: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    width: 24,
+  },
+  timeStepBtnText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '400',
+  },
+  timeDateValue: {
+    color: '#E0E8F2',
+    fontSize: 12,
+    fontWeight: '600',
+    paddingHorizontal: 4,
+  },
+  timeClockBlock: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeClockValue: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  timeHeaderActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  timeNowButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.09)',
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  timeNowButtonActive: {
+    backgroundColor: 'rgba(43, 130, 246, 0.85)',
+    borderColor: 'rgba(167, 206, 255, 0.75)',
+  },
+  timeNowButtonText: {
+    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  timeNowButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  timeCloseButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 16,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  timeHourRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    marginTop: 2,
+  },
+  timeHourBtn: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  timeHourBtnText: {
+    color: '#93C5FD',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  timeSliderHint: {
+    color: 'rgba(255, 255, 255, 0.40)',
+    fontSize: 10.5,
+  },
+  timeSliderTrackContainer: {
+    height: 32,
+    justifyContent: 'center',
+    marginVertical: 2,
+    position: 'relative',
+    width: '100%',
+  },
+  timeSliderRail: {
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 4,
+    height: 6,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  timeSliderFill: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 4,
+    height: '100%',
+  },
+  timeSliderThumb: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#3B82F6',
+    borderRadius: 11,
+    borderWidth: 2,
+    elevation: 4,
+    height: 22,
+    justifyContent: 'center',
+    position: 'absolute',
+    shadowColor: '#000000',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    top: 5,
+    width: 22,
+  },
+  timeSliderThumbInner: {
+    backgroundColor: '#3B82F6',
+    borderRadius: 3.5,
+    height: 7,
+    width: 7,
+  },
+  timeTicksRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 4,
+    paddingHorizontal: 2,
+  },
+  timeTickText: {
+    color: 'rgba(255, 255, 255, 0.42)',
+    fontSize: 10,
+    fontVariant: ['tabular-nums'],
   },
   restoreCultureFab: {
     alignItems: 'center',
@@ -2776,6 +3846,116 @@ const styles = StyleSheet.create({
   },
   searchScrim: {
     ...StyleSheet.absoluteFillObject,
+  },
+  labelsDetailCard: {
+    backgroundColor: 'rgba(16, 20, 26, 0.95)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 28,
+    borderWidth: 1,
+    elevation: 24,
+    maxWidth: 460,
+    paddingBottom: 20,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    shadowColor: '#000000',
+    shadowOffset: { height: 10, width: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
+    width: '100%',
+  },
+  labelsDetailHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  labelsDetailClose: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
+  },
+  labelsDetailBackText: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    lineHeight: 28,
+    textAlign: 'center',
+  },
+  labelsDetailTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  labelsDetailHeaderPlaceholder: {
+    height: 40,
+    width: 40,
+  },
+  labelsDetailBody: {
+    gap: 18,
+    marginBottom: 24,
+  },
+  labelSliderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    height: 44,
+  },
+  labelSliderText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
+    width: 72,
+  },
+  labelSliderTrackWrapper: {
+    flex: 1,
+    height: 36,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  labelSliderTrackBg: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    borderRadius: 3,
+    height: 6,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  labelSliderTrackActive: {
+    backgroundColor: '#88B0F5',
+    borderRadius: 3,
+    height: '100%',
+  },
+  labelSliderThumb: {
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(0, 0, 0, 0.15)',
+    borderRadius: 11,
+    borderWidth: 0.5,
+    elevation: 4,
+    height: 22,
+    position: 'absolute',
+    shadowColor: '#000000',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    top: 7,
+    width: 22,
+  },
+  labelsDetailFooter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 8,
+  },
+  labelsResetButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  labelsResetButtonText: {
+    color: '#88B0F5',
+    fontSize: 16,
+    fontWeight: '600',
   },
   searchSheet: {
     backgroundColor: 'rgba(15, 17, 20, 0.96)',

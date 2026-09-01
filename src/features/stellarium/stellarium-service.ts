@@ -9,7 +9,15 @@ export type StellariumSkyLayers = {
   constellationLabels?: boolean;
   constellationLines?: boolean;
   constellationOnlyPointed?: boolean;
+  dsoHintsOffset?: number;
+  dsoLabels?: boolean;
   landscape?: boolean;
+  planetHintsOffset?: number;
+  planetLabels?: boolean;
+  satelliteHintsOffset?: number;
+  satelliteLabels?: boolean;
+  starHintsOffset?: number;
+  starLabels?: boolean;
 };
 
 export type StellariumGridLines = {
@@ -22,6 +30,8 @@ export type StellariumGridLines = {
 };
 
 export type StellariumEnvironment = {
+  /** Bortle dark-sky scale: 1 = pristine dark sky, 9 = inner-city skyglow. */
+  bortleIndex?: number;
   cardinals?: boolean;
   fog?: boolean;
   landscapeTint?: [number, number, number, number];
@@ -131,6 +141,25 @@ function validateObserver(latitudeDeg: number, longitudeDeg: number): string | u
     return 'Longitude must be between -180 and 180 degrees.';
 }
 
+function validateEnvironment(command: Extract<StellariumCommand, { type: 'set_environment' }>): string | undefined {
+  if ([command.cardinals, command.fog].some(value => value !== undefined && typeof value !== 'boolean'))
+    return 'Environment toggles must be booleans.';
+  if (command.bortleIndex !== undefined
+    && (!Number.isInteger(command.bortleIndex) || command.bortleIndex < 1 || command.bortleIndex > 9)) {
+    return 'Bortle index must be an integer between 1 and 9.';
+  }
+  // The engine starts at 0.96, so a floor of 1 would reject its own default
+  // and make the atmosphere panel unable to restore the initial sky.
+  if (command.turbidity !== undefined && (!isFiniteNumber(command.turbidity) || command.turbidity < 0 || command.turbidity > 10))
+    return 'Turbidity must be between 0 and 10.';
+  if (command.landscapeTint !== undefined
+    && (!Array.isArray(command.landscapeTint)
+      || command.landscapeTint.length !== 4
+      || command.landscapeTint.some(value => !isFiniteNumber(value) || value < 0 || value > 1))) {
+    return 'Landscape tint must be four values between 0 and 1.';
+  }
+}
+
 function validate(command: StellariumCommand): string | undefined {
   switch (command.type) {
     case 'goto_radec':
@@ -158,25 +187,36 @@ function validate(command: StellariumCommand): string | undefined {
         return 'Constellation visibility must be a boolean.';
       break;
     case 'set_sky_layers':
-      if ([command.atmosphere, command.constellationArt, command.constellationBoundaries, command.constellationLabels, command.constellationLines, command.constellationOnlyPointed, command.landscape].some(value => value !== undefined && typeof value !== 'boolean'))
+      if ([
+        command.atmosphere,
+        command.constellationArt,
+        command.constellationBoundaries,
+        command.constellationLabels,
+        command.constellationLines,
+        command.constellationOnlyPointed,
+        command.dsoLabels,
+        command.landscape,
+        command.planetLabels,
+        command.satelliteLabels,
+        command.starLabels,
+      ].some(value => value !== undefined && typeof value !== 'boolean')) {
         return 'Sky layer values must be booleans.';
+      }
+      if ([
+        command.dsoHintsOffset,
+        command.planetHintsOffset,
+        command.satelliteHintsOffset,
+        command.starHintsOffset,
+      ].some(value => value !== undefined && (!isFiniteNumber(value) || value < -20 || value > 20))) {
+        return 'Hint magnitude offset must be a finite number between -20 and 20.';
+      }
       break;
     case 'set_landscape':
       if (typeof command.id !== 'string' || !/^[\w-]+$/.test(command.id))
         return 'Landscape id must be a simple identifier.';
       break;
     case 'set_environment':
-      if ([command.cardinals, command.fog].some(value => value !== undefined && typeof value !== 'boolean'))
-        return 'Environment toggles must be booleans.';
-      if (command.turbidity !== undefined && (!isFiniteNumber(command.turbidity) || command.turbidity < 1 || command.turbidity > 10))
-        return 'Turbidity must be between 1 and 10.';
-      if (command.landscapeTint !== undefined
-        && (!Array.isArray(command.landscapeTint)
-          || command.landscapeTint.length !== 4
-          || command.landscapeTint.some(value => !isFiniteNumber(value) || value < 0 || value > 1))) {
-        return 'Landscape tint must be four values between 0 and 1.';
-      }
-      break;
+      return validateEnvironment(command);
     case 'set_sky_culture':
       if (typeof command.id !== 'string' || !/^[\w-]+$/.test(command.id))
         return 'Sky culture id must be a simple identifier.';
