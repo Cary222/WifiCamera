@@ -1540,6 +1540,7 @@ function SelectedObjectOverlay({
         stellaRef.current?.gotoRaDec(raHours * 15, decDeg);
       }}
       onZoomIn={() => stellaRef.current?.zoomTo(15)}
+      onZoomOut={() => stellaRef.current?.zoomTo(75)}
     />
   );
 }

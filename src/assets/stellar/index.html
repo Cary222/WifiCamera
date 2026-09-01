@@ -496,6 +496,50 @@
         if (!isFiniteNumber(fovDeg) || fovDeg <= 0 || fovDeg > 360) return reportError('Invalid FOV command.');
         stel.zoomTo(fovDeg * Math.PI / 180, message.duration ?? 0.3);
       }
+      function determineObjectType(cleanName, id, obj) {
+        const planets = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'];
+        if (cleanName === 'Sun') return { type: 'star', typeZh: '恒星' };
+        if (cleanName === 'Moon') return { type: 'moon', typeZh: '卫星' };
+        if (planets.includes(cleanName)) return { type: 'planet', typeZh: '行星' };
+        if (/^(ISS|CSS|Satellite|TIANGONG|NOAA|STARLINK)/i.test(id) || (obj && obj.type === 'satellite')) return { type: 'satellite', typeZh: '人造卫星' };
+        if (/^(M |NGC |IC |C |Ced |Sh2 |vdB |LDN |LBN )/i.test(cleanName) || (obj && /^(dso|galaxy|nebula|cluster)/i.test(obj.type || ''))) return { type: 'dso', typeZh: '深空天体' };
+        return { type: 'star', typeZh: '恒星' };
+      }
+
+      function computeHourAngle(raHours) {
+        try {
+          const obs = stel.core.observer;
+          const mjd = obs.tt;
+          const gmst = (18.697374558 + 24.06570982441908 * (mjd - 51544.5)) % 24;
+          const lonDeg = obs.longitude * stel.R2D;
+          const lst = ((gmst + lonDeg / 15) % 24 + 24) % 24;
+          return ((lst - raHours) % 24 + 24) % 24;
+        } catch {
+          return null;
+        }
+      }
+
+      function computePlanetSize(cleanName, distanceAu) {
+        const radii = {
+          Sun: 696340,
+          Moon: 1737.4,
+          Mercury: 2439.7,
+          Venus: 6051.8,
+          Mars: 3389.5,
+          Jupiter: 69911,
+          Saturn: 58232,
+          Uranus: 25362,
+          Neptune: 24622,
+          Pluto: 1188.3,
+        };
+        const r = radii[cleanName];
+        if (r && distanceAu && distanceAu > 0) {
+          const distanceKm = distanceAu * 149597870.7;
+          return (2 * r / distanceKm) * 206264.806;
+        }
+        return null;
+      }
+
       // Sky-culture data sources load asynchronously. Wait until the featured
       // constellation enters the search index before moving the view to it.
       function formatSelectedObject(obj) {
@@ -507,17 +551,29 @@
         const id = obj.id || '';
         const cleanName = id.replace(/^NAME\s+/, '');
         const zhName = NAMES_ZH[cleanName] || cleanName;
+        const raHours = (raRad * stel.R2D / 15 + 24) % 24;
+        const decDeg = decRad * stel.R2D;
+        const distanceAu = obj.getInfo('distance');
+        const { type, typeZh } = determineObjectType(cleanName, id, obj);
+        const hourAngleHours = computeHourAngle(raHours);
+        const sizeArcsec = obj.getInfo('size') || obj.getInfo('apparent_size') || computePlanetSize(cleanName, distanceAu);
 
         return {
           id,
           name: zhName,
           englishName: cleanName,
           designations: obj.designations ? obj.designations() : [id],
+          type,
+          typeZh,
           vmag: obj.getInfo('vmag'),
-          distanceAu: obj.getInfo('distance'),
+          distanceAu,
           phase: obj.getInfo('phase'),
-          raHours: (raRad * stel.R2D / 15 + 24) % 24,
-          decDeg: decRad * stel.R2D,
+          sizeArcsec,
+          raHours,
+          decDeg,
+          raJ2000Hours: raHours,
+          decJ2000Deg: decDeg,
+          hourAngleHours,
           azDeg: azalt ? ((azalt[0] * stel.R2D % 360 + 360) % 360) : null,
           altDeg: azalt ? (azalt[1] * stel.R2D) : null,
         };

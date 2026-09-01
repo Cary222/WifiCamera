@@ -59,14 +59,21 @@ export type StellariumCommand
 export type SelectedCelestialObject = {
   altDeg?: number | null;
   azDeg?: number | null;
+  constellationZh?: string | null;
   decDeg: number;
+  decJ2000Deg?: number | null;
   designations: string[];
   distanceAu?: number | null;
   englishName: string;
+  hourAngleHours?: number | null;
   id: string;
   name: string;
   phase?: number | null;
   raHours: number;
+  raJ2000Hours?: number | null;
+  sizeArcsec?: number | null;
+  type?: string;
+  typeZh?: string;
   vmag?: number | null;
 };
 
