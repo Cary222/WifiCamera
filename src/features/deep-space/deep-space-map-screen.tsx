@@ -290,6 +290,7 @@ type StarMapOverlayControlsProps = {
 function ActiveDetailSheet({
   activeDetail,
   control,
+  insetsBottom,
   labelHints,
   onChangeHint,
   onClose,
@@ -297,6 +298,7 @@ function ActiveDetailSheet({
 }: {
   activeDetail: QuickControlId | null;
   control: QuickControlEntry | undefined;
+  insetsBottom: number;
   labelHints: LabelHintValues;
   onChangeHint: (key: keyof LabelHintValues, val: number) => void;
   onClose: () => void;
@@ -306,6 +308,7 @@ function ActiveDetailSheet({
     return (
       <LabelsControlDetailSheet
         hints={labelHints}
+        insetsBottom={insetsBottom}
         onChangeHint={onChangeHint}
         onClose={onClose}
         onReset={onResetHints}
@@ -317,6 +320,7 @@ function ActiveDetailSheet({
 
   return (
     <QuickControlDetailSheet
+      insetsBottom={insetsBottom}
       items={control.detailItems}
       onClose={onClose}
       onReset={control.onReset}
@@ -328,6 +332,7 @@ function ActiveDetailSheet({
 }
 
 function OverlayBottomBar({
+  activeDetail,
   clock,
   controls,
   insetsBottom,
@@ -338,6 +343,7 @@ function OverlayBottomBar({
   onToggleTimePanel,
   quickPanelOpen,
 }: {
+  activeDetail: QuickControlId | null;
   clock: Date;
   controls: QuickControlEntry[];
   insetsBottom: number;
@@ -348,6 +354,10 @@ function OverlayBottomBar({
   onToggleTimePanel?: () => void;
   quickPanelOpen: boolean;
 }) {
+  if (activeDetail !== null) {
+    return null;
+  }
+
   return (
     <View style={[styles.bottomControls, { paddingBottom: insetsBottom + 14 }]} pointerEvents="box-none">
       <View style={styles.leftQuickBar}>
@@ -425,6 +435,7 @@ function StarMapOverlayControls({
         <Text testID="deep-space-horizon-bearing" style={styles.horizonBearingText}>{bearingLabel(azimuthDeg)}</Text>
       </View>
       <OverlayBottomBar
+        activeDetail={activeDetail}
         clock={clock}
         controls={controls}
         insetsBottom={insets.bottom}
@@ -439,7 +450,7 @@ function StarMapOverlayControls({
         onToggleTimePanel={onToggleTimePanel}
         quickPanelOpen={quickPanelOpen}
       />
-      {!quickPanelOpen && (
+      {!quickPanelOpen && activeDetail === null && (
         <View
           pointerEvents="none"
           style={[styles.compassCenterWrapper, { bottom: insets.bottom + 14 }]}
@@ -451,13 +462,11 @@ function StarMapOverlayControls({
       <ActiveDetailSheet
         activeDetail={activeDetail}
         control={currentDetailControl}
+        insetsBottom={insets.bottom}
         labelHints={labelHints}
         onChangeHint={(key, val) => {
-          setLabelHints((prev) => {
-            const next = { ...prev, [key]: val };
-            onUpdateSkyLayers(hintsOffsetToPatch(key, val));
-            return next;
-          });
+          setLabelHints(prev => ({ ...prev, [key]: val }));
+          onUpdateSkyLayers(hintsOffsetToPatch(key, val));
         }}
         onClose={() => setActiveDetail(null)}
         onResetHints={() => {
@@ -694,17 +703,19 @@ function StellariumLabelSlider({
 
 function LabelsControlDetailSheet({
   hints,
+  insetsBottom,
   onChangeHint,
   onClose,
   onReset,
 }: {
   hints: LabelHintValues;
+  insetsBottom: number;
   onChangeHint: (key: keyof LabelHintValues, value: number) => void;
   onClose: () => void;
   onReset: () => void;
 }) {
   return (
-    <View pointerEvents="box-none" style={styles.quickDetailOverlay}>
+    <View pointerEvents="box-none" style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}>
       <Pressable accessibilityLabel="关闭设置" accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
       <View style={styles.labelsDetailCard} testID="deep-space-quick-detail-sheet">
         <View style={styles.labelsDetailHeader}>
@@ -719,7 +730,15 @@ function LabelsControlDetailSheet({
             <Text style={styles.labelsDetailBackText}>‹</Text>
           </Pressable>
           <Text style={styles.labelsDetailTitle}>标签和注记数量</Text>
-          <View style={styles.labelsDetailHeaderPlaceholder} />
+          <Pressable
+            accessibilityLabel="关闭设置"
+            accessibilityRole="button"
+            hitSlop={8}
+            onPress={onClose}
+            style={styles.labelsDetailClose}
+          >
+            <CloseIcon />
+          </Pressable>
         </View>
 
         <View style={styles.labelsDetailBody}>
@@ -767,6 +786,7 @@ function LabelsControlDetailSheet({
 }
 
 function QuickControlDetailSheet({
+  insetsBottom,
   items,
   onClose,
   onReset,
@@ -774,6 +794,7 @@ function QuickControlDetailSheet({
   subtitle,
   title,
 }: {
+  insetsBottom: number;
   items: QuickSubItem[];
   onClose: () => void;
   onReset?: () => void;
@@ -782,7 +803,7 @@ function QuickControlDetailSheet({
   title: string;
 }) {
   return (
-    <View pointerEvents="box-none" style={styles.quickDetailOverlay}>
+    <View pointerEvents="box-none" style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}>
       <Pressable accessibilityLabel="关闭设置" accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
       <View style={styles.quickDetailCard} testID="deep-space-quick-detail-sheet">
         <View style={styles.quickDetailHeader}>
@@ -1177,7 +1198,7 @@ function LongPressProgressRing({
   color: string;
   progress: Animated.Value;
 }) {
-  const size = 52;
+  const size = 46;
   const strokeWidth = 2.5;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -2609,16 +2630,12 @@ function GridIcon() {
 function GridLinesIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={28} viewBox="0 0 48 48" width={28}>
-      <Circle cx={24} cy={24} fill="none" r={16} stroke={color} strokeWidth={1.5} />
-      <Path d="M8 24 C 13 18, 35 18, 40 24" fill="none" stroke={color} strokeWidth={1.4} />
-      <Path d="M8 24 C 13 30, 35 30, 40 24" fill="none" opacity={0.55} stroke={color} strokeWidth={1.2} />
-      <Path d="M24 8 C 15 14, 15 34, 24 40" fill="none" stroke={color} strokeWidth={1.4} />
-      <Path d="M24 8 C 33 14, 33 34, 24 40" fill="none" stroke={color} strokeWidth={1.4} />
-      <Line stroke={color} strokeWidth={1.4} x1={24} x2={24} y1={8} y2={40} />
-      <Circle cx={24} cy={8} fill={color} r={1.6} />
-      <Circle cx={24} cy={40} fill={color} r={1.6} />
-      <Circle cx={24} cy={24} fill={color} r={1.8} />
+    <Svg height={38} viewBox="0 0 48 48" width={38}>
+      <Circle cx={24} cy={24} fill="none" r={17} stroke={color} strokeWidth={2.4} />
+      <Line stroke={color} strokeWidth={2.4} x1={7} x2={41} y1={24} y2={24} />
+      <Line stroke={color} strokeWidth={2.4} x1={24} x2={24} y1={7} y2={41} />
+      <Path d="M24 7 C 14 13, 14 35, 24 41 M24 7 C 34 13, 34 35, 24 41" fill="none" stroke={color} strokeWidth={2.2} />
+      <Path d="M9.5 16 C 16 20, 32 20, 38.5 16 M9.5 32 C 16 28, 32 28, 38.5 32" fill="none" stroke={color} strokeWidth={2.0} />
     </Svg>
   );
 }
@@ -2626,25 +2643,18 @@ function GridLinesIcon({ active }: { active: boolean }) {
 function ConstellationIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={28} viewBox="0 0 48 48" width={28}>
+    <Svg height={38} viewBox="0 0 48 48" width={38}>
       <Path
-        d="M12 20 L13 32 L22 34 L24 23 Z M24 23 L31 22 L37 26 L42 33"
+        d="M24 11 L13 35 L35 33 Z"
         fill="none"
         stroke={color}
         strokeLinecap="round"
         strokeLinejoin="round"
-        strokeWidth={1.4}
+        strokeWidth={2.6}
       />
-      <Circle cx={12} cy={20} fill={color} r={2.4} />
-      <Circle cx={13} cy={32} fill={color} r={2.2} />
-      <Circle cx={22} cy={34} fill={color} r={2.0} />
-      <Circle cx={24} cy={23} fill={color} r={2.2} />
-      <Circle cx={31} cy={22} fill={color} r={2.0} />
-      <Circle cx={37} cy={26} fill={color} r={2.2} />
-      <Circle cx={42} cy={33} fill={color} r={2.5} />
-      <Circle cx={12} cy={20} fill="none" opacity={0.35} r={4.5} stroke={color} strokeWidth={1} />
-      <Circle cx={42} cy={33} fill="none" opacity={0.35} r={4.5} stroke={color} strokeWidth={1} />
-      <Circle cx={28} cy={13} fill={color} opacity={0.4} r={1.2} />
+      <Polygon fill={color} points="24,6 26,9.5 29.5,11 26,12.5 24,16 22,12.5 18.5,11 22,9.5" />
+      <Polygon fill={color} points="13,30 15,33.5 18.5,35 15,36.5 13,40 11,36.5 7.5,35 11,33.5" />
+      <Polygon fill={color} points="35,28 37,31.5 40.5,33 37,34.5 35,38 33,34.5 29.5,33 33,31.5" />
     </Svg>
   );
 }
@@ -2652,20 +2662,11 @@ function ConstellationIcon({ active }: { active: boolean }) {
 function LandscapeIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={28} viewBox="0 0 48 48" width={28}>
-      <Path
-        d="M6 34 L15 24 L23 31 L32 19 L42 34"
-        fill="none"
-        stroke={color}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-      />
-      <Line stroke={color} strokeLinecap="round" strokeWidth={1.5} x1={5} x2={43} y1={36} y2={36} />
-      <Path d="M30 19 A2.5 2.5 0 0 1 34 19" fill="none" stroke={color} strokeWidth={1.3} />
-      <Path d="M12 36 L12 30 M10 33 L12 30 L14 33 M10.5 31.5 L12 29 L13.5 31.5" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.2} />
-      <Path d="M21 36 L21 32 M19.5 34.5 L21 32 L22.5 34.5" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.2} />
-      <Path d="M15 12 A 4.5 4.5 0 0 0 19 16.5 A 5.5 5.5 0 0 1 15 12 Z" fill={color} opacity={0.85} />
+    <Svg height={38} viewBox="0 0 48 48" width={38}>
+      <Circle cx={18} cy={16} fill={color} r={6.5} />
+      <Path d="M7 38 C 7 27, 29 27, 29 38 Z" fill={color} />
+      <Circle cx={34} cy={22} fill={color} r={4.5} />
+      <Path d="M27 38 C 27 30, 41 30, 41 38 Z" fill={color} />
     </Svg>
   );
 }
@@ -2673,30 +2674,33 @@ function LandscapeIcon({ active }: { active: boolean }) {
 function AtmosphereIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={28} viewBox="0 0 48 48" width={28}>
-      <Line stroke={color} strokeLinecap="round" strokeWidth={1.5} x1={6} x2={42} y1={36} y2={36} />
-      <Path d="M18 36 A6 6 0 0 1 30 36 Z" fill={color} opacity={0.9} />
-      <Line stroke={color} strokeLinecap="round" strokeWidth={1.3} x1={24} x2={24} y1={26} y2={22} />
-      <Line stroke={color} strokeLinecap="round" strokeWidth={1.3} x1={17} x2={15} y1={28} y2={25} />
-      <Line stroke={color} strokeLinecap="round" strokeWidth={1.3} x1={31} x2={33} y1={28} y2={25} />
-      <Path d="M8 36 C 10 16, 38 16, 40 36" fill="none" opacity={0.4} stroke={color} strokeDasharray="3 3" strokeWidth={1.3} />
-      <Path d="M11 36 C 13 21, 35 21, 37 36" fill="none" opacity={0.75} stroke={color} strokeWidth={1.4} />
-      <Path d="M26 32 C 28 30, 33 30, 37 32" fill="none" opacity={0.65} stroke={color} strokeLinecap="round" strokeWidth={1.3} />
+    <Svg height={38} viewBox="0 0 48 48" width={38}>
+      <Polygon fill={color} points="34,6 36,11 41,12 37,15 38,20 33,18 29,21 31,16 27,13 32,12" />
+      <Path
+        d="M13 38 L36 38 C 40 38, 42 35, 41 31 C 40 27, 36 26, 33 26 C 32 20, 24 19, 21 24 C 18 23, 13 25, 13 29 C 10 30, 9 34, 13 38 Z"
+        fill={color}
+      />
     </Svg>
   );
 }
 
 function LabelsIcon({ active }: { active: boolean }) {
   const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
+  const textColor = active ? '#14181F' : '#14181F';
   return (
-    <Svg height={28} viewBox="0 0 48 48" width={28}>
-      <Circle cx={13} cy={30} fill={color} r={2.2} />
-      <Line opacity={0.7} stroke={color} strokeLinecap="round" strokeWidth={1.2} x1={13} x2={13} y1={24} y2={36} />
-      <Line opacity={0.7} stroke={color} strokeLinecap="round" strokeWidth={1.2} x1={7} x2={19} y1={30} y2={30} />
-      <Path d="M15 28 L21 21 L26 21" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.4} />
-      <Rect fill="none" height={16} rx={3.5} stroke={color} strokeWidth={1.4} width={18} x={25} y={11} />
-      <Path d="M29 23 L31.5 15.5 L34 23 M29.8 21 L33.2 21" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.2} />
-      <Path d="M37 20 A 1.8 1.8 0 1 0 39.5 22 L39.5 18" fill="none" stroke={color} strokeLinecap="round" strokeWidth={1.1} />
+    <Svg height={38} viewBox="0 0 48 48" width={38}>
+      <Rect fill={color} height={20} rx={4} width={36} x={6} y={11} />
+      <SvgText
+        fill={textColor}
+        fontSize="12"
+        fontWeight="bold"
+        textAnchor="middle"
+        x="24"
+        y="25.5"
+      >
+        ABC
+      </SvgText>
+      <Circle cx={24} cy={38} fill={color} r={3.8} />
     </Svg>
   );
 }
@@ -2704,11 +2708,17 @@ function LabelsIcon({ active }: { active: boolean }) {
 function NightModeIcon({ active }: { active: boolean }) {
   const color = active ? '#FF5C5C' : 'rgba(255,255,255,0.44)';
   return (
-    <Svg height={28} viewBox="0 0 48 48" width={28}>
-      <Path d="M7 24 C 12 16, 26 16, 31 24 C 26 32, 12 32, 7 24 Z" fill="none" stroke={color} strokeLinejoin="round" strokeWidth={1.5} />
-      <Circle cx={19} cy={24} fill="none" r={4.5} stroke={color} strokeWidth={1.3} />
-      <Circle cx={19} cy={24} fill={color} r={2} />
-      <Path d="M33 13 A 6 6 0 0 1 39 19 A 7 7 0 0 0 33 13 Z" fill={color} opacity={0.85} />
+    <Svg height={38} viewBox="0 0 48 48" width={38}>
+      <Path
+        d="M6 24 C 13 13, 35 13, 42 24 C 35 35, 13 35, 6 24 Z"
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2.8}
+      />
+      <Circle cx={24} cy={24} fill="none" r={6.8} stroke={color} strokeWidth={2.4} />
+      <Circle cx={24} cy={24} fill={color} r={3.2} />
     </Svg>
   );
 }
@@ -2857,26 +2867,27 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(167, 206, 255, 0.75)',
   },
   gridQuickMenu: {
-    backgroundColor: 'rgba(16, 20, 26, 0.86)',
+    backgroundColor: 'rgba(16, 20, 26, 0.94)',
     borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 26,
+    borderRadius: 24,
     borderWidth: 1,
-    bottom: 54,
-    elevation: 16,
+    bottom: 58,
+    elevation: 20,
     flexDirection: 'row',
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     left: 0,
     overflow: 'hidden',
-    paddingHorizontal: 4,
-    paddingVertical: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 10,
     position: 'absolute',
     shadowColor: '#000000',
-    shadowOffset: { height: 6, width: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
+    shadowOffset: { height: 8, width: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    width: 288,
   },
   gridQuickMenuHighlight: {
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
     height: 1,
     left: 14,
     position: 'absolute',
@@ -2885,29 +2896,30 @@ const styles = StyleSheet.create({
   },
   quickControlButton: {
     alignItems: 'center',
-    height: 52,
+    height: 76,
     justifyContent: 'center',
     paddingHorizontal: 2,
-    paddingVertical: 2,
-    width: 52,
+    paddingVertical: 4,
+    width: '33.33%',
   },
   quickControlButtonPressed: {
-    opacity: 0.85,
+    opacity: 0.82,
     transform: [{ scale: 0.94 }],
   },
   quickControlCell: {
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
     height: '100%',
     justifyContent: 'center',
+    paddingVertical: 4,
     width: '100%',
   },
   quickIconWrapper: {
     alignItems: 'center',
-    height: 30,
+    height: 42,
     justifyContent: 'center',
     position: 'relative',
-    width: 30,
+    width: 42,
   },
   progressRingWrapper: {
     ...StyleSheet.absoluteFillObject,
@@ -2918,20 +2930,17 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-90deg' }],
   },
   quickControlCellActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.10)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
   },
   quickControlCellNightActive: {
-    backgroundColor: 'rgba(235, 60, 60, 0.18)',
-    borderColor: 'rgba(255, 90, 90, 0.4)',
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'transparent',
   },
   quickControlLabel: {
-    color: 'rgba(255, 255, 255, 0.50)',
-    fontSize: 9.5,
-    fontWeight: '400',
-    marginTop: 2,
+    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 4,
+    textAlign: 'center',
   },
   quickControlLabelActive: {
     color: '#FFFFFF',
@@ -2939,13 +2948,12 @@ const styles = StyleSheet.create({
   },
   quickControlLabelNightActive: {
     color: '#FF6B6B',
+    fontWeight: '600',
   },
   quickDetailOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'flex-end',
-    // Clears the quick bar below, which is tall enough to swallow the last row.
-    paddingBottom: 210,
     paddingHorizontal: 16,
     zIndex: 99,
   },
@@ -2954,18 +2962,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   quickDetailCard: {
-    backgroundColor: 'rgba(20, 24, 30, 0.88)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(16, 20, 26, 0.94)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    borderRadius: 24,
     borderWidth: 1,
-    elevation: 20,
-    maxWidth: 420,
+    elevation: 24,
+    maxWidth: 440,
     overflow: 'hidden',
-    paddingBottom: 6,
+    paddingBottom: 8,
     shadowColor: '#000000',
-    shadowOffset: { height: 6, width: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
+    shadowOffset: { height: 8, width: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 20,
     width: '100%',
   },
   quickDetailHeader: {
@@ -3848,17 +3856,18 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   labelsDetailCard: {
-    backgroundColor: 'rgba(16, 20, 26, 0.95)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 28,
+    backgroundColor: 'rgba(16, 20, 26, 0.94)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    borderRadius: 24,
     borderWidth: 1,
     elevation: 24,
-    maxWidth: 460,
-    paddingBottom: 20,
-    paddingHorizontal: 24,
-    paddingTop: 16,
+    maxWidth: 440,
+    overflow: 'hidden',
+    paddingBottom: 14,
+    paddingHorizontal: 20,
+    paddingTop: 14,
     shadowColor: '#000000',
-    shadowOffset: { height: 10, width: 0 },
+    shadowOffset: { height: 8, width: 0 },
     shadowOpacity: 0.55,
     shadowRadius: 20,
     width: '100%',
@@ -3867,35 +3876,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   labelsDetailClose: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 20,
-    height: 40,
+    borderRadius: 15,
+    height: 30,
     justifyContent: 'center',
-    width: 40,
+    width: 30,
   },
   labelsDetailBackText: {
     color: '#FFFFFF',
-    fontSize: 26,
-    lineHeight: 28,
+    fontSize: 22,
+    lineHeight: 24,
     textAlign: 'center',
   },
   labelsDetailTitle: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
   },
   labelsDetailHeaderPlaceholder: {
-    height: 40,
-    width: 40,
+    height: 30,
+    width: 30,
   },
   labelsDetailBody: {
-    gap: 18,
-    marginBottom: 24,
+    gap: 14,
+    marginBottom: 16,
   },
   labelSliderRow: {
     alignItems: 'center',
