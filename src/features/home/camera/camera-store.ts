@@ -78,7 +78,7 @@ function clampExposure(value: number): number {
   return Number.isNaN(value) ? 0.001 : Math.min(1, Math.max(0.001, value));
 }
 
-/** Board accepts 0–200 dB gain, integers only. */
+/** Board 8999 gain is IMX662 analogue-gain code (0.3 dB/step), integers 0–200. */
 function clampGain(value: number): number {
   return Number.isNaN(value) ? 0 : Math.min(200, Math.max(0, Math.round(value)));
 }
@@ -519,9 +519,10 @@ const _useCameraStore = create<CameraState>(set => ({
   landscapeCountdownRemaining: 0,
   landscapeCapturePendingId: null,
   landscapeAutoMode: true,
-  // Indoor AUTO freeze: ~0.04s, analog_gain ~3x → App 30 dB (10^(dB*0.015)).
-  landscapeManualExposure: 0.04,
-  landscapeManualGain: 30,
+  // Indoor AUTO (2026-09-02 remeasure): camera_state 0.080s, V4L2 analogue_gain 23.
+  // Snap gain to ruler step 24 (0.3 dB/code → 7.2 dB).
+  landscapeManualExposure: 0.08,
+  landscapeManualGain: 24,
   landscapeWhiteBalance: 0,
   landscapeEv: 0,
   landscapeWatermark: true,

@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
+import { formatGainDb, formatGainDbNumber } from '../gain-code';
 import { AspectRatioButton, ToolCard, useAspectRatioAnimation } from '../components';
 import { CameraBottomBar } from '../components/camera-bottom-bar';
 import { CameraTopBar } from '../components/camera-top-bar';
@@ -113,7 +114,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const paramValues = useMemo(() => ({
     wb: whiteBalance === 0 ? 'AUTO' : `${whiteBalance}K`,
     shutter: formatShutter(exposure),
-    gain: `${gain}dB`,
+    gain: formatGainDb(gain),
     ev: `${ev}`,
   }), [whiteBalance, exposure, gain, ev]);
 
@@ -354,8 +355,8 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                         label=""
                         values={GAIN_VALUES}
                         value={gain}
-                        formatValue={value => `${value} dB`}
-                        formatTick={(value, index) => (index % 5 === 0 ? `${value}` : null)}
+                        formatValue={formatGainDb}
+                        formatTick={(value, index) => (index % 5 === 0 ? formatGainDbNumber(value) : null)}
                         onChange={(value) => {
                           setGain(value);
                           changeStreamingSetting(exposure, value);

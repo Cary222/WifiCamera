@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SegmentedControl, Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
+import { formatGainDb, formatGainDbNumber } from '../gain-code';
 import { CameraModeSwitcher } from '../components/camera-mode-switcher';
 import { CameraTopBar } from '../components/camera-top-bar';
 import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
@@ -323,7 +324,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         />
                         <ParamCard
                           label={translate('planet.gain')}
-                          value={`${gain}`}
+                          value={formatGainDb(gain)}
                           active={activeParamCard === 'gain'}
                           disabled={settingsDisabled}
                           onPress={() => setActiveParamCard('gain')}
@@ -400,8 +401,8 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               label={translate('planet.gain')}
                               values={GAIN_VALUES}
                               value={gain}
-                              formatValue={value => `${value}dB`}
-                              formatTick={(value, index) => (index % 5 === 0 ? `${value}` : null)}
+                              formatValue={formatGainDb}
+                              formatTick={(value, index) => (index % 5 === 0 ? formatGainDbNumber(value) : null)}
                               onChange={(value) => {
                                 if (!settingsDisabled)
                                   setGain(value);

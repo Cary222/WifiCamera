@@ -71,8 +71,8 @@ describe('camera store', () => {
       remainingExposureTime: 0,
       landscapeAutoMode: true,
       landscapeShutterMode: 'auto',
-      landscapeManualExposure: 0.04,
-      landscapeManualGain: 30,
+      landscapeManualExposure: 0.08,
+      landscapeManualGain: 24,
       landscapeCaptureState: 'idle',
       landscapeCapturePendingId: null,
       lastCommandError: null,
@@ -155,7 +155,7 @@ describe('camera store', () => {
       landscapeManualGain: 30,
     });
 
-    // Switch back to manual mode; should immediately switch to manual and apply user's saved manual settings (0.05s, 30dB)
+    // Switch back to manual mode; should immediately switch to manual and apply user's saved manual settings (0.05s, code 30)
     useCameraStore.getState().switchAutoMode(false);
 
     expect(useCameraStore.getState()).toMatchObject({

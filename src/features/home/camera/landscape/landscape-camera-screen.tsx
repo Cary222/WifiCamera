@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
+import { formatGainDb, formatGainDbNumber } from '../gain-code';
 import { AspectRatioButton, ToolCard, useAspectRatioAnimation } from '../components';
 import { CameraBottomBar } from '../components/camera-bottom-bar';
 import { CameraTopBar } from '../components/camera-top-bar';
@@ -185,7 +186,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const paramValues = useMemo(() => ({
     wb: whiteBalance === 0 ? 'AUTO' : `${whiteBalance}K`,
     shutter: formatShutter(manualExposure),
-    gain: `${manualGain}dB`,
+    gain: formatGainDb(manualGain),
     ev: `${ev}`,
   }), [whiteBalance, ev, manualExposure, manualGain]);
 
@@ -406,8 +407,8 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     label=""
                     values={GAIN_VALUES}
                     value={manualGain}
-                    formatValue={value => `${value} dB`}
-                    formatTick={(value, index) => (index % 5 === 0 ? `${value}` : null)}
+                    formatValue={formatGainDb}
+                    formatTick={(value, index) => (index % 5 === 0 ? formatGainDbNumber(value) : null)}
                     onChange={value => changeStreamingSetting(manualExposure, value)}
                   />
                 )}
