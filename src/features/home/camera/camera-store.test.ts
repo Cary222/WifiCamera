@@ -170,6 +170,35 @@ describe('camera store', () => {
     ]);
   });
 
+  it('waits for start_streaming_exposure before resolving', async () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    const pending = useCameraStore.getState().startStreaming('auto');
+    const sent = socket.sent
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'start_streaming_exposure');
+    expect(sent).toMatchObject({
+      instruction: 'start_streaming_exposure',
+      params: ['auto', -1],
+    });
+    expect(typeof sent.id).toBe('string');
+
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'start_streaming_exposure',
+      id: sent.id,
+      success: true,
+      data: true,
+    });
+
+    const result = await pending;
+    expect(result.timeout).toBeUndefined();
+    expect(result.error).toBeUndefined();
+    expect(result.msg).toMatchObject({ success: true });
+  });
+
   it('completes stream-frame capture from camera_state last_result', () => {
     jest.useFakeTimers();
     useCameraStore.getState().connect();

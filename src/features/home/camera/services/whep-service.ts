@@ -3,6 +3,7 @@
 import type { MediaStream, MediaStreamTrack } from 'react-native-webrtc';
 import { NativeModules } from 'react-native';
 import { appLogger } from '@/lib/app-logger';
+import { logStreamPoint } from './stream-start-probe';
 
 const NativeWebRTC = NativeModules.WebRTCModule
   ? require('react-native-webrtc')
@@ -27,9 +28,11 @@ const RTCPeerConnection = WebRTC?.RTCPeerConnection;
 const MediaStreamClass = WebRTC?.MediaStream;
 const RTCSessionDescription = WebRTC?.RTCSessionDescription;
 
-// Matches the browser build (app.js `postWhepOfferWhenReady`): keep offering the
-// WHEP endpoint while the board is still spinning up its MediaMTX source.
-const WHEP_OFFER_RETRY_TIMEOUT_MS = 1800;
+// Landscape waits for start_streaming ack before the first POST. Retry is
+// only the leftover T2→T4 gap (554 listening, first H264 not yet). Do not
+// abort a healthy USB POST (~100–130ms); 1s is the RTT ceiling per try.
+const WHEP_OFFER_RETRY_TIMEOUT_MS = 4000;
+const WHEP_OFFER_ATTEMPT_TIMEOUT_MS = 1000;
 const WHEP_OFFER_RETRY_INTERVAL_MS = 80;
 
 type OfferData = {
@@ -128,7 +131,7 @@ let liveSessionCount = 0;
  *   phone match up instantly over LAN;
  * - deliver every later ICE candidate via PATCH (trickle ICE), otherwise the
  *   board only sees the few candidates that existed when the offer was posted;
- * - retry the offer POST for up to ~1.8s while the board's stream source is
+ * - retry the offer POST (short per-try timeout) while the stream source is
  *   still starting, so a fast WHEP connect never races the RTSP source.
  */
 export async function openWhepSession(
@@ -153,6 +156,15 @@ export async function openWhepSession(
   let queuedCandidates: LocalCandidate[] = [];
   let closed = false;
   let disconnectNotified = false;
+  let firstDecodedLogged = false;
+  let firstFrameTimer: ReturnType<typeof setInterval> | null = null;
+
+  const stopFirstFrameWatch = () => {
+    if (!firstFrameTimer)
+      return;
+    clearInterval(firstFrameTimer);
+    firstFrameTimer = null;
+  };
 
   const notifyDisconnected = () => {
     if (closed || disconnectNotified)
@@ -204,6 +216,7 @@ export async function openWhepSession(
 
   peer.addTransceiver('video', { direction: 'recvonly' });
 
+  let ontrackLogged = false;
   peer.ontrack = (event: {
     streams: MediaStream[];
     track: MediaStreamTrack;
@@ -219,6 +232,10 @@ export async function openWhepSession(
           .some((current: MediaStreamTrack) => current.id === track.id)
       ) {
         stream.addTrack(track);
+      }
+      if (!ontrackLogged) {
+        ontrackLogged = true;
+        logStreamPoint('whep_ontrack', { trackId: track.id });
       }
       options.onTrack?.(source ?? stream, track);
     }
@@ -274,8 +291,37 @@ export async function openWhepSession(
 
     liveSessionCount += 1;
     appLogger.info('WHEP', '视频流已连接', { liveSessionCount });
+    logStreamPoint('sdp_live', { liveSessionCount });
     if (__DEV__)
       console.warn(`[CameraWHEP] session live, total=${liveSessionCount}`);
+
+    const watchStartedAt = Date.now();
+    firstFrameTimer = setInterval(() => {
+      if (closed || firstDecodedLogged) {
+        stopFirstFrameWatch();
+        return;
+      }
+      if (Date.now() - watchStartedAt > 10_000) {
+        firstDecodedLogged = true;
+        stopFirstFrameWatch();
+        logStreamPoint('first_decoded_timeout');
+        return;
+      }
+      void peer.getStats().then((report) => {
+        if (closed || firstDecodedLogged)
+          return;
+        let decoded = 0;
+        report.forEach((item: Record<string, unknown>) => {
+          if (item.type === 'inbound-rtp' && item.kind === 'video')
+            decoded = Number(item.framesDecoded) || 0;
+        });
+        if (decoded > 0) {
+          firstDecodedLogged = true;
+          stopFirstFrameWatch();
+          logStreamPoint('first_decoded_frame', { framesDecoded: decoded });
+        }
+      }).catch(() => {});
+    }, 80);
   }
   catch (error) {
     appLogger.error('WHEP', '视频流协商失败', String(error));
@@ -310,6 +356,7 @@ export async function openWhepSession(
       if (closed)
         return;
       closed = true;
+      stopFirstFrameWatch();
       peer.close();
       releaseStream(stream);
       liveSessionCount = Math.max(0, liveSessionCount - 1);
@@ -327,6 +374,36 @@ export async function openWhepSession(
   };
 }
 
+async function postWhepOfferOnce(
+  whepUrl: string,
+  sdp: string,
+  timeoutMs: number,
+  isCancelled: () => boolean,
+): Promise<Response | 'aborted' | 'cancelled'> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const cancelWatch = setInterval(() => {
+    if (isCancelled())
+      controller.abort();
+  }, 50);
+
+  try {
+    return await fetch(whepUrl, {
+      method: 'POST',
+      headers: { 'Accept': 'application/sdp', 'Content-Type': 'application/sdp' },
+      body: sdp,
+      signal: controller.signal,
+    });
+  }
+  catch {
+    return isCancelled() ? 'cancelled' : 'aborted';
+  }
+  finally {
+    clearTimeout(timer);
+    clearInterval(cancelWatch);
+  }
+}
+
 async function postWhepOfferWhenReady(
   whepUrl: string,
   sdp: string,
@@ -334,32 +411,53 @@ async function postWhepOfferWhenReady(
 ): Promise<Response> {
   const startedAt = Date.now();
   let attempt = 0;
+  let last: Response | null = null;
 
   while (
     !isCancelled()
     && Date.now() - startedAt < WHEP_OFFER_RETRY_TIMEOUT_MS
   ) {
     attempt += 1;
-    const response = await fetch(whepUrl, {
-      method: 'POST',
-      headers: { 'Accept': 'application/sdp', 'Content-Type': 'application/sdp' },
-      body: sdp,
-    });
+    if (attempt === 1)
+      logStreamPoint('whep_post_first');
 
-    if (response.ok || response.status !== 404) {
+    const result = await postWhepOfferOnce(
+      whepUrl,
+      sdp,
+      WHEP_OFFER_ATTEMPT_TIMEOUT_MS,
+      isCancelled,
+    );
+    if (result === 'cancelled')
+      throw new Error('WHEP offer cancelled');
+    if (result === 'aborted') {
+      await sleep(WHEP_OFFER_RETRY_INTERVAL_MS);
+      continue;
+    }
+
+    last = result;
+    if (result.ok) {
+      logStreamPoint('whep_post_done', {
+        attempt,
+        status: result.status,
+        ok: true,
+      });
       if (__DEV__)
-        console.info(`[CameraWHEP] POST ${response.status} attempt=${attempt}`);
-      return response;
+        console.info(`[CameraWHEP] POST ${result.status} attempt=${attempt}`);
+      return result;
     }
 
     await sleep(WHEP_OFFER_RETRY_INTERVAL_MS);
   }
 
-  return fetch(whepUrl, {
-    method: 'POST',
-    headers: { 'Accept': 'application/sdp', 'Content-Type': 'application/sdp' },
-    body: sdp,
+  logStreamPoint('whep_post_done', {
+    attempt,
+    status: last?.status ?? 0,
+    ok: false,
+    giveUp: true,
   });
+  if (last)
+    return last;
+  throw new Error('WHEP offer timed out');
 }
 
 function sleep(ms: number): Promise<void> {

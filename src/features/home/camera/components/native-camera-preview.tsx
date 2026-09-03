@@ -9,6 +9,7 @@ import { appLogger } from '@/lib/app-logger';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
 import { getCameraWhepUrl } from '../config';
+import { logStreamPoint, markStreamStart } from '../services/stream-start-probe';
 import { openWhepSession } from '../services/whep-service';
 
 const NativeWebRTC = NativeModules.WebRTCModule
@@ -70,7 +71,6 @@ export function useLandscapeCameraPreview(
 
     let active = true;
     let connecting = false;
-    let startupTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let statsTimer: ReturnType<typeof setInterval> | null = null;
     let closeSession: (() => Promise<void>) | null = null;
@@ -110,6 +110,7 @@ export function useLandscapeCameraPreview(
         await activePreviewTeardown;
         if (!active)
           return;
+        logStreamPoint('whep_connect');
         const session = await openWhepSession(getCameraWhepUrl(), {
           onDisconnected: scheduleReconnect,
           onTrack: (incomingStream) => {
@@ -150,24 +151,30 @@ export function useLandscapeCameraPreview(
     setPreviewState('connecting');
 
     // 与网页端一致：只在进入风景模式时开流一次；WHEP 重连只重挂预览，绝不重启板端推流。
-    const storeState = useCameraStore.getState();
-    if (storeState.landscapeAutoMode) {
-      startStreaming('auto');
-    }
-    else {
-      startStreamingManual(
-        storeState.landscapeManualExposure,
-        storeState.landscapeManualGain,
-      );
-    }
-
-    // Matches browser app.js: 200ms delay between sending start_streaming and
-    // opening the WHEP session gives the board time to create its RTSP source.
-    startupTimer = setTimeout(() => void connect(), 200);
+    // 等 start_streaming 回包再 POST：回包时 554 已在听，避免第一枪 WHEP 去拉空源卡 3s。
+    const bringUp = async () => {
+      const storeState = useCameraStore.getState();
+      const auto = storeState.landscapeAutoMode;
+      markStreamStart(auto ? 'auto' : 'manual');
+      const ack = auto
+        ? await startStreaming('auto')
+        : await startStreamingManual(
+            storeState.landscapeManualExposure,
+            storeState.landscapeManualGain,
+          );
+      if (!active)
+        return;
+      logStreamPoint('stream_ack', {
+        timeout: Boolean(ack.timeout),
+        error: ack.error ?? null,
+        success: ack.msg?.success !== false,
+        waitMs: ack.elapsedMs,
+      });
+      void connect();
+    };
+    void bringUp();
     return () => {
       active = false;
-      if (startupTimer)
-        clearTimeout(startupTimer);
       if (reconnectTimer)
         clearTimeout(reconnectTimer);
       if (statsTimer)

@@ -148,8 +148,8 @@ type CameraState = {
   setLandscapeRatio: (ratio: LandscapeRatio) => void;
   setLandscapeSensorRatio: (ratio: Exclude<LandscapeRatio, 'full'>) => void;
   switchAutoMode: (auto: boolean) => void;
-  startStreaming: (mode: 'auto') => void;
-  startStreamingManual: (exposure: number, gain: number) => void;
+  startStreaming: (mode: 'auto') => Promise<CommandWaitResult>;
+  startStreamingManual: (exposure: number, gain: number) => Promise<CommandWaitResult>;
   stopStreaming: () => void;
   changeStreamingSetting: (exposure: number, gain: number) => void;
   changeWhiteBalance: (cct: number) => void;
@@ -728,8 +728,14 @@ const _useCameraStore = create<CameraState>(set => ({
   // required positional argument, so auto mode has to pass the -1 "let the
   // board decide" placeholder that the ROI path already relies on. Sending
   // only ['auto'] makes the board raise a missing-argument TypeError.
+  // Wait for the WS reply: that is after 554 is listening (InStreaming /
+  // g_rtsplive). WHEP posted before this races MediaMTX on-demand pull.
   startStreaming: (mode = 'auto') => {
-    _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.startStreaming, [mode, -1]);
+    return _useCameraStore.getState().sendCommandWait(
+      CAMERA_INSTRUCTIONS.startStreaming,
+      [mode, -1],
+      25_000,
+    );
   },
   startStreamingManual: (exposure, gain) => {
     set({
@@ -737,10 +743,11 @@ const _useCameraStore = create<CameraState>(set => ({
       landscapeManualGain: clampGain(gain),
     });
     const state = _useCameraStore.getState();
-    state.sendInstruction(CAMERA_INSTRUCTIONS.startStreaming, [
-      state.landscapeManualExposure,
-      state.landscapeManualGain,
-    ]);
+    return state.sendCommandWait(
+      CAMERA_INSTRUCTIONS.startStreaming,
+      [state.landscapeManualExposure, state.landscapeManualGain],
+      25_000,
+    );
   },
   stopStreaming: () => _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.stopStreaming),
   changeStreamingSetting: (exposure, gain) => {
