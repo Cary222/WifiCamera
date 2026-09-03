@@ -1,7 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as React from 'react';
 
+import { showDeepSpaceFeedback } from '../ui/deep-space-feedback';
 import { ObjectInfoSheet } from './object-info-sheet';
+
+jest.mock('../ui/deep-space-feedback', () => ({
+  showDeepSpaceFeedback: jest.fn(),
+}));
 
 const MOCK_STAR = {
   altDeg: 45.2,
@@ -55,12 +60,13 @@ describe('object info sheet', () => {
     expect(screen.getByTestId('deep-space-object-coords-page')).toBeTruthy();
   });
 
-  it('triggers center tracking when visibility pill button is pressed', () => {
+  it('triggers center tracking and confirms the object visibility action', () => {
     const onCenter = jest.fn();
     render(<ObjectInfoSheet object={MOCK_STAR} onCenter={onCenter} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={jest.fn()} />);
 
     fireEvent.press(screen.getByTestId('deep-space-object-center-btn'));
     expect(onCenter).toHaveBeenCalledWith(MOCK_STAR);
+    expect(showDeepSpaceFeedback).toHaveBeenLastCalledWith({ message: '已在星图中居中显示天狼星', tone: 'success' });
   });
 
   it('triggers zoom in when zoom button is pressed', () => {
@@ -87,11 +93,14 @@ describe('object info sheet', () => {
     expect(onGoto).toHaveBeenCalledWith(6.752, -16.716);
   });
 
-  it('toggles like state when heart button is pressed', () => {
+  it('announces when the object is added to or removed from favorites', () => {
     render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={jest.fn()} />);
 
     const likeBtn = screen.getByTestId('deep-space-object-like-btn');
     fireEvent.press(likeBtn);
+    expect(showDeepSpaceFeedback).toHaveBeenLastCalledWith({ message: '已收藏天狼星', tone: 'success' });
+
     fireEvent.press(likeBtn);
+    expect(showDeepSpaceFeedback).toHaveBeenLastCalledWith({ message: '已取消收藏天狼星', tone: 'success' });
   });
 });

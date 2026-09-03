@@ -1,4 +1,5 @@
 import type { FieldOfViewInput } from '@/features/deep-space/tools/field-of-view';
+import type { RecentSkyObject } from '@/features/deep-space/tools/recent-sky-objects';
 import type { SelectedCelestialObject, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import * as React from 'react';
@@ -12,10 +13,14 @@ import { DEFAULT_LANDSCAPE_ID, LANDSCAPES } from '@/features/deep-space/landscap
 import { ObjectInfoSheet } from '@/features/deep-space/object-info/object-info-sheet';
 import { FieldOfViewOverlay } from '@/features/deep-space/tools/field-of-view-overlay';
 import { FieldOfViewPanel } from '@/features/deep-space/tools/field-of-view-panel';
+import { addRecentSkyObject, loadRecentSkyObjects } from '@/features/deep-space/tools/recent-sky-objects';
+import { parseSkyCoordinateInput } from '@/features/deep-space/tools/sky-coordinate-input';
 import { TelescopeControlPanel } from '@/features/deep-space/tools/telescope-control-panel';
 import { StellariumView } from '@/features/stellarium/stellarium-view';
 import { getLanguage, translate } from '@/lib/i18n';
+import { storage } from '@/lib/storage';
 import { CloseIcon } from './ui/close-icon';
+import { showDeepSpaceFeedback } from './ui/deep-space-feedback';
 import { OVERLAY } from './ui/deep-space-theme';
 import { FeatureSheet } from './ui/feature-sheet';
 import { featureSheetStyles } from './ui/feature-sheet-styles';
@@ -187,8 +192,10 @@ type ReferenceSearchSheetProps = {
   error: boolean;
   onChange: (value: string) => void;
   onClose: () => void;
+  onSelectRecent: (object: RecentSkyObject) => void;
   onSubmit: () => void;
   query: string;
+  recentObjects: RecentSkyObject[];
 };
 
 type DrawerFeatureOptions = {
@@ -275,6 +282,7 @@ type StarMapOverlayControlsProps = {
   onOpenSearch: () => void;
   onReturnToNow: () => void;
   onSelectLandscape: (id: string) => void;
+  onSetAzimuth?: (azimuthDeg: number) => void;
   onToggleGridLine: (key: GridLineKey) => void;
   onToggleNightMode: () => void;
   onToggleSkyLayer: (key: SkyLayerKey) => void;
@@ -382,50 +390,139 @@ function OverlayBottomBar({
   );
 }
 
-function StarMapOverlayControls({
+function OverlaySheets({
+  activeDetail,
   azimuthDeg,
+  azimuthInputOpen,
   clock,
-  environment,
-  gridLines,
-  insets,
+  control,
+  insetsBottom,
   isCustomTime = false,
-  landscapeId,
-  nightMode,
+  labelHints,
+  onChangeHint,
+  onCloseDetail,
+  onCloseInput,
   onCloseTimePanel,
-  onOpenMenu,
-  onOpenSearch,
+  onResetHints,
   onReturnToNow,
-  onSelectLandscape,
-  onToggleGridLine,
-  onToggleNightMode,
-  onToggleSkyLayer,
-  onToggleTimePanel,
-  onUpdateEnvironment,
-  onUpdateGridLines,
-  onUpdateSkyLayers,
+  onSetAzimuth,
   onUpdateTime,
-  skyLayers,
   timePanelOpen = false,
-}: StarMapOverlayControlsProps) {
+}: {
+  activeDetail: QuickControlId | null;
+  azimuthDeg: number;
+  azimuthInputOpen: boolean;
+  clock: Date;
+  control: QuickControlEntry | undefined;
+  insetsBottom: number;
+  isCustomTime?: boolean;
+  labelHints: LabelHintValues;
+  onChangeHint: (key: keyof LabelHintValues, val: number) => void;
+  onCloseDetail: () => void;
+  onCloseInput: () => void;
+  onCloseTimePanel?: () => void;
+  onResetHints: () => void;
+  onReturnToNow: () => void;
+  onSetAzimuth?: (azimuthDeg: number) => void;
+  onUpdateTime?: (date: Date) => void;
+  timePanelOpen?: boolean;
+}) {
+  return (
+    <>
+      <ActiveDetailSheet
+        activeDetail={activeDetail}
+        control={control}
+        insetsBottom={insetsBottom}
+        labelHints={labelHints}
+        onChangeHint={onChangeHint}
+        onClose={onCloseDetail}
+        onResetHints={onResetHints}
+      />
+      <CompassAzimuthDialog
+        currentAzimuth={azimuthDeg}
+        onApply={azimuth => onSetAzimuth?.(azimuth)}
+        onClose={onCloseInput}
+        visible={azimuthInputOpen}
+      />
+      {timePanelOpen && (
+        <TimeSliderSheet
+          clock={clock}
+          insetsBottom={insetsBottom}
+          isCustomTime={isCustomTime}
+          onClose={() => onCloseTimePanel?.()}
+          onReturnToNow={onReturnToNow}
+          onUpdateTime={date => onUpdateTime?.(date)}
+        />
+      )}
+    </>
+  );
+}
+
+function CenteredCompass({
+  azimuthDeg,
+  bottom,
+  onOpenInput,
+  visible,
+}: {
+  azimuthDeg: number;
+  bottom: number;
+  onOpenInput: () => void;
+  visible: boolean;
+}) {
+  if (!visible)
+    return null;
+
+  return (
+    <View
+      pointerEvents="box-none"
+      style={[styles.compassCenterWrapper, { bottom }]}
+      testID="deep-space-reference-compass-center"
+    >
+      <Compass azimuthDeg={azimuthDeg} onOpenInput={onOpenInput} />
+    </View>
+  );
+}
+
+function StarMapOverlayControls(props: StarMapOverlayControlsProps) {
+  const {
+    azimuthDeg,
+    clock,
+    insets,
+    isCustomTime = false,
+    onCloseTimePanel,
+    onOpenMenu,
+    onOpenSearch,
+    onReturnToNow,
+    onSetAzimuth,
+    onToggleTimePanel,
+    onUpdateTime,
+    timePanelOpen = false,
+  } = props;
+
   const [quickPanelOpen, setQuickPanelOpen] = React.useState(false);
   const [activeDetail, setActiveDetail] = React.useState<QuickControlId | null>(null);
   const [labelHints, setLabelHints] = React.useState<LabelHintValues>(DEFAULT_LABEL_HINTS);
+  const [azimuthInputOpen, setAzimuthInputOpen] = React.useState(false);
 
   const controls = getQuickControls({
-    environment,
-    landscapeId,
-    lines: gridLines,
-    nightMode,
-    onSelectLandscape,
-    onToggleGridLine,
-    onToggleNightMode,
-    onToggleSkyLayer,
-    onUpdateEnvironment,
-    onUpdateGridLines,
-    onUpdateSkyLayers,
-    skyLayers,
+    environment: props.environment,
+    landscapeId: props.landscapeId,
+    lines: props.gridLines,
+    nightMode: props.nightMode,
+    onSelectLandscape: props.onSelectLandscape,
+    onToggleGridLine: props.onToggleGridLine,
+    onToggleNightMode: props.onToggleNightMode,
+    onToggleSkyLayer: props.onToggleSkyLayer,
+    onUpdateEnvironment: props.onUpdateEnvironment,
+    onUpdateGridLines: props.onUpdateGridLines,
+    onUpdateSkyLayers: props.onUpdateSkyLayers,
+    skyLayers: props.skyLayers,
   });
 
+  const handleReturnToNow = () => {
+    onReturnToNow();
+    showDeepSpaceFeedback({ message: translate('deep_space.feedback_returned_to_now'), tone: 'success' });
+  };
   const currentDetailControl = controls.find(c => c.id === activeDetail);
 
   return (
@@ -446,44 +543,42 @@ function StarMapOverlayControls({
             setActiveDetail(null);
           setQuickPanelOpen(next);
         }}
-        onReturnToNow={onReturnToNow}
+        onReturnToNow={handleReturnToNow}
         onToggleTimePanel={onToggleTimePanel}
         quickPanelOpen={quickPanelOpen}
       />
-      {!quickPanelOpen && activeDetail === null && (
-        <View
-          pointerEvents="none"
-          style={[styles.compassCenterWrapper, { bottom: insets.bottom + 14 }]}
-          testID="deep-space-reference-compass-center"
-        >
-          <Compass azimuthDeg={azimuthDeg} />
-        </View>
-      )}
-      <ActiveDetailSheet
+      <CenteredCompass
+        azimuthDeg={azimuthDeg}
+        bottom={insets.bottom + 14}
+        onOpenInput={() => setAzimuthInputOpen(true)}
+        visible={!quickPanelOpen && activeDetail === null}
+      />
+      <OverlaySheets
         activeDetail={activeDetail}
+        azimuthDeg={azimuthDeg}
+        azimuthInputOpen={azimuthInputOpen}
+        clock={clock}
         control={currentDetailControl}
         insetsBottom={insets.bottom}
+        isCustomTime={isCustomTime}
         labelHints={labelHints}
         onChangeHint={(key, val) => {
           setLabelHints(prev => ({ ...prev, [key]: val }));
-          onUpdateSkyLayers(hintsOffsetToPatch(key, val));
+          props.onUpdateSkyLayers(hintsOffsetToPatch(key, val));
         }}
-        onClose={() => setActiveDetail(null)}
+        onCloseDetail={() => setActiveDetail(null)}
+        onCloseInput={() => setAzimuthInputOpen(false)}
+        onCloseTimePanel={onCloseTimePanel}
         onResetHints={() => {
           setLabelHints(DEFAULT_LABEL_HINTS);
-          onUpdateSkyLayers(resetAllHints());
+          props.onUpdateSkyLayers(resetAllHints());
+          showDeepSpaceFeedback({ message: translate('deep_space.feedback_labels_reset'), tone: 'success' });
         }}
+        onReturnToNow={handleReturnToNow}
+        onSetAzimuth={onSetAzimuth}
+        onUpdateTime={onUpdateTime}
+        timePanelOpen={timePanelOpen}
       />
-      {timePanelOpen && (
-        <TimeSliderSheet
-          clock={clock}
-          insetsBottom={insets.bottom}
-          isCustomTime={isCustomTime}
-          onClose={() => onCloseTimePanel?.()}
-          onReturnToNow={onReturnToNow}
-          onUpdateTime={date => onUpdateTime?.(date)}
-        />
-      )}
     </View>
   );
 }
@@ -1384,8 +1479,21 @@ function useStarMapSearch(stellaRef: React.RefObject<StellariumViewHandle | null
     const target = query.trim();
     if (!target)
       return;
+
+    const coordinates = parseSkyCoordinateInput(target);
+    if (coordinates) {
+      stellaRef.current?.gotoRaDec?.(coordinates.raHours * 15, coordinates.decDeg);
+      closeSearch();
+      return;
+    }
+
     setError(false);
     stellaRef.current?.searchTarget?.(target);
+  };
+
+  const selectRecent = (object: RecentSkyObject) => {
+    setError(false);
+    stellaRef.current?.searchTarget?.(object.id.replace(/^NAME\s+/, ''));
   };
 
   return {
@@ -1394,6 +1502,7 @@ function useStarMapSearch(stellaRef: React.RefObject<StellariumViewHandle | null
     open,
     openSearch,
     query,
+    selectRecent,
     setError,
     setQuery,
     submitSearch,
@@ -1528,6 +1637,7 @@ function SelectedObjectOverlay({
 
   return (
     <ObjectInfoSheet
+      key={selectedObject.id}
       object={selectedObject}
       onCenter={obj => stellaRef.current?.pointAndLock(obj.id)}
       onClose={() => {
@@ -1538,6 +1648,7 @@ function SelectedObjectOverlay({
         setSelectedObject(null);
         onGotoTools();
         stellaRef.current?.gotoRaDec(raHours * 15, decDeg);
+        showDeepSpaceFeedback({ message: translate('deep_space.feedback_telescope_controls'), tone: 'success' });
       }}
       onZoomIn={() => stellaRef.current?.zoomTo(15)}
       onZoomOut={() => stellaRef.current?.zoomTo(75)}
@@ -1550,6 +1661,7 @@ function StarMapModals({
   drawerFeature,
   drawerOpen,
   insetsBottom,
+  recentObjects,
   search,
   selectedObject,
   setCurrentCulture,
@@ -1563,6 +1675,7 @@ function StarMapModals({
   drawerFeature: ReturnType<typeof useDrawerFeature>;
   drawerOpen: boolean;
   insetsBottom: number;
+  recentObjects: RecentSkyObject[];
   search: ReturnType<typeof useStarMapSearch>;
   selectedObject: SelectedCelestialObject | null;
   setCurrentCulture: (c: string) => void;
@@ -1612,8 +1725,10 @@ function StarMapModals({
           error={search.error}
           onChange={search.setQuery}
           onClose={search.closeSearch}
+          onSelectRecent={search.selectRecent}
           onSubmit={search.submitSearch}
           query={search.query}
+          recentObjects={recentObjects}
         />
       )}
     </>
@@ -1625,6 +1740,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const stellaRef = React.useRef<StellariumViewHandle>(null);
   const [azimuthDeg, setAzimuthDeg] = React.useState(0);
   const [currentCulture, setCurrentCulture] = React.useState('western');
+  const [recentObjects, setRecentObjects] = React.useState<RecentSkyObject[]>(() => loadRecentSkyObjects(storage));
   const [selectedObject, setSelectedObject] = React.useState<SelectedCelestialObject | null>(null);
   const drawerFeature = useDrawerFeature({ currentCulture, setCurrentCulture, stellaRef });
   const [drawerOpen, setDrawerOpen] = React.useState(false);
@@ -1632,6 +1748,27 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(stellaRef);
   const search = useStarMapSearch(stellaRef);
   const timeState = useInteractiveClock(stellaRef);
+
+  const handleSetAzimuth = React.useCallback((targetDeg: number) => {
+    const normalized = Math.round(((targetDeg % 360) + 360) % 360);
+    setAzimuthDeg(normalized);
+    stellaRef.current?.setViewBearing(normalized);
+    showDeepSpaceFeedback({
+      message: translate('deep_space.compass_feedback_rotated', { azimuth: normalized }),
+      tone: 'success',
+    });
+  }, []);
+
+  const handleObjectSelected = React.useCallback((object: SelectedCelestialObject) => {
+    setSelectedObject(object);
+    const candidate: RecentSkyObject = {
+      id: object.id,
+      name: object.name,
+      typeZh: object.typeZh ?? undefined,
+    };
+    setRecentObjects(prev => [candidate, ...prev.filter(item => item.id !== candidate.id)].slice(0, 6));
+    addRecentSkyObject(storage, candidate);
+  }, []);
 
   const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selectedObject;
 
@@ -1646,7 +1783,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
           stellaRef.current?.setEnvironment?.(drawerFeature.environment);
         }}
         onCommandError={() => search.setError(true)}
-        onObjectSelected={setSelectedObject}
+        onObjectSelected={handleObjectSelected}
         onSelectionCleared={() => setSelectedObject(null)}
         onTargetFound={search.closeSearch}
         onTargetNotFound={() => search.setError(true)}
@@ -1673,6 +1810,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         }}
         onReturnToNow={timeState.returnToNow}
         onSelectLandscape={drawerFeature.selectLandscape}
+        onSetAzimuth={handleSetAzimuth}
         onToggleGridLine={drawerFeature.toggleGridLine}
         onToggleNightMode={() => setNightMode(value => !value)}
         onToggleSkyLayer={toggleSkyLayer}
@@ -1689,6 +1827,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         drawerFeature={drawerFeature}
         drawerOpen={drawerOpen}
         insetsBottom={insets.bottom}
+        recentObjects={recentObjects}
         search={search}
         selectedObject={selectedObject}
         setCurrentCulture={setCurrentCulture}
@@ -2215,7 +2354,7 @@ function SettingsPanel({ activeCity, onClose, onSelect }: { activeCity: string; 
   );
 }
 
-function ReferenceSearchSheet({ error, onChange, onClose, onSubmit, query }: ReferenceSearchSheetProps) {
+function ReferenceSearchSheet({ error, onChange, onClose, onSelectRecent, onSubmit, query, recentObjects }: ReferenceSearchSheetProps) {
   return (
     <View testID="deep-space-reference-search-sheet" style={styles.searchOverlay}>
       <Pressable accessibilityLabel={translate('deep_space.search')} accessibilityRole="button" onPress={onClose} style={styles.searchScrim} />
@@ -2245,28 +2384,216 @@ function ReferenceSearchSheet({ error, onChange, onClose, onSubmit, query }: Ref
             {translate('deep_space.search_not_found')}
           </Text>
         )}
+        {!query && recentObjects && recentObjects.length > 0 && (
+          <View style={styles.searchRecentList}>
+            <Text style={styles.searchRecentTitle}>{translate('deep_space.recent_objects')}</Text>
+            {recentObjects.map(object => (
+              <Pressable
+                accessibilityLabel={object.name}
+                accessibilityRole="button"
+                key={object.id}
+                onPress={() => onSelectRecent(object)}
+                style={styles.searchRecentRow}
+                testID={`deep-space-search-recent-${object.id}`}
+              >
+                <Text style={styles.searchRecentName}>{object.name}</Text>
+                {object.typeZh && <Text style={styles.searchRecentType}>{object.typeZh}</Text>}
+              </Pressable>
+            ))}
+          </View>
+        )}
       </View>
     </View>
   );
 }
 
-function Compass({ azimuthDeg }: { azimuthDeg: number }) {
+const AZIMUTH_PRESETS = [
+  { deg: 0, labelKey: 'deep_space.compass_preset_north' as const },
+  { deg: 90, labelKey: 'deep_space.compass_preset_east' as const },
+  { deg: 180, labelKey: 'deep_space.compass_preset_south' as const },
+  { deg: 270, labelKey: 'deep_space.compass_preset_west' as const },
+] as const;
+
+function AzimuthPresetPills({
+  currentValue,
+  onSelect,
+}: {
+  currentValue: string;
+  onSelect: (deg: number) => void;
+}) {
+  return (
+    <View style={styles.azimuthPresetRow}>
+      {AZIMUTH_PRESETS.map(preset => (
+        <Pressable
+          accessibilityLabel={translate(preset.labelKey)}
+          accessibilityRole="button"
+          key={preset.deg}
+          onPress={() => onSelect(preset.deg)}
+          style={[
+            styles.azimuthPresetPill,
+            Number(currentValue.trim()) === preset.deg && styles.azimuthPresetPillActive,
+          ]}
+          testID={`deep-space-azimuth-preset-${preset.deg}`}
+        >
+          <Text
+            style={[
+              styles.azimuthPresetText,
+              Number(currentValue.trim()) === preset.deg && styles.azimuthPresetTextActive,
+            ]}
+          >
+            {translate(preset.labelKey)}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function AzimuthDialogCard({
+  currentAzimuth,
+  onApply,
+  onClose,
+}: {
+  currentAzimuth: number;
+  onApply: (azimuthDeg: number) => void;
+  onClose: () => void;
+}) {
+  const [value, setValue] = React.useState(`${Math.round(((currentAzimuth % 360) + 360) % 360)}`);
+  const [error, setError] = React.useState(false);
+
+  const handleConfirm = () => {
+    const trimmed = value.trim();
+    const num = Number(trimmed);
+    if (!trimmed || Number.isNaN(num) || num < 0 || num > 360) {
+      setError(true);
+      return;
+    }
+    setError(false);
+    onApply(num);
+    onClose();
+  };
+
+  return (
+    <Pressable
+      accessibilityLabel={translate('deep_space.compass_custom_azimuth')}
+      onPress={e => e.stopPropagation()}
+      style={styles.azimuthDialogCard}
+      testID="deep-space-azimuth-input-dialog"
+    >
+      <Text style={styles.dialogTitle}>{translate('deep_space.compass_custom_azimuth')}</Text>
+      <Text style={styles.dialogMessage}>{translate('deep_space.compass_azimuth_hint')}</Text>
+
+      <View style={styles.azimuthInputRow}>
+        <TextInput
+          accessibilityLabel={translate('deep_space.compass_azimuth_input_placeholder')}
+          autoFocus
+          keyboardType="numeric"
+          maxLength={5}
+          onChangeText={(text) => {
+            setValue(text);
+            if (error)
+              setError(false);
+          }}
+          onSubmitEditing={handleConfirm}
+          placeholder="0"
+          placeholderTextColor="rgba(255, 255, 255, 0.3)"
+          returnKeyType="done"
+          selectTextOnFocus
+          style={[styles.azimuthInput, error && styles.azimuthInputError]}
+          testID="deep-space-azimuth-input"
+          value={value}
+        />
+        <Text style={styles.azimuthUnit}>°</Text>
+      </View>
+
+      {error && (
+        <Text style={styles.azimuthErrorText} testID="deep-space-azimuth-error">
+          {translate('deep_space.compass_azimuth_invalid')}
+        </Text>
+      )}
+
+      <AzimuthPresetPills
+        currentValue={value}
+        onSelect={(deg) => {
+          setValue(`${deg}`);
+          setError(false);
+        }}
+      />
+
+      <View style={styles.dialogButtons}>
+        <Pressable
+          accessibilityLabel="取消"
+          accessibilityRole="button"
+          onPress={onClose}
+          style={styles.dialogButton}
+          testID="deep-space-azimuth-cancel"
+        >
+          <Text style={styles.dialogButtonTextCancel}>取消</Text>
+        </Pressable>
+        <Pressable
+          accessibilityLabel={translate('deep_space.compass_azimuth_apply')}
+          accessibilityRole="button"
+          onPress={handleConfirm}
+          style={[styles.dialogButton, styles.dialogButtonPrimary]}
+          testID="deep-space-azimuth-confirm"
+        >
+          <Text style={styles.dialogButtonTextPrimary}>{translate('deep_space.compass_azimuth_apply')}</Text>
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}
+
+function CompassAzimuthDialog({
+  currentAzimuth,
+  onApply,
+  onClose,
+  visible,
+}: {
+  currentAzimuth: number;
+  onApply: (azimuthDeg: number) => void;
+  onClose: () => void;
+  visible: boolean;
+}) {
+  if (!visible)
+    return null;
+
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible>
+      <Pressable onPress={onClose} style={styles.modalOverlay}>
+        <AzimuthDialogCard currentAzimuth={currentAzimuth} onApply={onApply} onClose={onClose} />
+      </Pressable>
+    </Modal>
+  );
+}
+
+function Compass({
+  azimuthDeg,
+  onOpenInput,
+}: {
+  azimuthDeg: number;
+  onOpenInput?: () => void;
+}) {
   const normalizedAzimuth = Math.round(((azimuthDeg % 360) + 360) % 360);
 
   return (
-    <View testID="deep-space-reference-compass" style={styles.compass} pointerEvents="none">
-      <View testID="deep-space-reference-compass-rose" style={[styles.compassRose, { transform: [{ rotate: `-${azimuthDeg}deg` }] }]}>
+    <View testID="deep-space-reference-compass" style={styles.compass} pointerEvents="box-none">
+      <View
+        pointerEvents="none"
+        testID="deep-space-reference-compass-rose"
+        style={[styles.compassRose, { transform: [{ rotate: `-${azimuthDeg}deg` }] }]}
+      >
         <Svg testID="deep-space-reference-compass-instrument" height={112} viewBox="0 0 120 120" width={112}>
           <Defs>
             <RadialGradient cx="50%" cy="34%" id="compassBezel" r="68%">
-              <Stop offset="0" stopColor="#4B6176" />
-              <Stop offset="0.48" stopColor="#17222D" />
-              <Stop offset="1" stopColor="#05080D" />
+              <Stop offset="0" stopColor="#4B6176" stopOpacity={0.45} />
+              <Stop offset="0.48" stopColor="#17222D" stopOpacity={0.3} />
+              <Stop offset="1" stopColor="#05080D" stopOpacity={0.22} />
             </RadialGradient>
             <RadialGradient cx="50%" cy="38%" id="compassFace" r="64%">
-              <Stop offset="0" stopColor="#26364A" />
-              <Stop offset="0.62" stopColor="#101922" />
-              <Stop offset="1" stopColor="#060A10" />
+              <Stop offset="0" stopColor="#26364A" stopOpacity={0.35} />
+              <Stop offset="0.62" stopColor="#101922" stopOpacity={0.2} />
+              <Stop offset="1" stopColor="#060A10" stopOpacity={0.12} />
             </RadialGradient>
             <LinearGradient id="compassNorthNeedle" x1="0" x2="0" y1="0" y2="1">
               <Stop offset="0" stopColor="#FF8A7A" />
@@ -2279,11 +2606,11 @@ function Compass({ azimuthDeg }: { azimuthDeg: number }) {
               <Stop offset="1" stopColor="#506A80" />
             </LinearGradient>
           </Defs>
-          <Circle cx={60} cy={60} fill="url(#compassBezel)" r={57} stroke="rgba(255,255,255,0.34)" strokeWidth={1.4} />
+          <Circle cx={60} cy={60} fill="url(#compassBezel)" r={57} stroke="rgba(255,255,255,0.34)" strokeWidth={1.2} />
           <Circle cx={60} cy={60} fill="none" r={53} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-          <Circle cx={60} cy={60} fill="url(#compassFace)" r={50} stroke="rgba(126,180,232,0.34)" strokeWidth={1.2} />
-          <Circle cx={60} cy={60} fill="none" opacity={0.55} r={41} stroke="rgba(255,255,255,0.16)" strokeDasharray="2 5" strokeWidth={1} />
-          <Circle cx={60} cy={60} fill="none" r={31} stroke="rgba(93,164,255,0.22)" strokeWidth={1} />
+          <Circle cx={60} cy={60} fill="url(#compassFace)" r={50} stroke="rgba(126,180,232,0.35)" strokeWidth={1.2} />
+          <Circle cx={60} cy={60} fill="none" opacity={0.35} r={41} stroke="rgba(255,255,255,0.16)" strokeDasharray="2 5" strokeWidth={1} />
+          <Circle cx={60} cy={60} fill="none" r={31} stroke="rgba(93,164,255,0.2)" strokeWidth={1} />
           {COMPASS_MINOR_TICKS.map(angle => (
             <Line
               key={`minor-${angle}`}
@@ -2318,21 +2645,29 @@ function Compass({ azimuthDeg }: { azimuthDeg: number }) {
           <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={26} y={64}>西</SvgText>
           <Polygon fill="url(#compassNorthNeedle)" points="60,18 66,60 60,70 54,60" stroke="rgba(255,255,255,0.38)" strokeWidth={0.8} />
           <Polygon fill="url(#compassSouthNeedle)" points="60,102 66,60 60,50 54,60" stroke="rgba(5,10,16,0.42)" strokeWidth={0.8} />
-          <Circle cx={60} cy={60} fill="#0A1118" r={8.5} stroke="rgba(255,255,255,0.72)" strokeWidth={1.4} />
+          <Circle cx={60} cy={60} fill="rgba(10, 17, 24, 0.65)" r={8.5} stroke="rgba(255,255,255,0.72)" strokeWidth={1.4} />
           <Circle cx={60} cy={60} fill="#D9F0FF" r={2.6} />
         </Svg>
       </View>
-      <Svg height={112} style={styles.compassFixedOverlay} viewBox="0 0 120 120" width={112}>
+      <Svg height={112} pointerEvents="none" style={styles.compassFixedOverlay} viewBox="0 0 120 120" width={112}>
         <Path d="M60 3 L68 16 H52 Z" fill="#F6FAFF" stroke="rgba(17,24,32,0.55)" strokeWidth={1} />
         <Line stroke="rgba(255,255,255,0.82)" strokeLinecap="round" strokeWidth={1.4} x1={60} x2={60} y1={16} y2={22} />
         <Path d="M28 38 C40 22, 67 17, 89 30" fill="none" stroke="rgba(255,255,255,0.24)" strokeLinecap="round" strokeWidth={3} />
       </Svg>
-      <View style={styles.compassReadout}>
+      <Pressable
+        accessibilityHint="点击自定义输入方位角"
+        accessibilityLabel={`当前方位角 ${normalizedAzimuth}度`}
+        accessibilityRole="button"
+        hitSlop={8}
+        onPress={onOpenInput}
+        style={({ pressed }) => [styles.compassReadout, pressed && styles.compassReadoutPressed]}
+        testID="deep-space-reference-compass-azimuth-btn"
+      >
         <Text testID="deep-space-reference-compass-azimuth" style={styles.compassAzimuthText}>
           {normalizedAzimuth}
           °
         </Text>
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -2506,6 +2841,79 @@ function TimeSliderHeader({
   );
 }
 
+const TIME_PLAYBACK_SPEEDS = [1, 10, 60, 600] as const;
+type TimePlaybackSpeed = (typeof TIME_PLAYBACK_SPEEDS)[number];
+
+function TimePlaybackControls({
+  isPlaying,
+  onSelectSpeed,
+  onTogglePlayback,
+  playbackSpeed,
+}: {
+  isPlaying: boolean;
+  onSelectSpeed: (speed: TimePlaybackSpeed) => void;
+  onTogglePlayback: () => void;
+  playbackSpeed: TimePlaybackSpeed;
+}) {
+  return (
+    <View style={styles.timePlaybackRow}>
+      <Pressable
+        accessibilityLabel={isPlaying ? '暂停时间预览' : '播放时间预览'}
+        accessibilityRole="button"
+        accessibilityState={{ selected: isPlaying }}
+        onPress={onTogglePlayback}
+        style={[styles.timePlaybackButton, isPlaying && styles.timePlaybackButtonActive]}
+        testID="deep-space-time-playback-toggle"
+      >
+        <Text style={[styles.timePlaybackButtonText, isPlaying && styles.timePlaybackButtonTextActive]}>
+          {isPlaying ? 'Ⅱ 暂停' : '▶ 播放'}
+        </Text>
+      </Pressable>
+      {TIME_PLAYBACK_SPEEDS.map(speed => (
+        <Pressable
+          accessibilityLabel={`${speed} 倍时间速度`}
+          accessibilityRole="button"
+          accessibilityState={{ selected: speed === playbackSpeed }}
+          key={speed}
+          onPress={() => onSelectSpeed(speed)}
+          style={[styles.timeSpeedButton, speed === playbackSpeed && styles.timeSpeedButtonActive]}
+          testID={`deep-space-time-speed-${speed}`}
+        >
+          <Text style={[styles.timeSpeedButtonText, speed === playbackSpeed && styles.timeSpeedButtonTextActive]}>{`${speed}×`}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function TimeHourControls({ onStepHour }: { onStepHour: (deltaHours: number) => void }) {
+  return (
+    <View style={styles.timeHourRow}>
+      <Pressable
+        accessibilityLabel="快退1小时"
+        accessibilityRole="button"
+        hitSlop={6}
+        onPress={() => onStepHour(-1)}
+        style={styles.timeHourBtn}
+        testID="deep-space-time-hour-prev"
+      >
+        <Text style={styles.timeHourBtnText}>‹ -1小时</Text>
+      </Pressable>
+      <Text style={styles.timeSliderHint}>左右拖动滑块模拟星空运转</Text>
+      <Pressable
+        accessibilityLabel="快进1小时"
+        accessibilityRole="button"
+        hitSlop={6}
+        onPress={() => onStepHour(1)}
+        style={styles.timeHourBtn}
+        testID="deep-space-time-hour-next"
+      >
+        <Text style={styles.timeHourBtnText}>+1小时 ›</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 function TimeSliderSheet({
   clock,
   insetsBottom,
@@ -2521,7 +2929,28 @@ function TimeSliderSheet({
   onReturnToNow: () => void;
   onUpdateTime: (date: Date) => void;
 }) {
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = React.useState<TimePlaybackSpeed>(1);
   const minutesOfDay = clock.getHours() * 60 + clock.getMinutes();
+
+  React.useEffect(() => {
+    if (!isPlaying) {
+      return undefined;
+    }
+
+    const interval = globalThis.setInterval(() => {
+      const next = new Date(clock);
+      next.setSeconds(next.getSeconds() + playbackSpeed);
+      onUpdateTime(next);
+    }, 1000);
+
+    return () => globalThis.clearInterval(interval);
+  }, [clock, isPlaying, onUpdateTime, playbackSpeed]);
+
+  const handleReturnToNow = () => {
+    setIsPlaying(false);
+    onReturnToNow();
+  };
 
   const handleStepDate = (deltaDays: number) => {
     const next = new Date(clock);
@@ -2549,35 +2978,18 @@ function TimeSliderSheet({
           clock={clock}
           isCustomTime={isCustomTime}
           onClose={onClose}
-          onReturnToNow={onReturnToNow}
+          onReturnToNow={handleReturnToNow}
           onStepDate={handleStepDate}
         />
 
-        <View style={styles.timeHourRow}>
-          <Pressable
-            accessibilityLabel="快退1小时"
-            accessibilityRole="button"
-            hitSlop={6}
-            onPress={() => handleStepHour(-1)}
-            style={styles.timeHourBtn}
-            testID="deep-space-time-hour-prev"
-          >
-            <Text style={styles.timeHourBtnText}>‹ -1小时</Text>
-          </Pressable>
+        <TimeHourControls onStepHour={handleStepHour} />
 
-          <Text style={styles.timeSliderHint}>左右拖动滑块模拟星空运转</Text>
-
-          <Pressable
-            accessibilityLabel="快进1小时"
-            accessibilityRole="button"
-            hitSlop={6}
-            onPress={() => handleStepHour(1)}
-            style={styles.timeHourBtn}
-            testID="deep-space-time-hour-next"
-          >
-            <Text style={styles.timeHourBtnText}>+1小时 ›</Text>
-          </Pressable>
-        </View>
+        <TimePlaybackControls
+          isPlaying={isPlaying}
+          onSelectSpeed={setPlaybackSpeed}
+          onTogglePlayback={() => setIsPlaying(value => !value)}
+          playbackSpeed={playbackSpeed}
+        />
 
         <TimeSliderTrack minutesOfDay={minutesOfDay} onMinutesChange={handleMinuteChange} />
 
@@ -2791,6 +3203,162 @@ function HistoryIcon({ active = false }: { active?: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  azimuthDialogCard: {
+    backgroundColor: OVERLAY.drawer,
+    borderColor: OVERLAY.hairline,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 22,
+    width: '84%',
+    maxWidth: 340,
+  },
+  azimuthInputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginBottom: 10,
+    marginTop: 6,
+  },
+  azimuthInput: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 12,
+    borderWidth: 1,
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '700',
+    height: 52,
+    minWidth: 120,
+    paddingHorizontal: 16,
+    textAlign: 'center',
+  },
+  azimuthInputError: {
+    borderColor: '#EF4444',
+  },
+  azimuthUnit: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 24,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  azimuthErrorText: {
+    color: '#F87171',
+    fontSize: 12,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  azimuthPresetRow: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 18,
+    marginTop: 4,
+  },
+  azimuthPresetPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  azimuthPresetPillActive: {
+    backgroundColor: 'rgba(74, 144, 226, 0.32)',
+    borderColor: '#60A5FA',
+  },
+  azimuthPresetText: {
+    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  azimuthPresetTextActive: {
+    color: '#FFFFFF',
+  },
+  timePlaybackButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minWidth: 68,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  timePlaybackButtonActive: {
+    backgroundColor: 'rgba(74, 144, 226, 0.32)',
+    borderColor: '#60A5FA',
+  },
+  timePlaybackButtonText: {
+    color: 'rgba(255, 255, 255, 0.68)',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  timePlaybackButtonTextActive: {
+    color: '#FFFFFF',
+  },
+  timePlaybackRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginBottom: 6,
+  },
+  timeSpeedButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.045)',
+    borderColor: 'rgba(255, 255, 255, 0.10)',
+    borderRadius: 10,
+    borderWidth: 1,
+    justifyContent: 'center',
+    minWidth: 36,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+  },
+  timeSpeedButtonActive: {
+    backgroundColor: 'rgba(74, 144, 226, 0.24)',
+    borderColor: '#60A5FA',
+  },
+  timeSpeedButtonText: {
+    color: 'rgba(255, 255, 255, 0.62)',
+    fontSize: 11,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '600',
+  },
+  timeSpeedButtonTextActive: {
+    color: '#BFDBFE',
+  },
+  searchRecentList: {
+    borderTopColor: OVERLAY.hairline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 14,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+  },
+  searchRecentName: {
+    color: OVERLAY.text,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  searchRecentRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    minHeight: 42,
+  },
+  searchRecentTitle: {
+    color: OVERLAY.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  searchRecentType: {
+    color: OVERLAY.muted,
+    fontSize: 13,
+    marginLeft: 12,
+  },
+
   root: {
     backgroundColor: '#05070B',
     flex: 1,
@@ -2831,7 +3399,7 @@ const styles = StyleSheet.create({
   },
   compassCenterWrapper: {
     alignItems: 'center',
-    height: 126,
+    height: 146,
     left: 0,
     position: 'absolute',
     right: 0,
@@ -3111,12 +3679,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(145, 0, 0, 0.48)',
   },
   compass: {
-    elevation: 8,
-    height: 126,
+    elevation: 4,
+    height: 146,
     shadowColor: '#000000',
-    shadowOffset: { height: 8, width: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
     width: 112,
   },
   compassRose: {
@@ -3134,15 +3702,19 @@ const styles = StyleSheet.create({
   compassReadout: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: 'rgba(6, 11, 17, 0.82)',
-    borderColor: 'rgba(126, 180, 232, 0.34)',
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(6, 12, 20, 0.65)',
+    borderColor: 'rgba(126, 180, 232, 0.40)',
+    borderRadius: 12,
+    borderWidth: 1,
     bottom: 0,
-    minWidth: 52,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    minWidth: 54,
+    paddingHorizontal: 9,
+    paddingVertical: 3.5,
     position: 'absolute',
+  },
+  compassReadoutPressed: {
+    backgroundColor: 'rgba(56, 132, 238, 0.42)',
+    borderColor: 'rgba(126, 180, 232, 0.85)',
   },
   compassAzimuthText: {
     color: '#D9F0FF',

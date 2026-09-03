@@ -52,6 +52,7 @@ export type StellariumCommand
     | { type: 'set_time'; isoTime: string }
     | { type: 'set_grid_lines' } & StellariumGridLines
     | { type: 'set_location'; latitudeDeg: number; longitudeDeg: number }
+    | { type: 'set_view_bearing'; azimuthDeg: number }
     | { type: 'set_fov_frame'; fovDeg: number; sensorW: number; sensorH: number }
     | { type: 'compute_tonight'; isoDate: string; latitudeDeg: number; longitudeDeg: number; requestId: number }
     | { type: 'compute_events'; isoStart: string; days: number; latitudeDeg: number; longitudeDeg: number; requestId: number };
@@ -123,6 +124,7 @@ export type StellariumBridge = {
   setTime: (date: Date) => void;
   setGridLines: (lines: StellariumGridLines) => void;
   setLocation: (latitudeDeg: number, longitudeDeg: number) => void;
+  setViewBearing: (azimuthDeg: number) => void;
   setFovFrame: (fovDeg: number, sensorW: number, sensorH: number) => void;
   computeTonight: (date: Date, observer: ObserverLocation) => Promise<TonightReport>;
   computeEvents: (start: Date, days: number, observer: ObserverLocation) => Promise<SkyEvent[]>;
@@ -252,6 +254,10 @@ function validate(command: StellariumCommand): string | undefined {
       if (!isFiniteNumber(command.longitudeDeg) || command.longitudeDeg < -180 || command.longitudeDeg > 180)
         return 'Longitude must be between -180 and 180 degrees.';
       break;
+    case 'set_view_bearing':
+      if (!isFiniteNumber(command.azimuthDeg) || command.azimuthDeg < 0 || command.azimuthDeg > 360)
+        return 'Azimuth must be between 0 and 360 degrees.';
+      break;
     case 'set_fov_frame':
       if (!isFiniteNumber(command.fovDeg) || command.fovDeg <= 0 || !isFiniteNumber(command.sensorW) || command.sensorW <= 0 || !isFiniteNumber(command.sensorH) || command.sensorH <= 0)
         return 'FOV frame values must be positive numbers.';
@@ -334,6 +340,7 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
     setLandscape: id => send({ type: 'set_landscape', id }),
     setEnvironment: patch => send({ type: 'set_environment', ...patch }),
     setLocation: (latitudeDeg, longitudeDeg) => send({ type: 'set_location', latitudeDeg, longitudeDeg }),
+    setViewBearing: azimuthDeg => send({ type: 'set_view_bearing', azimuthDeg }),
     setFovFrame: (fovDeg, sensorW, sensorH) => send({ type: 'set_fov_frame', fovDeg, sensorW, sensorH }),
     computeTonight: (date, observer) => request<TonightReport>(requestId => ({
       type: 'compute_tonight',

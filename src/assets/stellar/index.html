@@ -496,6 +496,13 @@
         if (!isFiniteNumber(fovDeg) || fovDeg <= 0 || fovDeg > 360) return reportError('Invalid FOV command.');
         stel.zoomTo(fovDeg * Math.PI / 180, message.duration ?? 0.3);
       }
+      function setViewBearing(message) {
+        const azimuthDeg = message.azimuthDeg;
+        if (!isFiniteNumber(azimuthDeg) || azimuthDeg < 0 || azimuthDeg > 360) return reportError('Invalid view bearing command.');
+        const forward = stel.convertFrame(stel.core.observer, 'VIEW', 'OBSERVED', [0, 0, -1, 0]);
+        const altitudeRad = stel.c2s(forward)[1];
+        stel.lookAt(stel.s2c(azimuthDeg * stel.D2R, altitudeRad), 0.1);
+      }
       function determineObjectType(cleanName, id, obj) {
         const planets = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'];
         if (cleanName === 'Sun') return { type: 'star', typeZh: '恒星' };
@@ -792,6 +799,7 @@
             if (payload) send({ type: 'events', requestId: message.requestId, payload });
             return;
           }
+          case 'set_view_bearing': return setViewBearing(message);
           case 'set_fov_frame':
             // The engine has no overlay-frame API; preserve the old command by setting its FOV.
             return zoomTo({ fovDeg: message.fovDeg ?? message.fov });

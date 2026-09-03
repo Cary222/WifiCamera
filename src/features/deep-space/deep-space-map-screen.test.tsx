@@ -34,9 +34,11 @@ const mockSetLocation = jest.fn();
 const mockSetSkyCulture = jest.fn();
 const mockSetSkyLayers = jest.fn();
 const mockSetTime = jest.fn();
+const mockSetViewBearing = jest.fn();
 const mockSetFovFrame = jest.fn();
 const mockToggleConstellations = jest.fn();
 const mockZoomTo = jest.fn();
+const mockShowDeepSpaceFeedback = jest.fn();
 let mockOnCommandError: (() => void) | undefined;
 let mockOnObjectSelected: ((object: unknown) => void) | undefined;
 let mockOnSelectionCleared: (() => void) | undefined;
@@ -53,6 +55,19 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ bottom: 0, left: 0, right: 0, top: 0 }),
 }));
 
+jest.mock('./ui/deep-space-feedback', () => ({
+  showDeepSpaceFeedback: (...args: unknown[]) => mockShowDeepSpaceFeedback(...args),
+}));
+
+jest.mock('expo-location', () => ({
+  PermissionStatus: {
+    DENIED: 'denied',
+    GRANTED: 'granted',
+  },
+  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
+  watchHeadingAsync: jest.fn(async () => ({ remove: jest.fn() })),
+}));
+
 jest.mock('@/components/ui', () => {
   const { Text } = require('react-native');
   return {
@@ -63,48 +78,70 @@ jest.mock('@/components/ui', () => {
 
 jest.mock('@/lib/i18n', () => ({
   getLanguage: () => 'zh',
-  translate: (key: string) => ({
-    'deep_space.calendar_error': '计算失败',
-    'deep_space.calendar_events': '活动',
-    'deep_space.calendar_loading': '正在计算…',
-    'deep_space.calendar_retry': '重试',
-    'deep_space.calendar_tonight': '今晚',
-    'deep_space.dawn_start': '天文晨光始',
-    'deep_space.dusk_end': '天文昏影终',
-    'deep_space.full_moon': '满月',
-    'deep_space.meteor_shower': '流星雨极大',
-    'deep_space.moon': '月',
-    'deep_space.moon_phase': '月相',
-    'deep_space.moonrise': '月出',
-    'deep_space.moonset': '月落',
-    'deep_space.no_events': '该时段没有天象事件',
-    'deep_space.no_planets': '今晚没有行星在地平线以上',
-    'deep_space.peak_altitude': '最高',
-    'deep_space.satellite_altitude': '高程',
-    'deep_space.satellite_error': '无法获取卫星轨道数据',
-    'deep_space.satellite_magnitude': '星等',
-    'deep_space.satellite_none': '今晚没有可见卫星经过',
-    'deep_space.satellite_passes': '有卫星经过',
-    'deep_space.satellite_retry': '重试',
-    'deep_space.satellite_time': '时间',
-    'deep_space.saturn': '土星',
-    'deep_space.solar_system': '太阳系',
-    'deep_space.sunrise': '日出',
-    'deep_space.sunset': '日落',
-    'deep_space.visible_tonight': '今晚可见',
-    'deep_space.waxing_gibbous': '盈凸月',
-    'deep_space.atmosphere': '大气',
-    'deep_space.constellation_art': '星座图',
-    'deep_space.constellations': '星座连线',
-    'deep_space.horizon': '地平线',
-    'deep_space.layers': '图层',
-    'deep_space.menu': '菜单',
-    'deep_space.return_to_now': '回到当前时间',
-    'deep_space.search': '搜索天体',
-    'deep_space.search_not_found': '未找到该天体，请改用标准名称或编号',
-    'deep_space.search_placeholder': '输入天体名称或编号',
-    'deep_space.time': '时间',
-  }[key] ?? key),
+  translate: (key: string, options?: Record<string, unknown>) => {
+    if (key === 'deep_space.compass_feedback_rotated' && options?.azimuth !== undefined) {
+      return `视角已转向 ${options.azimuth}°`;
+    }
+    return ({
+      'deep_space.calendar_error': '计算失败',
+      'deep_space.calendar_events': '活动',
+      'deep_space.calendar_loading': '正在计算…',
+      'deep_space.calendar_retry': '重试',
+      'deep_space.calendar_tonight': '今晚',
+      'deep_space.compass_azimuth_apply': '调整视角',
+      'deep_space.compass_azimuth_hint': '输入 0° ~ 360° 方位角调整星图朝向',
+      'deep_space.compass_azimuth_input_placeholder': '方位角 (0-360)',
+      'deep_space.compass_custom_azimuth': '设置视角方位角',
+      'deep_space.compass_permission_denied': '需要位置权限才能使用真实罗盘航向',
+      'deep_space.compass_preset_east': '90° 东',
+      'deep_space.compass_preset_north': '0° 北',
+      'deep_space.compass_preset_south': '180° 南',
+      'deep_space.compass_preset_west': '270° 西',
+      'deep_space.compass_start': '开启真实罗盘航向',
+      'deep_space.compass_started': '正在按真实罗盘航向跟随',
+      'deep_space.compass_stop': '停止罗盘航向跟随',
+      'deep_space.compass_stopped': '已停止罗盘航向跟随',
+      'deep_space.compass_unavailable': '当前设备无法提供罗盘航向',
+      'deep_space.dawn_start': '天文晨光始',
+      'deep_space.dusk_end': '天文昏影终',
+      'deep_space.feedback_labels_reset': '标签注记已重置',
+      'deep_space.feedback_returned_to_now': '已回到当前时间',
+      'deep_space.feedback_telescope_controls': '已打开望远镜控制，可检查连接后发送 GOTO',
+      'deep_space.full_moon': '满月',
+      'deep_space.meteor_shower': '流星雨极大',
+      'deep_space.moon': '月',
+      'deep_space.moon_phase': '月相',
+      'deep_space.moonrise': '月出',
+      'deep_space.moonset': '月落',
+      'deep_space.no_events': '该时段没有天象事件',
+      'deep_space.no_planets': '今晚没有行星在地平线以上',
+      'deep_space.peak_altitude': '最高',
+      'deep_space.satellite_altitude': '高程',
+      'deep_space.satellite_error': '无法获取卫星轨道数据',
+      'deep_space.satellite_magnitude': '星等',
+      'deep_space.satellite_none': '今晚没有可见卫星经过',
+      'deep_space.satellite_passes': '有卫星经过',
+      'deep_space.satellite_retry': '重试',
+      'deep_space.satellite_time': '时间',
+      'deep_space.saturn': '土星',
+      'deep_space.solar_system': '太阳系',
+      'deep_space.sunrise': '日出',
+      'deep_space.sunset': '日落',
+      'deep_space.visible_tonight': '今晚可见',
+      'deep_space.waxing_gibbous': '盈凸月',
+      'deep_space.atmosphere': '大气',
+      'deep_space.constellation_art': '星座图',
+      'deep_space.constellations': '星座连线',
+      'deep_space.horizon': '地平线',
+      'deep_space.layers': '图层',
+      'deep_space.menu': '菜单',
+      'deep_space.return_to_now': '回到当前时间',
+      'deep_space.search': '搜索天体',
+      'deep_space.search_not_found': '未找到该天体，请改用标准名称或编号',
+      'deep_space.search_placeholder': '输入天体名称或编号',
+      'deep_space.time': '时间',
+    } as Record<string, string>)[key] ?? key;
+  },
 }));
 
 jest.mock('@/features/deep-space/calendar/satellite-pass-service', () => ({
@@ -141,6 +178,7 @@ jest.mock('@/features/stellarium/stellarium-view', () => {
         setSkyCulture: mockSetSkyCulture,
         setSkyLayers: mockSetSkyLayers,
         setTime: mockSetTime,
+        setViewBearing: mockSetViewBearing,
         toggleConstellations: mockToggleConstellations,
         zoomTo: mockZoomTo,
       }));
@@ -167,10 +205,12 @@ afterEach(() => {
   mockSetSkyCulture.mockClear();
   mockSetSkyLayers.mockClear();
   mockSetTime.mockClear();
+  mockSetViewBearing.mockClear();
   mockSetFovFrame.mockClear();
   mockGotoRaDec.mockClear();
   mockToggleConstellations.mockClear();
   mockZoomTo.mockClear();
+  mockShowDeepSpaceFeedback.mockClear();
   mockOnBearingChange = undefined;
   mockOnCommandError = undefined;
   mockOnTargetFound = undefined;
@@ -560,6 +600,7 @@ describe('deep space labels detail sheet', () => {
       starHintsOffset: 0,
       starLabels: true,
     });
+    expect(mockShowDeepSpaceFeedback).toHaveBeenCalledWith({ message: '标签注记已重置', tone: 'success' });
   });
 
   it('resets grid lines from quick detail reset button', async () => {
@@ -637,9 +678,29 @@ describe('deep space interactive time control', () => {
 
     await user.press(screen.getByTestId('deep-space-time-now-button'));
     expect(mockSetTime).toHaveBeenCalled();
+    expect(mockShowDeepSpaceFeedback).toHaveBeenCalledWith({ message: '已回到当前时间', tone: 'success' });
 
     await user.press(screen.getByTestId('deep-space-time-close-button'));
     expect(screen.queryByTestId('deep-space-time-slider-sheet')).not.toBeOnTheScreen();
+  });
+
+  it('advances custom time at the selected preview speed while playback is active', () => {
+    jest.useFakeTimers();
+    try {
+      setup(<DeepSpaceMapScreen />);
+      fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+      fireEvent.press(screen.getByTestId('deep-space-time-speed-60'));
+      fireEvent.press(screen.getByTestId('deep-space-time-playback-toggle'));
+      const callsBeforeAdvance = mockSetTime.mock.calls.length;
+
+      act(() => jest.advanceTimersByTime(1000));
+
+      expect(mockSetTime).toHaveBeenCalledTimes(callsBeforeAdvance + 1);
+      expect(screen.getByTestId('deep-space-time-playback-toggle').props.accessibilityState.selected).toBe(true);
+    }
+    finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -705,6 +766,17 @@ describe('deep space observation tools and search', () => {
     await user.press(screen.getByTestId('deep-space-map-search-submit'));
     expect(mockSearchTarget).toHaveBeenLastCalledWith('M 42');
     act(() => mockOnTargetFound?.());
+    expect(screen.queryByTestId('deep-space-reference-search-sheet')).not.toBeOnTheScreen();
+  });
+
+  it('moves to a Stellarium-style RA/Dec coordinate query without name lookup', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    await user.type(screen.getByTestId('deep-space-map-search-input'), '6h45m7s 16d43m29s');
+    await user.press(screen.getByTestId('deep-space-map-search-submit'));
+
+    expect(mockGotoRaDec).toHaveBeenLastCalledWith(101.27916666666667, 16.72472222222222);
+    expect(mockSearchTarget).not.toHaveBeenCalled();
     expect(screen.queryByTestId('deep-space-reference-search-sheet')).not.toBeOnTheScreen();
   });
 
@@ -834,6 +906,17 @@ describe('deep space celestial object info integration', () => {
     expect(screen.getByText('Orion Nebula · M 42')).toBeOnTheScreen();
   });
 
+  it('surfaces a selected object in recent search and lets the user revisit it', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+    await user.press(await screen.findByTestId('deep-space-object-close-btn'));
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    await user.press(screen.getByTestId('deep-space-search-recent-NAME Great Orion Nebula'));
+
+    expect(mockSearchTarget).toHaveBeenLastCalledWith('Great Orion Nebula');
+  });
+
   it('locks onto target when center button in info sheet is tapped', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
 
@@ -841,6 +924,17 @@ describe('deep space celestial object info integration', () => {
     await user.press(await screen.findByTestId('deep-space-object-center-btn'));
 
     expect(mockPointAndLock).toHaveBeenCalledWith('NAME Great Orion Nebula');
+  });
+
+  it('opens telescope controls with a clear connection-status cue from object actions', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnObjectSelected?.(MOCK_TARGET));
+    await user.press(await screen.findByTestId('deep-space-object-goto-btn'));
+
+    expect(mockGotoRaDec).toHaveBeenLastCalledWith(5.58 * 15, -5.38);
+    expect(mockShowDeepSpaceFeedback).toHaveBeenCalledWith({ message: '已打开望远镜控制，可检查连接后发送 GOTO', tone: 'success' });
+    expect(screen.getByTestId('deep-space-tools-panel')).toBeOnTheScreen();
   });
 
   it('dismisses info sheet and clears engine selection on close button tap', async () => {
@@ -863,5 +957,49 @@ describe('deep space celestial object info integration', () => {
 
     act(() => mockOnSelectionCleared?.());
     expect(screen.queryByTestId('deep-space-object-info-sheet')).not.toBeOnTheScreen();
+  });
+});
+
+describe('deep space compass and azimuth controls', () => {
+  it('keeps top controls clean with only menu and search buttons', () => {
+    setup(<DeepSpaceMapScreen />);
+
+    expect(screen.getByTestId('deep-space-reference-menu')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-reference-search')).toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-compass-follow')).not.toBeOnTheScreen();
+  });
+
+  it('opens azimuth input dialog on tapping angle readout and rotates sky bearing', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    expect(screen.getByTestId('deep-space-reference-compass-azimuth-btn')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('deep-space-reference-compass-azimuth-btn'));
+
+    expect(screen.getByTestId('deep-space-azimuth-input-dialog')).toBeOnTheScreen();
+    await user.clear(screen.getByTestId('deep-space-azimuth-input'));
+    await user.type(screen.getByTestId('deep-space-azimuth-input'), '135');
+    await user.press(screen.getByTestId('deep-space-azimuth-confirm'));
+
+    expect(mockSetViewBearing).toHaveBeenCalledWith(135);
+    expect(mockShowDeepSpaceFeedback).toHaveBeenCalledWith({
+      message: '视角已转向 135°',
+      tone: 'success',
+    });
+    expect(screen.queryByTestId('deep-space-azimuth-input-dialog')).not.toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-reference-compass-azimuth')).toHaveTextContent('135°');
+  });
+
+  it('supports quick direction presets in azimuth dialog', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    await user.press(screen.getByTestId('deep-space-reference-compass-azimuth-btn'));
+    expect(screen.getByTestId('deep-space-azimuth-input-dialog')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-azimuth-preset-90'));
+    await user.press(screen.getByTestId('deep-space-azimuth-confirm'));
+
+    expect(mockSetViewBearing).toHaveBeenCalledWith(90);
+    expect(screen.queryByTestId('deep-space-azimuth-input-dialog')).not.toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-reference-compass-azimuth')).toHaveTextContent('90°');
   });
 });

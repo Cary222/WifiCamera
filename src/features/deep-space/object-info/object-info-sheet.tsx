@@ -3,6 +3,10 @@ import * as React from 'react';
 import { PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Mask, Path, Rect, Stop } from 'react-native-svg';
 import { Text } from '@/components/ui';
+import { isFavoriteSkyObject, toggleFavoriteSkyObject } from '@/features/deep-space/tools/favorite-sky-objects';
+import { translate } from '@/lib/i18n';
+import { storage } from '@/lib/storage';
+import { showDeepSpaceFeedback } from '../ui/deep-space-feedback';
 import {
   estimateConstellation,
   formatAltPrecision,
@@ -376,7 +380,7 @@ export function ObjectInfoSheet({
   onZoomOut,
 }: ObjectInfoSheetProps): React.ReactElement {
   const [page, setPage] = React.useState(0);
-  const [liked, setLiked] = React.useState(false);
+  const [liked, setLiked] = React.useState(() => isFavoriteSkyObject(storage, object.id));
 
   const handleNextPage = () => setPage(p => (p + 1) % 2);
   const handlePrevPage = () => setPage(p => (p - 1 + 2) % 2);
@@ -395,6 +399,24 @@ export function ObjectInfoSheet({
     }),
   ).current;
 
+  const handleCenter = () => {
+    onCenter(object);
+    showDeepSpaceFeedback({
+      message: translate('deep_space.feedback_object_centered', { name: object.name }),
+      tone: 'success',
+    });
+  };
+
+  const handleToggleLike = () => {
+    const isFavorite = !liked;
+    toggleFavoriteSkyObject(storage, object.id);
+    setLiked(isFavorite);
+    showDeepSpaceFeedback({
+      message: isFavorite ? `已收藏${object.name}` : `已取消收藏${object.name}`,
+      tone: 'success',
+    });
+  };
+
   return (
     <View pointerEvents="box-none" style={styles.overlay}>
       <View style={styles.card} testID="deep-space-object-info-sheet">
@@ -403,10 +425,10 @@ export function ObjectInfoSheet({
         <ObjectActionPills
           liked={liked}
           object={object}
-          onCenter={onCenter}
+          onCenter={handleCenter}
           onClose={onClose}
           onGoto={onGoto}
-          onToggleLike={() => setLiked(v => !v)}
+          onToggleLike={handleToggleLike}
           onZoomIn={onZoomIn}
         />
         <View style={styles.divider} />

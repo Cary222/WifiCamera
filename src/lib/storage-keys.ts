@@ -37,6 +37,10 @@ export const STORAGE_KEYS = {
   SATELLITE_VISUAL_OMM: 'SATELLITE_VISUAL_OMM',
   /** Unix milliseconds when the visual OMM cache was last refreshed. */
   SATELLITE_VISUAL_FETCHED_AT: 'SATELLITE_VISUAL_FETCHED_AT',
+  /** Recently selected sky objects, stored as a compact JSON list. */
+  DEEP_SPACE_RECENT_OBJECTS: 'DEEP_SPACE_RECENT_OBJECTS',
+  /** Favorite sky object identifiers, stored as a compact JSON list. */
+  DEEP_SPACE_FAVORITE_OBJECT_IDS: 'DEEP_SPACE_FAVORITE_OBJECT_IDS',
 } as const;
 
 /** Union of every key string. Useful for type-safe helpers. */

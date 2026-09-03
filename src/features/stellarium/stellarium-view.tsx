@@ -154,12 +154,6 @@ export function StellariumView({
         setBuiltInZoomControls={false}
         allowsBackForwardNavigationGestures={false}
         onLoadStart={beginLoading}
-        onLoad={markReady}
-        onLoadEnd={markReady}
-        onLoadProgress={({ nativeEvent }) => {
-          if (nativeEvent.progress >= 0.95)
-            markReady();
-        }}
         onMessage={onMessage}
         onError={() => {
           // Sky-culture tiles 404 on demand; only a failure before ready means the map is dead.

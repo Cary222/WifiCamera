@@ -95,6 +95,28 @@ describe('stellarium observer and grid bridge', () => {
     expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'set_time', isoTime: '2026-08-20T13:30:00.000Z' }));
   });
 
+  it('posts an absolute compass bearing for sensor-follow mode', () => {
+    const { bridge, postMessage } = createBridgeHarness();
+    bridge.setReady(true);
+
+    bridge.setViewBearing(123.45);
+
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'set_view_bearing', azimuthDeg: 123.45 }));
+  });
+
+  it('rejects a compass bearing outside its valid range', () => {
+    const onError = jest.fn();
+    const postMessage = jest.fn();
+    const webViewRef = { current: { postMessage } } as unknown as RefObject<WebView | null>;
+    const bridge = createStellariumBridge(webViewRef, { onError });
+    bridge.setReady(true);
+
+    bridge.setViewBearing(361);
+
+    expect(onError).toHaveBeenCalledWith('Azimuth must be between 0 and 360 degrees.');
+    expect(postMessage).not.toHaveBeenCalled();
+  });
+
   it('posts grid line toggles from the observation tools', () => {
     const { bridge, postMessage } = createBridgeHarness();
     bridge.setReady(true);
