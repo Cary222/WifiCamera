@@ -2,8 +2,10 @@
 
 import type { MediaStream } from 'react-native-webrtc';
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { NativeModules, Platform, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { NativeModules, Platform, Pressable, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { Text } from '@/components/ui';
 import { appLogger } from '@/lib/app-logger';
 import { translate } from '@/lib/i18n';
@@ -187,13 +189,31 @@ export type PreviewSurfaceProps = {
   previewState: CameraPreviewState;
   width: number;
   height: number;
+  objectFit?: 'cover' | 'contain';
+  rotation?: number;
+  scale?: number;
+  pinchZoomable?: boolean;
 };
 
 /**
  * Web surface: browsers have no RTCView, so the MediaStream is attached to a
  * plain <video> element. Never rendered on native.
  */
-const WebVideoSurface = memo(({ stream }: { stream: MediaStream | null }) => {
+const WebVideoSurface = memo(({
+  stream,
+  width = '100%',
+  height = '100%',
+  objectFit = 'cover',
+  rotation = 0,
+  scale = 1,
+}: {
+  stream: MediaStream | null;
+  width?: number | string;
+  height?: number | string;
+  objectFit?: 'cover' | 'contain';
+  rotation?: number;
+  scale?: number;
+}) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const attachVideo = useCallback(
@@ -237,6 +257,11 @@ const WebVideoSurface = memo(({ stream }: { stream: MediaStream | null }) => {
     };
   }, [stream]);
 
+  const transformStyle = [
+    rotation ? `rotate(${rotation}deg)` : '',
+    scale !== 1 ? `scale(${scale})` : '',
+  ].filter(Boolean).join(' ') || undefined;
+
   return (
     <video
       ref={attachVideo}
@@ -244,9 +269,10 @@ const WebVideoSurface = memo(({ stream }: { stream: MediaStream | null }) => {
       playsInline
       muted
       style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
+        width,
+        height,
+        objectFit,
+        transform: transformStyle,
         background: '#0B0B0D',
       }}
     />
@@ -255,34 +281,152 @@ const WebVideoSurface = memo(({ stream }: { stream: MediaStream | null }) => {
 WebVideoSurface.displayName = 'WebVideoSurface';
 
 export const PreviewSurface = memo(
-  ({ stream, previewState, width, height }: PreviewSurfaceProps) => {
-    if (Platform.OS === 'web') {
-      return <WebVideoSurface stream={stream} />;
-    }
+  ({
+    stream,
+    previewState,
+    width,
+    height,
+    objectFit = 'cover',
+    rotation = 0,
+    scale = 1,
+    pinchZoomable = true,
+  }: PreviewSurfaceProps) => {
+    const pinchScale = useSharedValue(1);
+    const savedScale = useSharedValue(1);
+    const [zoomText, setZoomText] = useState('1.0x');
+    const [isZoomed, setIsZoomed] = useState(false);
+
+    const updateZoomState = useCallback((val: number) => {
+      setZoomText(`${val.toFixed(1)}x`);
+      setIsZoomed(val > 1.02);
+    }, []);
+
+    useAnimatedReaction(
+      () => Math.round(pinchScale.value * 10) / 10,
+      (current, previous) => {
+        if (current !== previous) {
+          runOnJS(updateZoomState)(current);
+        }
+      },
+      [pinchScale, updateZoomState],
+    );
+
+    const handleResetZoom = useCallback(() => {
+      pinchScale.value = withTiming(1, { duration: 180 });
+      savedScale.value = 1;
+    }, [pinchScale, savedScale]);
+    const pinchGesture = useMemo(() => {
+      if (!pinchZoomable)
+        return null;
+      return Gesture.Pinch()
+        .onUpdate((event) => {
+          pinchScale.value = Math.min(Math.max(savedScale.value * event.scale, 1), 5);
+        })
+        .onEnd(() => {
+          if (pinchScale.value < 1) {
+            pinchScale.value = withSpring(1);
+            savedScale.value = 1;
+          }
+          else {
+            savedScale.value = pinchScale.value;
+          }
+        });
+    }, [pinchZoomable, pinchScale, savedScale]);
+
+    const doubleTapGesture = useMemo(() => {
+      if (!pinchZoomable)
+        return null;
+      return Gesture.Tap()
+        .numberOfTaps(2)
+        .onEnd(() => {
+          pinchScale.value = withTiming(1, { duration: 180 });
+          savedScale.value = 1;
+        });
+    }, [pinchZoomable, pinchScale, savedScale]);
+
+    const composedGesture = useMemo(() => {
+      if (!pinchGesture || !doubleTapGesture)
+        return null;
+      return Gesture.Simultaneous(pinchGesture, doubleTapGesture);
+    }, [pinchGesture, doubleTapGesture]);
+
+    const animatedSurfaceStyle = useAnimatedStyle(() => {
+      const totalScale = scale * pinchScale.value;
+      return {
+        transform: [
+          ...(rotation ? [{ rotate: `${rotation}deg` }] : []),
+          ...(totalScale !== 1 ? [{ scale: totalScale }] : []),
+        ],
+      };
+    });
+
     const hasTracks
       = stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
-    if (stream && hasTracks && NativeWebRTC) {
+
+    const renderSurface = () => {
+      if (Platform.OS === 'web') {
+        return (
+          <WebVideoSurface
+            stream={stream}
+            width={width}
+            height={height}
+            objectFit={objectFit}
+          />
+        );
+      }
+      if (stream && hasTracks && NativeWebRTC) {
+        return (
+          <RTCView
+            streamURL={stream.toURL()}
+            objectFit={objectFit}
+            mirror={false}
+            style={{ width, height }}
+          />
+        );
+      }
       return (
-        <RTCView
-          streamURL={stream.toURL()}
-          objectFit="cover"
-          mirror={false}
+        <View
+          className="flex-1 items-center justify-center bg-[#0B0B0D]"
           style={{ width, height }}
-        />
+        >
+          <Text className="text-sm text-white/40">
+            {previewState === 'error'
+              ? translate('landscape.preview_failed')
+              : translate('landscape.preview_connecting')}
+          </Text>
+        </View>
       );
-    }
-    return (
-      <View
-        className="flex-1 items-center justify-center bg-[#0B0B0D]"
-        style={{ width, height }}
-      >
-        <Text className="text-sm text-white/40">
-          {previewState === 'error'
-            ? translate('landscape.preview_failed')
-            : translate('landscape.preview_connecting')}
-        </Text>
+    };
+
+    const surfaceContent = (
+      <View style={{ width, height }} className="overflow-hidden">
+        <Animated.View style={[{ width, height }, animatedSurfaceStyle]}>
+          {renderSurface()}
+        </Animated.View>
+        {isZoomed && (
+          <View pointerEvents="box-none" className="absolute inset-x-0 bottom-4 items-center">
+            <Pressable
+              onPress={handleResetZoom}
+              className="flex-row items-center rounded-full bg-black/75 px-3 py-1 active:opacity-70"
+            >
+              <Text className="text-xs font-semibold text-white">
+                {zoomText}
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     );
+
+    if (composedGesture) {
+      return (
+        <GestureDetector gesture={composedGesture}>
+          {surfaceContent}
+        </GestureDetector>
+      );
+    }
+
+    return surfaceContent;
   },
 );
 PreviewSurface.displayName = 'PreviewSurface';
@@ -291,16 +435,35 @@ PreviewSurface.displayName = 'PreviewSurface';
  * Keeps the existing preview-area layout intact and replaces only its
  * placeholder content with the board's native WebRTC stream.
  */
-export function NativeCameraPreview() {
+export function NativeCameraPreview({
+  objectFit = 'cover',
+  rotation = 0,
+  scale = 1,
+}: {
+  objectFit?: 'cover' | 'contain';
+  rotation?: number;
+  scale?: number;
+} = {}) {
   const { previewState, stream } = useLandscapeCameraPreview();
   const hasTracks
     = stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
+
+  const transformStyle = useMemo(() => {
+    const transforms: Array<{ rotate?: string } | { scale?: number }> = [];
+    if (rotation) {
+      transforms.push({ rotate: `${rotation}deg` });
+    }
+    if (scale !== 1) {
+      transforms.push({ scale });
+    }
+    return transforms.length > 0 ? transforms : undefined;
+  }, [rotation, scale]);
 
   return (
     <View className="flex-1 overflow-hidden rounded-2xl bg-neutral-900">
       {Platform.OS === 'web'
         ? (
-            <WebVideoSurface stream={stream} />
+            <WebVideoSurface stream={stream} objectFit={objectFit} rotation={rotation} scale={scale} />
           )
         : (
             stream
@@ -308,9 +471,12 @@ export function NativeCameraPreview() {
             && NativeWebRTC && (
               <RTCView
                 streamURL={stream.toURL()}
-                objectFit="cover"
+                objectFit={objectFit}
                 mirror={false}
-                style={{ flex: 1 }}
+                style={[
+                  { flex: 1 },
+                  transformStyle ? { transform: transformStyle } : undefined,
+                ]}
               />
             )
           )}
