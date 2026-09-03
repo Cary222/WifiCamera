@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
 import {
   parseAdbDevices,
@@ -41,11 +42,12 @@ describe('MuMu App MCP device resolution', () => {
 });
 
 describe('MuMu App MCP project path boundaries', () => {
-  const root = 'D:/app/WifiCamera';
+  const root = process.platform === 'win32' ? 'D:/app/WifiCamera' : '/app/WifiCamera';
 
   it('allows APK and screenshot files inside the project root', () => {
+    const expected = path.resolve(root, 'android/app/build/outputs/apk/release/app-release.apk');
     expect(resolveProjectPath(root, 'android/app/build/outputs/apk/release/app-release.apk'))
-      .toBe('D:/app/WifiCamera/android/app/build/outputs/apk/release/app-release.apk');
+      .toBe(expected);
   });
 
   it('rejects a path that escapes the project root', () => {

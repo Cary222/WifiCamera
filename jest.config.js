@@ -1,5 +1,7 @@
 module.exports = {
   preset: 'jest-expo',
+  maxWorkers: 2,
+  forceExit: true,
   setupFilesAfterEnv: ['<rootDir>/jest-setup.ts'],
   testMatch: ['**/?(*.)+(spec|test).ts?(x)'],
   collectCoverageFrom: [

@@ -16,10 +16,22 @@ export type AspectRatioAnimationResult = {
   topBarStyle: ReturnType<typeof useAnimatedStyle>;
   /** Current preview height */
   previewHeight: number;
+  /** Current preview width */
+  previewWidth: number;
   /** Current preview top position */
   previewTop: number;
-  /** Maximum surface height (for 16:9) */
+  /** Current preview left position */
+  previewLeft: number;
+  /** Height to render inside the video surface (RTCView) */
   surfaceHeight: number;
+  /** Width to render inside the video surface (RTCView) */
+  surfaceWidth: number;
+  /** Video rotation in degrees (90 in portrait for 16:9->9:16 / 4:3->3:4, 0 in landscape) */
+  rotation: number;
+  /** Video proportional scale factor to eliminate letterbox/pillarbox */
+  scale: number;
+  /** Whether the device is currently in portrait orientation */
+  isPortrait: boolean;
 };
 
 /**
@@ -36,34 +48,101 @@ export function useAspectRatioAnimation(
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-  const ratioValue = ratio === '4:3' ? 0.75 : RATIO_16_9;
-  const previewHeight = Math.min(screenHeight, screenWidth / ratioValue);
-  const spareHeight = Math.max(0, screenHeight - previewHeight);
-  const topShare = ratio === '4:3' ? PREVIEW_TOP_SPARE_SHARE_4_3 : PREVIEW_TOP_SPARE_SHARE_16_9;
-  const previewTop = Math.max(Math.min(insets.top, spareHeight), Math.round(spareHeight * topShare));
-  const surfaceHeight = Math.min(screenHeight, screenWidth / RATIO_16_9);
+  const isPortrait = screenHeight >= screenWidth;
+
+  let previewWidth: number;
+  let previewHeight: number;
+  let previewTop: number;
+  let previewLeft: number;
+  let surfaceWidth: number;
+  let surfaceHeight: number;
+  let rotation: number;
+  let scale: number;
+
+  if (isPortrait) {
+    // In portrait orientation:
+    // 16:9 ratio inverts to 9:16; 4:3 ratio inverts to 3:4 to fill the vertical screen.
+    // Stream from board is 16:9 (or 4:3) horizontal. Rotating 90deg maps it to 9:16 (or 3:4).
+    rotation = 90;
+    scale = 1;
+    const verticalRatio = ratio === '4:3' ? 3 / 4 : RATIO_16_9;
+    previewWidth = screenWidth;
+    previewHeight = Math.min(screenHeight, Math.round(previewWidth / verticalRatio));
+    previewLeft = 0;
+
+    const spareHeight = Math.max(0, screenHeight - previewHeight);
+    const topShare = ratio === '4:3' ? PREVIEW_TOP_SPARE_SHARE_4_3 : PREVIEW_TOP_SPARE_SHARE_16_9;
+    previewTop = Math.max(insets.top, Math.round(spareHeight * topShare));
+
+    // Keep the video surface at its maximum size (16:9 rotated) so switching ratio
+    // NEVER resizes the underlying RTCView (resizing mid-animation stutters/flashes the stream).
+    surfaceWidth = Math.min(screenHeight, Math.round(screenWidth / RATIO_16_9));
+    surfaceHeight = screenWidth;
+  }
+  else {
+    // In landscape orientation:
+    // 16:9 and 4:3 are displayed horizontally without rotation.
+    rotation = 0;
+    scale = 1;
+    const horizontalRatio = ratio === '4:3' ? 4 / 3 : 16 / 9;
+    previewHeight = Math.min(screenHeight, Math.round(screenWidth / horizontalRatio));
+    previewWidth = Math.round(previewHeight * horizontalRatio);
+    if (previewWidth > screenWidth) {
+      previewWidth = screenWidth;
+      previewHeight = Math.round(previewWidth / horizontalRatio);
+    }
+
+    const spareHeight = Math.max(0, screenHeight - previewHeight);
+    previewTop = Math.max(insets.top, Math.round(spareHeight / 2));
+    previewLeft = Math.max(0, Math.round((screenWidth - previewWidth) / 2));
+
+    surfaceWidth = screenWidth;
+    surfaceHeight = Math.min(screenHeight, Math.round(screenWidth * RATIO_16_9));
+  }
 
   const animatedPreviewHeight = useSharedValue(previewHeight);
+  const animatedPreviewWidth = useSharedValue(previewWidth);
   const animatedPreviewTop = useSharedValue(previewTop);
+  const animatedPreviewLeft = useSharedValue(previewLeft);
 
   useEffect(() => {
     animatedPreviewHeight.value = withTiming(previewHeight, { duration: animationDuration });
+    animatedPreviewWidth.value = withTiming(previewWidth, { duration: animationDuration });
     animatedPreviewTop.value = withTiming(previewTop, { duration: animationDuration });
-  }, [animatedPreviewHeight, animatedPreviewTop, previewHeight, previewTop, animationDuration]);
+    animatedPreviewLeft.value = withTiming(previewLeft, { duration: animationDuration });
+  }, [
+    animatedPreviewHeight,
+    animatedPreviewWidth,
+    animatedPreviewTop,
+    animatedPreviewLeft,
+    previewHeight,
+    previewWidth,
+    previewTop,
+    previewLeft,
+    animationDuration,
+  ]);
 
   const previewStyle = useAnimatedStyle(() => ({
     top: animatedPreviewTop.value,
+    left: animatedPreviewLeft.value,
+    width: animatedPreviewWidth.value,
     height: animatedPreviewHeight.value,
   }));
 
-  const topBarStyle = useAnimatedStyle(() => ({ top: animatedPreviewTop.value + topBarOffset }));
+  const topBarStyle = useAnimatedStyle(() => ({ top: insets.top + topBarOffset }));
 
   return {
     previewStyle,
     topBarStyle,
     previewHeight,
+    previewWidth,
     previewTop,
+    previewLeft,
     surfaceHeight,
+    surfaceWidth,
+    rotation,
+    scale,
+    isPortrait,
   };
 }
 

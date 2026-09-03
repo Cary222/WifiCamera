@@ -140,7 +140,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const stopLandscapeRecording = useCameraStore.use.stopLandscapeRecording();
 
   // Use the shared aspect ratio animation hook
-  const { previewStyle, topBarStyle, surfaceHeight } = useAspectRatioAnimation(ratio, 220, 12);
+  const { previewStyle, topBarStyle, surfaceHeight, surfaceWidth, rotation, scale } = useAspectRatioAnimation(ratio, 220, 12);
 
   const shutterSize = Math.round(screenWidth * SHUTTER_SIZE_RATIO);
   const shutterBorder = Math.max(3, Math.round(shutterSize * SHUTTER_BORDER_RATIO));
@@ -232,22 +232,24 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   return (
     <View className="flex-1" style={{ backgroundColor: '#000' }}>
       <Animated.View
-        className="absolute left-0 items-center justify-center overflow-hidden bg-black"
-        style={[{ width: screenWidth }, previewStyle as any]}
+        className="absolute items-center justify-center overflow-hidden bg-black"
+        style={previewStyle as any}
       >
         <PreviewSurface
           stream={stream}
           previewState={previewState}
-          width={screenWidth}
+          width={surfaceWidth}
           height={surfaceHeight}
+          rotation={rotation}
+          scale={scale}
+          objectFit="cover"
         />
+        {watermark && (
+          <View className="absolute top-4 left-5">
+            <Text className="text-base font-semibold text-white/85">SVBONY</Text>
+          </View>
+        )}
       </Animated.View>
-
-      {watermark && (
-        <View className="absolute left-5" style={{ top: insets.top + 96 }}>
-          <Text className="text-base font-semibold text-white/85">SVBONY</Text>
-        </View>
-      )}
 
       <CameraTopBar
         title={translate('landscape.title')}

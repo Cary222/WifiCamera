@@ -130,7 +130,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   }, [landscapeRatio, setLandscapeSensorRatio]);
 
   // Use the shared aspect ratio animation hook
-  const { previewStyle, surfaceHeight, previewTop } = useAspectRatioAnimation(nebulaRatio, 220, 12);
+  const { previewStyle, surfaceHeight, surfaceWidth, previewTop, rotation, scale } = useAspectRatioAnimation(nebulaRatio, 220, 12);
 
   const shutterSize = Math.round(width * SHUTTER_SIZE_RATIO);
   const shutterBorder = Math.max(3, Math.round(shutterSize * SHUTTER_BORDER_RATIO));
@@ -198,14 +198,17 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   return (
     <View className="flex-1 bg-black">
       <Animated.View
-        className="absolute right-0 left-0 overflow-hidden bg-black"
-        style={[previewStyle as any, { width }]}
+        className="absolute items-center justify-center overflow-hidden bg-black"
+        style={previewStyle as any}
       >
         <PreviewSurface
           stream={stream}
           previewState={previewState}
-          width={width}
+          width={surfaceWidth}
           height={surfaceHeight}
+          rotation={rotation}
+          scale={scale}
+          objectFit="cover"
         />
 
         <CameraTopBar
