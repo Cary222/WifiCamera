@@ -764,6 +764,13 @@
             forceRender();
             return;
           }
+          case 'set_magnitude_limit': {
+            if (typeof message.magnitude !== 'number' || message.magnitude < 3.5 || message.magnitude > 99)
+              return reportError('Invalid magnitude limit.');
+            setModuleFlag(stel.core, 'display_limit_mag', message.magnitude);
+            forceRender();
+            return;
+          }
           case 'set_grid_lines': {
             for (const line of ['azimuthal', 'meridian', 'equatorial_jnow']) {
               if (typeof message[line] !== 'boolean') continue;

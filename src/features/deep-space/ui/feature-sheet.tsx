@@ -9,8 +9,10 @@ import { featureSheetStyles } from './feature-sheet-styles';
 
 type FeatureSheetProps = {
   children: React.ReactNode;
+  fullScreen?: boolean;
   headerLeft?: React.ReactNode;
   onClose: () => void;
+  placement?: 'bottom' | 'top';
   scrollTestID?: string;
   scrollable?: boolean;
   testID: string;
@@ -25,17 +27,19 @@ type FeatureSheetProps = {
  */
 export function FeatureSheet({
   children,
+  fullScreen = false,
   headerLeft,
   onClose,
+  placement = 'bottom',
   scrollTestID,
   scrollable = false,
   testID,
   title,
 }: FeatureSheetProps): React.ReactElement {
   return (
-    <View pointerEvents="box-none" style={featureSheetStyles.featureOverlay}>
-      <Pressable accessibilityLabel={title} accessibilityRole="button" onPress={onClose} style={featureSheetStyles.sheetTopScrim} />
-      <View style={[featureSheetStyles.featureSheet, scrollable && featureSheetStyles.featureSheetTall]} testID={testID}>
+    <View pointerEvents="box-none" style={[featureSheetStyles.featureOverlay, placement === 'top' && featureSheetStyles.featureOverlayTop]}>
+      <Pressable accessibilityLabel={title} accessibilityRole="button" onPress={onClose} style={[featureSheetStyles.sheetTopScrim, placement === 'top' && featureSheetStyles.sheetTopScrimTransparent]} />
+      <View style={[featureSheetStyles.featureSheet, scrollable && featureSheetStyles.featureSheetTall, fullScreen && featureSheetStyles.featureSheetFullScreen, placement === 'top' && featureSheetStyles.featureSheetTop]} testID={testID}>
         <View style={featureSheetStyles.featureHeader}>
           {headerLeft}
           <Text style={featureSheetStyles.featureTitle}>{title}</Text>

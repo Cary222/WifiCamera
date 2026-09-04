@@ -50,6 +50,7 @@ export type StellariumCommand
     | { type: 'set_environment' } & StellariumEnvironment
     | { type: 'set_sky_culture'; id: string; target?: string }
     | { type: 'set_time'; isoTime: string }
+    | { type: 'set_magnitude_limit'; magnitude: number }
     | { type: 'set_grid_lines' } & StellariumGridLines
     | { type: 'set_location'; latitudeDeg: number; longitudeDeg: number }
     | { type: 'set_view_bearing'; azimuthDeg: number }
@@ -122,6 +123,7 @@ export type StellariumBridge = {
   setEnvironment: (patch: StellariumEnvironment) => void;
   setSkyCulture: (id: string, target?: string) => void;
   setTime: (date: Date) => void;
+  setMagnitudeLimit: (magnitude: number) => void;
   setGridLines: (lines: StellariumGridLines) => void;
   setLocation: (latitudeDeg: number, longitudeDeg: number) => void;
   setViewBearing: (azimuthDeg: number) => void;
@@ -167,6 +169,11 @@ function validateEnvironment(command: Extract<StellariumCommand, { type: 'set_en
       || command.landscapeTint.some(value => !isFiniteNumber(value) || value < 0 || value > 1))) {
     return 'Landscape tint must be four values between 0 and 1.';
   }
+}
+
+function validateMagnitudeLimit(magnitude: number): string | undefined {
+  if (!isFiniteNumber(magnitude) || magnitude < 3.5 || magnitude > 99)
+    return 'Magnitude limit must be between 3.5 and 99.';
 }
 
 function validate(command: StellariumCommand): string | undefined {
@@ -236,6 +243,8 @@ function validate(command: StellariumCommand): string | undefined {
       if (typeof command.isoTime !== 'string' || Number.isNaN(Date.parse(command.isoTime)))
         return 'Time must be a valid ISO timestamp.';
       break;
+    case 'set_magnitude_limit':
+      return validateMagnitudeLimit(command.magnitude);
     case 'set_grid_lines':
       if ([
         command.azimuthal,
@@ -336,6 +345,7 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
     setSkyLayers: layers => send({ type: 'set_sky_layers', ...layers }),
     setSkyCulture: (id, target) => send({ type: 'set_sky_culture', id, ...(target ? { target } : {}) }),
     setTime: date => send({ type: 'set_time', isoTime: date.toISOString() }),
+    setMagnitudeLimit: magnitude => send({ type: 'set_magnitude_limit', magnitude }),
     setGridLines: lines => send({ type: 'set_grid_lines', ...lines }),
     setLandscape: id => send({ type: 'set_landscape', id }),
     setEnvironment: patch => send({ type: 'set_environment', ...patch }),

@@ -27,6 +27,9 @@ export const featureSheetStyles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
   },
+  featureOverlayTop: {
+    justifyContent: 'flex-start',
+  },
   featureRow: {
     alignItems: 'center',
     borderBottomColor: OVERLAY.hairline,
@@ -66,6 +69,18 @@ export const featureSheetStyles = StyleSheet.create({
   featureSheetTall: {
     maxHeight: '82%',
   },
+  featureSheetTop: {
+    alignSelf: 'stretch',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingBottom: 0,
+  },
+  featureSheetFullScreen: {
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    height: '100%',
+    paddingBottom: 0,
+  },
   featureTitle: {
     color: OVERLAY.text,
     flex: 1,
@@ -76,5 +91,8 @@ export const featureSheetStyles = StyleSheet.create({
   sheetTopScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  sheetTopScrimTransparent: {
+    backgroundColor: 'transparent',
   },
 });

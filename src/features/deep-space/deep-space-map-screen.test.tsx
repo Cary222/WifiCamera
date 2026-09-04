@@ -22,6 +22,10 @@ const EVENTS_FIXTURE = [
 
 const mockComputeEvents = jest.fn(async () => EVENTS_FIXTURE);
 const mockComputeTonight = jest.fn(async () => TONIGHT_FIXTURE);
+const mockGetCurrentPosition = jest.fn(async (_options?: unknown) => ({ coords: { latitude: 39.9, longitude: 116.41 } }));
+const mockRequestLocationPermission = jest.fn(async () => ({ status: 'granted' }));
+const mockWatchHeading = jest.fn(async (_callback?: unknown) => ({ remove: jest.fn() }));
+const mockWatchPosition = jest.fn(async (_options?: unknown, _callback?: unknown) => ({ remove: jest.fn() }));
 const mockClearSelection = jest.fn();
 const mockGotoRaDec = jest.fn();
 const mockPointAndLock = jest.fn();
@@ -60,12 +64,15 @@ jest.mock('./ui/deep-space-feedback', () => ({
 }));
 
 jest.mock('expo-location', () => ({
+  Accuracy: { Balanced: 3 },
   PermissionStatus: {
     DENIED: 'denied',
     GRANTED: 'granted',
   },
-  requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted' })),
-  watchHeadingAsync: jest.fn(async () => ({ remove: jest.fn() })),
+  getCurrentPositionAsync: (options: unknown) => mockGetCurrentPosition(options),
+  requestForegroundPermissionsAsync: () => mockRequestLocationPermission(),
+  watchHeadingAsync: (callback: unknown) => mockWatchHeading(callback),
+  watchPositionAsync: (options: unknown, callback: unknown) => mockWatchPosition(options, callback),
 }));
 
 jest.mock('@/components/ui', () => {
@@ -197,6 +204,8 @@ afterEach(() => {
   cleanup();
   mockComputeEvents.mockClear();
   mockComputeTonight.mockClear();
+  mockRequestLocationPermission.mockClear();
+  mockWatchHeading.mockClear();
   mockReload.mockClear();
   mockSearchTarget.mockClear();
   mockSetEnvironment.mockClear();
@@ -270,15 +279,13 @@ describe('deep space map screen', () => {
     expect(screen.getByTestId('deep-space-reference-drawer')).toBeOnTheScreen();
   });
 
-  it('lists only the four working drawer entries', async () => {
+  it('matches the complete official drawer entry set', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-menu'));
-    expect(screen.getByText('星空述语')).toBeOnTheScreen();
-    expect(screen.getByText('日历')).toBeOnTheScreen();
-    expect(screen.getByText('观测工具')).toBeOnTheScreen();
-    expect(screen.getByText('设置')).toBeOnTheScreen();
-    expect(screen.queryByText('帮助与反馈')).not.toBeOnTheScreen();
-    expect(screen.queryByText('退出')).not.toBeOnTheScreen();
+
+    for (const label of ['星空述语', '日历', '观测工具', '设置', '帮助与反馈', '退出']) {
+      expect(screen.getByText(label)).toBeOnTheScreen();
+    }
   });
 
   it('closes the drawer from the header close control', async () => {
@@ -297,6 +304,8 @@ describe('deep space glossary feature', () => {
     expect(screen.getByTestId('deep-space-glossary-panel')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-glossary-item-egyptian')).toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-glossary-item-arabic_ancient')).toBeOnTheScreen();
+    expect(screen.getByText('中国')).toBeOnTheScreen();
+    expect(screen.getByText('阿拉伯语（古）')).toBeOnTheScreen();
     expect(screen.queryByText('中东')).not.toBeOnTheScreen();
     expect(screen.queryByText('❖')).not.toBeOnTheScreen();
   });
@@ -356,6 +365,86 @@ describe('deep space glossary feature', () => {
 });
 
 describe('deep space calendar, tools and settings features', () => {
+  it('opens the official settings root before selecting a location', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+
+    expect(screen.getByTestId('deep-space-settings-panel')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-settings-panel')).toHaveStyle({ alignSelf: 'stretch' });
+    for (const label of ['传感器', '所在位置', '高级的', '重置设置']) {
+      expect(screen.getByText(label)).toBeOnTheScreen();
+    }
+    expect(screen.queryByTestId('deep-space-settings-location-上海')).not.toBeOnTheScreen();
+  });
+
+  it('connects the settings sensor control to real heading updates', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-sensor-toggle'));
+
+    expect(mockRequestLocationPermission).toHaveBeenCalledTimes(1);
+    expect(mockWatchHeading).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses automatic location from the official settings location page', async () => {
+    mockGetCurrentPosition.mockResolvedValueOnce({ coords: { latitude: 34.2, longitude: 108.94 } });
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-location-entry'));
+
+    expect(screen.getByText('使用自动定位')).toBeOnTheScreen();
+    expect(screen.getByText('纬度')).toBeOnTheScreen();
+    expect(screen.getByText('经度')).toBeOnTheScreen();
+    expect(screen.getByText('地名/城市:')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('deep-space-settings-auto-location-toggle'));
+
+    expect(mockGetCurrentPosition).toHaveBeenCalledWith({ accuracy: 3 });
+    expect(mockWatchPosition).toHaveBeenCalledWith({ accuracy: 3 }, expect.any(Function));
+    expect(mockSetLocation).toHaveBeenLastCalledWith(34.2, 108.94);
+  });
+
+  it('navigates to the official advanced settings subpage and back', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-advanced-entry'));
+
+    expect(screen.getByTestId('deep-space-settings-advanced-panel')).toBeOnTheScreen();
+    expect(screen.getByText('开始时间')).toBeOnTheScreen();
+    expect(screen.getByText('全屏')).toBeOnTheScreen();
+    expect(screen.getByText('限制星等')).toBeOnTheScreen();
+    expect(screen.getByText('亮度')).toBeOnTheScreen();
+    expect(screen.getByText('1.00')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-settings-advanced-back'));
+    expect(screen.getByTestId('deep-space-settings-panel')).toBeOnTheScreen();
+  });
+
+  it('shows the official reset settings confirmation dialog and cancels or confirms', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-reset-entry'));
+
+    expect(screen.getByTestId('deep-space-settings-reset-dialog')).toBeOnTheScreen();
+    expect(screen.getAllByText('重置设置')).toHaveLength(2);
+    expect(screen.getByText('这将重置全部设置。是否确认？')).toBeOnTheScreen();
+
+    await user.press(screen.getByText('取消'));
+    expect(screen.queryByTestId('deep-space-settings-reset-dialog')).not.toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-settings-reset-entry'));
+    await user.press(screen.getByText('确定'));
+    expect(screen.queryByTestId('deep-space-settings-reset-dialog')).not.toBeOnTheScreen();
+    expect(mockShowDeepSpaceFeedback).toHaveBeenCalledWith({
+      message: '已恢复默认设置',
+      tone: 'success',
+    });
+  });
+
   it('opens the reference calendar without the legacy time-shift controls', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-menu'));
@@ -396,6 +485,7 @@ describe('deep space calendar panel', () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-menu'));
     await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-location-entry'));
     await user.press(screen.getByTestId('deep-space-settings-location-上海'));
     await user.press(screen.getByTestId('deep-space-reference-menu'));
     await user.press(screen.getByText('日历'));
@@ -754,6 +844,7 @@ describe('deep space observation tools and search', () => {
     await user.press(screen.getByTestId('deep-space-reference-menu'));
     await user.press(screen.getByText('设置'));
     expect(screen.getByTestId('deep-space-settings-panel')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('deep-space-settings-location-entry'));
     await user.press(screen.getByTestId('deep-space-settings-location-上海'));
     expect(mockSetLocation).toHaveBeenLastCalledWith(31.23, 121.47);
   });

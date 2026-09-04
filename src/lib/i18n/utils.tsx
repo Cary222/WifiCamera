@@ -14,7 +14,17 @@ import { STORAGE_KEYS } from '../storage-keys';
 type DefaultLocale = typeof resources.en.translation;
 export type TxKeyPath = RecursiveKeyOf<DefaultLocale>;
 
-export const getLanguage = () => storage.getString(STORAGE_KEYS.LANGUAGE);
+export function getLanguage(): Language {
+  const stored = storage.getString(STORAGE_KEYS.LANGUAGE) as Language | undefined;
+  if (stored && (stored === 'zh' || stored === 'en' || stored === 'ar')) {
+    return stored;
+  }
+  const current = i18n.language as Language | undefined;
+  if (current && (current.startsWith('zh') || current === 'en' || current === 'ar')) {
+    return current.startsWith('zh') ? 'zh' : current;
+  }
+  return 'zh';
+}
 
 export const translate = memoize(
   (key: TxKeyPath, options = undefined) =>
