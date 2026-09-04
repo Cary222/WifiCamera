@@ -388,6 +388,8 @@ finalConfig.server.enhanceMiddleware = (middleware, _server) => {
         });
         return fs.createReadStream(filePath).pipe(res);
       }
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      return res.end('Not Found');
     }
     httpProxy(req, res, () => middleware(req, res, next));
   };

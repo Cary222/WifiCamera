@@ -180,6 +180,20 @@
   - 将外层容器改为 `<View style={[styles.timeControl, ...]}>`；
   - 内层的“回到当前时间”按钮与时间胶囊拆分为并列同级的两个独立 `<Pressable>`，结构扁平化，彻底消除规范报错。
 
+
+### 坑 7: Web 端缺少 `public/stellar` 导致 Metro 回退 SPA HTML (Iframe 嵌套自身)
+- **复现路径**:
+  - 若没有 `public/` 静态目录，在 Web 浏览器访问 `/stellar/index.html` 时，Expo Router 的 catch-all SPA 机制会拦截该未知路径，并返回主应用自身的 HTML。
+  - 这导致 Web 端 iframe 内部加载了主 App 自身，产生死循环嵌套。
+- **解决手段**:
+  - 在项目根目录保留 `public/stellar -> ../src/assets/stellar` 符号链接，并确保其随 Git 版本管理；同时在 `metro.config.js` 中补齐静态资源未命中时明确返回 404，杜绝返回 SPA HTML 污染二进制资源。
+
+### 坑 8: `set_brightness` 指令白名单遗漏与 Canvas ID 匹配错误
+- **复现路径**:
+  - 最新合并的提交扩展了 `setBrightness` 指令，但 `STELLARIUM_COMMANDS` 集合中遗漏了该指令，导致指令被白名单静默忽略。
+  - `index.html` 中调用 `document.getElementById('canvas')`，而实际画布 ID 为 `sky`，导致亮度滤镜无法生效。
+- **解决手段**:
+  - 在 `STELLARIUM_COMMANDS` 中补入 `'set_brightness'`，并将画布选择器修正为 `document.getElementById('sky')`。
 ---
 
 ## 四、技术方案架构对比与变更总结 (Architecture Diff)

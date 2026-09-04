@@ -818,7 +818,7 @@
           case 'set_brightness': {
             if (typeof message.brightness !== 'number' || message.brightness < 0.1 || message.brightness > 10)
               return reportError('Invalid brightness.');
-            const canvas = document.getElementById('canvas');
+            const canvas = document.getElementById('sky');
             if (canvas) canvas.style.filter = `brightness(${message.brightness})`;
             return;
           }
@@ -867,7 +867,7 @@
       const STELLARIUM_COMMANDS = new Set([
         'goto_radec', 'zoom_to', 'clear_selection', 'point_and_lock', 'search_target',
         'toggle_constellations', 'set_sky_layers', 'set_landscape', 'set_environment',
-        'set_sky_culture', 'set_time', 'set_magnitude_limit', 'set_grid_lines',
+        'set_sky_culture', 'set_time', 'set_magnitude_limit', 'set_brightness', 'set_grid_lines',
         'set_location', 'compute_tonight', 'compute_events', 'set_view_bearing', 'set_fov_frame',
       ]);
       function receive(event) {
