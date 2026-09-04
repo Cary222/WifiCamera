@@ -819,7 +819,10 @@
             if (typeof message.brightness !== 'number' || message.brightness < 0.1 || message.brightness > 10)
               return reportError('Invalid brightness.');
             const canvas = document.getElementById('sky');
-            if (canvas) canvas.style.filter = `brightness(${message.brightness})`;
+            if (canvas) {
+              const factor = message.brightness / 3.0;
+              canvas.style.filter = Math.abs(factor - 1.0) < 0.01 ? 'none' : `brightness(${factor.toFixed(3)})`;
+            }
             return;
           }
           case 'set_grid_lines': {

@@ -4356,12 +4356,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(145, 0, 0, 0.48)',
   },
   compass: {
-    elevation: 4,
     height: 146,
-    shadowColor: '#000000',
-    shadowOffset: { height: 4, width: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
     width: 112,
   },
   compassRose: {
