@@ -159,6 +159,15 @@ describe('stellarium observer and grid bridge', () => {
     expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'set_magnitude_limit', magnitude: 5.5 }));
   });
 
+  it('posts display brightness changes from advanced settings', () => {
+    const { bridge, postMessage } = createBridgeHarness();
+    bridge.setReady(true);
+
+    bridge.setBrightness(2.5);
+
+    expect(postMessage).toHaveBeenCalledWith(JSON.stringify({ type: 'set_brightness', brightness: 2.5 }));
+  });
+
   it('rejects an out-of-range observer location', () => {
     const onError = jest.fn();
     const postMessage = jest.fn();

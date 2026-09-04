@@ -48,6 +48,14 @@ export function useObserverLocation(stellaRef: React.RefObject<StellariumViewHan
     applyObserver({ ...next, source: 'manual' });
   }, [applyObserver, stopAutomaticLocation]);
 
+  const setManualCoordinate = React.useCallback((latitudeDeg: number, longitudeDeg: number, name?: string) => {
+    setManualObserver({
+      latitudeDeg,
+      longitudeDeg,
+      name: name ?? (observer.name === '当前位置' ? '自定义位置' : observer.name),
+    });
+  }, [observer.name, setManualObserver]);
+
   const enableAutomaticLocation = React.useCallback(async () => {
     if (automaticLocation)
       return;
@@ -74,6 +82,7 @@ export function useObserverLocation(stellaRef: React.RefObject<StellariumViewHan
     automaticLocation,
     enableAutomaticLocation,
     observer,
+    setManualCoordinate,
     setManualObserver,
     stopAutomaticLocation,
   };

@@ -51,6 +51,7 @@ export type StellariumCommand
     | { type: 'set_sky_culture'; id: string; target?: string }
     | { type: 'set_time'; isoTime: string }
     | { type: 'set_magnitude_limit'; magnitude: number }
+    | { type: 'set_brightness'; brightness: number }
     | { type: 'set_grid_lines' } & StellariumGridLines
     | { type: 'set_location'; latitudeDeg: number; longitudeDeg: number }
     | { type: 'set_view_bearing'; azimuthDeg: number }
@@ -124,6 +125,7 @@ export type StellariumBridge = {
   setSkyCulture: (id: string, target?: string) => void;
   setTime: (date: Date) => void;
   setMagnitudeLimit: (magnitude: number) => void;
+  setBrightness: (brightness: number) => void;
   setGridLines: (lines: StellariumGridLines) => void;
   setLocation: (latitudeDeg: number, longitudeDeg: number) => void;
   setViewBearing: (azimuthDeg: number) => void;
@@ -174,6 +176,24 @@ function validateEnvironment(command: Extract<StellariumCommand, { type: 'set_en
 function validateMagnitudeLimit(magnitude: number): string | undefined {
   if (!isFiniteNumber(magnitude) || magnitude < 3.5 || magnitude > 99)
     return 'Magnitude limit must be between 3.5 and 99.';
+}
+
+function validateBrightness(brightness: number): string | undefined {
+  if (!isFiniteNumber(brightness) || brightness < 0.1 || brightness > 10)
+    return 'Brightness must be between 0.1 and 10.';
+}
+
+function validateGridLines(command: Extract<StellariumCommand, { type: 'set_grid_lines' }>): string | undefined {
+  if ([
+    command.azimuthal,
+    command.ecliptic,
+    command.equator,
+    command.equatorial_j2000,
+    command.equatorial_jnow,
+    command.meridian,
+  ].some(value => value !== undefined && typeof value !== 'boolean')) {
+    return 'Grid line values must be booleans.';
+  }
 }
 
 function validate(command: StellariumCommand): string | undefined {
@@ -245,18 +265,10 @@ function validate(command: StellariumCommand): string | undefined {
       break;
     case 'set_magnitude_limit':
       return validateMagnitudeLimit(command.magnitude);
+    case 'set_brightness':
+      return validateBrightness(command.brightness);
     case 'set_grid_lines':
-      if ([
-        command.azimuthal,
-        command.ecliptic,
-        command.equator,
-        command.equatorial_j2000,
-        command.equatorial_jnow,
-        command.meridian,
-      ].some(value => value !== undefined && typeof value !== 'boolean')) {
-        return 'Grid line values must be booleans.';
-      }
-      break;
+      return validateGridLines(command);
     case 'set_location':
       if (!isFiniteNumber(command.latitudeDeg) || command.latitudeDeg < -90 || command.latitudeDeg > 90)
         return 'Latitude must be between -90 and 90 degrees.';
@@ -346,6 +358,7 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
     setSkyCulture: (id, target) => send({ type: 'set_sky_culture', id, ...(target ? { target } : {}) }),
     setTime: date => send({ type: 'set_time', isoTime: date.toISOString() }),
     setMagnitudeLimit: magnitude => send({ type: 'set_magnitude_limit', magnitude }),
+    setBrightness: brightness => send({ type: 'set_brightness', brightness }),
     setGridLines: lines => send({ type: 'set_grid_lines', ...lines }),
     setLandscape: id => send({ type: 'set_landscape', id }),
     setEnvironment: patch => send({ type: 'set_environment', ...patch }),

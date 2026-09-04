@@ -37,6 +37,7 @@ const mockSetLandscape = jest.fn();
 const mockSetLocation = jest.fn();
 const mockSetSkyCulture = jest.fn();
 const mockSetSkyLayers = jest.fn();
+const mockSetMagnitudeLimit = jest.fn();
 const mockSetTime = jest.fn();
 const mockSetViewBearing = jest.fn();
 const mockSetFovFrame = jest.fn();
@@ -182,6 +183,7 @@ jest.mock('@/features/stellarium/stellarium-view', () => {
         setGridLines: mockSetGridLines,
         setLandscape: mockSetLandscape,
         setLocation: mockSetLocation,
+        setMagnitudeLimit: mockSetMagnitudeLimit,
         setSkyCulture: mockSetSkyCulture,
         setSkyLayers: mockSetSkyLayers,
         setTime: mockSetTime,
@@ -364,7 +366,7 @@ describe('deep space glossary feature', () => {
   });
 });
 
-describe('deep space calendar, tools and settings features', () => {
+describe('deep space settings and location features', () => {
   it('opens the official settings root before selecting a location', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-menu'));
@@ -406,6 +408,43 @@ describe('deep space calendar, tools and settings features', () => {
     expect(mockSetLocation).toHaveBeenLastCalledWith(34.2, 108.94);
   });
 
+  it('updates manual latitude and longitude from coordinate input dialogs', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-location-entry'));
+
+    // Open latitude dialog and input 24.5
+    await user.press(screen.getByTestId('deep-space-settings-latitude-btn'));
+    expect(screen.getByTestId('deep-space-settings-latitude-modal')).toBeOnTheScreen();
+    await user.clear(screen.getByTestId('deep-space-settings-latitude-input'));
+    await user.type(screen.getByTestId('deep-space-settings-latitude-input'), '24.5');
+    await user.press(screen.getByTestId('deep-space-settings-latitude-confirm'));
+    expect(mockSetLocation).toHaveBeenLastCalledWith(24.5, 116.41);
+
+    // Open longitude dialog and input 118.5
+    await user.press(screen.getByTestId('deep-space-settings-longitude-btn'));
+    expect(screen.getByTestId('deep-space-settings-longitude-modal')).toBeOnTheScreen();
+    await user.clear(screen.getByTestId('deep-space-settings-longitude-input'));
+    await user.type(screen.getByTestId('deep-space-settings-longitude-input'), '118.5');
+    await user.press(screen.getByTestId('deep-space-settings-longitude-confirm'));
+    expect(mockSetLocation).toHaveBeenLastCalledWith(24.5, 118.5);
+  });
+
+  it('selects city and updates observer from city picker modal', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-location-entry'));
+
+    await user.press(screen.getByTestId('deep-space-settings-city-btn'));
+    expect(screen.getByTestId('deep-space-settings-city-modal')).toBeOnTheScreen();
+    await user.press(screen.getByTestId('deep-space-settings-city-泉州'));
+    expect(mockSetLocation).toHaveBeenLastCalledWith(24.87, 118.68);
+  });
+});
+
+describe('deep space advanced settings and reset features', () => {
   it('navigates to the official advanced settings subpage and back', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-menu'));
@@ -417,10 +456,45 @@ describe('deep space calendar, tools and settings features', () => {
     expect(screen.getByText('全屏')).toBeOnTheScreen();
     expect(screen.getByText('限制星等')).toBeOnTheScreen();
     expect(screen.getByText('亮度')).toBeOnTheScreen();
-    expect(screen.getByText('1.00')).toBeOnTheScreen();
+    expect(screen.getByText('3.0')).toBeOnTheScreen();
 
     await user.press(screen.getByTestId('deep-space-settings-advanced-back'));
     expect(screen.getByTestId('deep-space-settings-panel')).toBeOnTheScreen();
+  });
+
+  it('returns the star map to the current time from advanced settings', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-advanced-entry'));
+    await user.press(screen.getByTestId('deep-space-settings-start-time'));
+    await user.press(screen.getByTestId('deep-space-settings-start-time-now'));
+
+    expect(mockSetTime).toHaveBeenCalled();
+  });
+
+  it('sends a magnitude limit to the engine when the advanced switch is turned on', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-advanced-entry'));
+    await user.press(screen.getByTestId('deep-space-settings-limitmag-toggle'));
+
+    expect(mockSetMagnitudeLimit).toHaveBeenCalledWith(expect.any(Number));
+  });
+
+  it('hides star-map chrome when fullscreen is enabled', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-advanced-entry'));
+    await user.press(screen.getByTestId('deep-space-settings-fullscreen-toggle'));
+    await user.press(screen.getByLabelText('deep_space.back'));
+
+    expect(screen.queryByTestId('deep-space-settings-advanced-panel')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-reference-menu')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-reference-search')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-grid-quick-toggle')).not.toBeOnTheScreen();
   });
 
   it('shows the official reset settings confirmation dialog and cancels or confirms', async () => {

@@ -84,4 +84,20 @@ describe('useObserverLocation', () => {
     });
     expect(mockSetLocation).toHaveBeenLastCalledWith(31.23, 121.47);
   });
+
+  it('updates manual coordinates with setManualCoordinate', () => {
+    const { result } = renderHook(() => useObserverLocation(stellaRef));
+
+    act(() => {
+      result.current.setManualCoordinate(24.87, 118.68, '泉州');
+    });
+
+    expect(result.current.observer).toMatchObject({
+      latitudeDeg: 24.87,
+      longitudeDeg: 118.68,
+      name: '泉州',
+      source: 'manual',
+    });
+    expect(mockSetLocation).toHaveBeenLastCalledWith(24.87, 118.68);
+  });
 });

@@ -771,6 +771,13 @@
             forceRender();
             return;
           }
+          case 'set_brightness': {
+            if (typeof message.brightness !== 'number' || message.brightness < 0.1 || message.brightness > 10)
+              return reportError('Invalid brightness.');
+            const canvas = document.getElementById('canvas');
+            if (canvas) canvas.style.filter = `brightness(${message.brightness})`;
+            return;
+          }
           case 'set_grid_lines': {
             for (const line of ['azimuthal', 'meridian', 'equatorial_jnow']) {
               if (typeof message[line] !== 'boolean') continue;

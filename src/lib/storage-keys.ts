@@ -41,6 +41,22 @@ export const STORAGE_KEYS = {
   DEEP_SPACE_RECENT_OBJECTS: 'DEEP_SPACE_RECENT_OBJECTS',
   /** Favorite sky object identifiers, stored as a compact JSON list. */
   DEEP_SPACE_FAVORITE_OBJECT_IDS: 'DEEP_SPACE_FAVORITE_OBJECT_IDS',
+  /** Start time policy: 'now' | 'last_view'. */
+  DEEP_SPACE_SETTINGS_START_TIME_POLICY: 'DEEP_SPACE_SETTINGS_START_TIME_POLICY',
+  /** Last custom viewed star-map time (ISO string). */
+  DEEP_SPACE_SETTINGS_LAST_VIEW_TIME: 'DEEP_SPACE_SETTINGS_LAST_VIEW_TIME',
+  /** Whether star map runs in full screen mode. */
+  DEEP_SPACE_SETTINGS_FULLSCREEN: 'DEEP_SPACE_SETTINGS_FULLSCREEN',
+  /** Whether limiting magnitude filter is active. */
+  DEEP_SPACE_SETTINGS_LIMIT_MAG_ENABLED: 'DEEP_SPACE_SETTINGS_LIMIT_MAG_ENABLED',
+  /** Limiting magnitude cutoff value (number). */
+  DEEP_SPACE_SETTINGS_LIMIT_MAG_VALUE: 'DEEP_SPACE_SETTINGS_LIMIT_MAG_VALUE',
+  /** Star map display brightness multiplier (number). */
+  DEEP_SPACE_SETTINGS_BRIGHTNESS: 'DEEP_SPACE_SETTINGS_BRIGHTNESS',
+  /** Whether sensor/compass follow mode is active. */
+  DEEP_SPACE_SETTINGS_SENSOR: 'DEEP_SPACE_SETTINGS_SENSOR',
+  /** Serialized observer location object { latitudeDeg, longitudeDeg, name, source }. */
+  DEEP_SPACE_SETTINGS_OBSERVER: 'DEEP_SPACE_SETTINGS_OBSERVER',
 } as const;
 
 /** Union of every key string. Useful for type-safe helpers. */

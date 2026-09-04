@@ -1,5 +1,6 @@
 import type { FieldOfViewInput } from '@/features/deep-space/tools/field-of-view';
 import type { RecentSkyObject } from '@/features/deep-space/tools/recent-sky-objects';
+import type { StartTimePolicy } from '@/features/deep-space/tools/use-stellarium-settings';
 import type { SelectedCelestialObject, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import * as React from 'react';
@@ -18,14 +19,19 @@ import { parseSkyCoordinateInput } from '@/features/deep-space/tools/sky-coordin
 import { TelescopeControlPanel } from '@/features/deep-space/tools/telescope-control-panel';
 import { useCompassFollowing } from '@/features/deep-space/tools/use-compass-following';
 import { useObserverLocation } from '@/features/deep-space/tools/use-observer-location';
+import { useStellariumSettings } from '@/features/deep-space/tools/use-stellarium-settings';
 import { StellariumView } from '@/features/stellarium/stellarium-view';
 import { getLanguage, translate } from '@/lib/i18n';
 import { storage } from '@/lib/storage';
+import { AdvancedSlider } from './ui/advanced-slider';
 import { CloseIcon } from './ui/close-icon';
 import { showDeepSpaceFeedback } from './ui/deep-space-feedback';
 import { OVERLAY } from './ui/deep-space-theme';
 import { FeatureSheet } from './ui/feature-sheet';
 import { featureSheetStyles } from './ui/feature-sheet-styles';
+import { formatLatitudeDMS, formatLongitudeDMS, formatUtcOffset } from './ui/location-format';
+import { CityPickerModal, CoordinateInputDialog } from './ui/location-modals';
+import { LocationWorldMap } from './ui/location-world-map';
 
 const DEFAULT_SKY_LAYERS: Required<StellariumSkyLayers> = {
   atmosphere: true,
@@ -206,6 +212,7 @@ type DrawerFeatureOptions = {
   enableAutomaticLocation: () => Promise<void>;
   observer: ReturnType<typeof useObserverLocation>['observer'];
   setCurrentCulture: (id: string) => void;
+  setManualCoordinate: ReturnType<typeof useObserverLocation>['setManualCoordinate'];
   setManualObserver: ReturnType<typeof useObserverLocation>['setManualObserver'];
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 };
@@ -217,6 +224,7 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     enableAutomaticLocation,
     observer,
     setCurrentCulture,
+    setManualCoordinate,
     setManualObserver,
     stellaRef,
   } = options;
@@ -270,6 +278,7 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
       stellaRef.current?.setSkyCulture?.(id, target ?? undefined);
       close();
     },
+    setManualCoordinate,
     toggleGridLine: (key: GridLineKey) => setGridLines((prev) => {
       const patch = { [key]: !prev[key] } as Partial<typeof DEFAULT_GRID_LINES>;
       stellaRef.current?.setGridLines?.(patch);
@@ -297,6 +306,7 @@ function useStellariumDrawerFeature({
     enableAutomaticLocation: observerLocation.enableAutomaticLocation,
     observer: observerLocation.observer,
     setCurrentCulture,
+    setManualCoordinate: observerLocation.setManualCoordinate,
     setManualObserver: observerLocation.setManualObserver,
     stellaRef,
   });
@@ -1704,6 +1714,7 @@ function StarMapModals({
   setCurrentCulture,
   setDrawerOpen,
   setSelectedObject,
+  settings,
   showRestoreFab,
   stellaRef,
   timeState,
@@ -1721,6 +1732,7 @@ function StarMapModals({
   setCurrentCulture: (c: string) => void;
   setDrawerOpen: (open: boolean) => void;
   setSelectedObject: (obj: SelectedCelestialObject | null) => void;
+  settings: ReturnType<typeof useStellariumSettings>;
   showRestoreFab: boolean;
   stellaRef: React.RefObject<StellariumViewHandle | null>;
   timeState: ReturnType<typeof useInteractiveClock>;
@@ -1752,6 +1764,7 @@ function StarMapModals({
         onPreviewCulture={id => stellaRef.current?.setSkyCulture?.(id)}
         onResetAll={onResetAll}
         onToggleCompassFollowing={onToggleCompassFollowing}
+        settings={settings}
         stellaRef={stellaRef}
       />
       <SelectedObjectOverlay
@@ -1802,6 +1815,55 @@ function useDeepSpaceSelection() {
   };
 }
 
+function useDeepSpaceMapReset(
+  drawerFeature: ReturnType<typeof useStellariumDrawerFeature>,
+  updateSkyLayers: (layers: typeof DEFAULT_SKY_LAYERS) => void,
+  settings: ReturnType<typeof useStellariumSettings>,
+) {
+  return React.useCallback(() => {
+    updateSkyLayers(DEFAULT_SKY_LAYERS);
+    drawerFeature.updateEnvironment({
+      bortleIndex: DEFAULT_BORTLE_INDEX,
+      cardinals: true,
+      fog: true,
+      turbidity: DEFAULT_TURBIDITY,
+    });
+    drawerFeature.selectLandscape(DEFAULT_LANDSCAPE_ID);
+    drawerFeature.updateGridLines(DEFAULT_GRID_LINES);
+    drawerFeature.selectCity(OBSERVER_CITIES[0]);
+    settings.resetSettings();
+  }, [drawerFeature, settings, updateSkyLayers]);
+}
+
+function ActiveStarMapControls({
+  controlsProps,
+  fullscreen,
+  insetsTop,
+  onExitFullscreen,
+  suppressFullscreenButton,
+}: {
+  controlsProps: StarMapOverlayControlsProps;
+  fullscreen: boolean;
+  insetsTop: number;
+  onExitFullscreen: () => void;
+  suppressFullscreenButton: boolean;
+}) {
+  if (fullscreen && !suppressFullscreenButton) {
+    return (
+      <Pressable
+        accessibilityLabel="退出全屏"
+        accessibilityRole="button"
+        onPress={onExitFullscreen}
+        style={[styles.exitFullscreenButton, { right: 16, top: insetsTop + 16 }]}
+        testID="deep-space-exit-fullscreen"
+      >
+        <Text style={styles.exitFullscreenText}>✕ 退出全屏</Text>
+      </Pressable>
+    );
+  }
+  return <StarMapOverlayControls {...controlsProps} />;
+}
+
 export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const stellaRef = React.useRef<StellariumViewHandle>(null);
@@ -1815,6 +1877,8 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const { compassFollowing, toggleCompassFollowing } = useCompassFollowing(stellaRef);
   const search = useStarMapSearch(stellaRef);
   const timeState = useInteractiveClock(stellaRef);
+  const settings = useStellariumSettings(stellaRef, { onReturnToNow: timeState.returnToNow });
+  const handleResetAll = useDeepSpaceMapReset(drawerFeature, updateSkyLayers, settings);
 
   const handleSetAzimuth = React.useCallback((targetDeg: number) => {
     const normalized = Math.round(((targetDeg % 360) + 360) % 360);
@@ -1828,19 +1892,6 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
 
   const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selection.selectedObject;
 
-  const handleResetAll = React.useCallback(() => {
-    updateSkyLayers(DEFAULT_SKY_LAYERS);
-    drawerFeature.updateEnvironment({
-      bortleIndex: DEFAULT_BORTLE_INDEX,
-      cardinals: true,
-      fog: true,
-      turbidity: DEFAULT_TURBIDITY,
-    });
-    drawerFeature.selectLandscape(DEFAULT_LANDSCAPE_ID);
-    drawerFeature.updateGridLines(DEFAULT_GRID_LINES);
-    drawerFeature.selectCity(OBSERVER_CITIES[0]);
-  }, [drawerFeature, updateSkyLayers]);
-
   return (
     <View testID="deep-space-map-shell" style={styles.root}>
       <StellariumView
@@ -1850,6 +1901,10 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         onReady={() => {
           stellaRef.current?.setSkyLayers?.(skyLayers);
           stellaRef.current?.setEnvironment?.(drawerFeature.environment);
+          if (settings.limitMagEnabled) {
+            stellaRef.current?.setMagnitudeLimit?.(settings.limitMagValue);
+          }
+          stellaRef.current?.setBrightness?.(settings.brightness);
         }}
         onCommandError={() => search.setError(true)}
         onObjectSelected={selection.handleObjectSelected}
@@ -1859,37 +1914,43 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
       />
       {drawerFeature.fieldOfView && <FieldOfViewOverlay input={drawerFeature.fieldOfView} stellaRef={stellaRef} />}
       {nightMode && <View pointerEvents="none" style={styles.nightModeOverlay} testID="deep-space-night-mode-overlay" />}
-      <StarMapOverlayControls
-        azimuthDeg={azimuthDeg}
-        clock={timeState.clock}
-        environment={drawerFeature.environment}
-        gridLines={drawerFeature.gridLines}
-        insets={insets}
-        isCustomTime={timeState.isCustomTime}
-        landscapeId={drawerFeature.landscapeId}
-        nightMode={nightMode}
-        onCloseTimePanel={timeState.closeTimePanel}
-        onOpenMenu={() => {
-          timeState.closeTimePanel();
-          setDrawerOpen(true);
+      <ActiveStarMapControls
+        controlsProps={{
+          azimuthDeg,
+          clock: timeState.clock,
+          environment: drawerFeature.environment,
+          gridLines: drawerFeature.gridLines,
+          insets,
+          isCustomTime: timeState.isCustomTime,
+          landscapeId: drawerFeature.landscapeId,
+          nightMode,
+          onCloseTimePanel: timeState.closeTimePanel,
+          onOpenMenu: () => {
+            timeState.closeTimePanel();
+            setDrawerOpen(true);
+          },
+          onOpenSearch: () => {
+            timeState.closeTimePanel();
+            search.openSearch(() => setDrawerOpen(false));
+          },
+          onReturnToNow: timeState.returnToNow,
+          onSelectLandscape: drawerFeature.selectLandscape,
+          onSetAzimuth: handleSetAzimuth,
+          onToggleGridLine: drawerFeature.toggleGridLine,
+          onToggleNightMode: () => setNightMode(value => !value),
+          onToggleSkyLayer: toggleSkyLayer,
+          onToggleTimePanel: timeState.toggleTimePanel,
+          onUpdateEnvironment: drawerFeature.updateEnvironment,
+          onUpdateGridLines: drawerFeature.updateGridLines,
+          onUpdateSkyLayers: updateSkyLayers,
+          onUpdateTime: timeState.updateTime,
+          skyLayers,
+          timePanelOpen: timeState.timePanelOpen,
         }}
-        onOpenSearch={() => {
-          timeState.closeTimePanel();
-          search.openSearch(() => setDrawerOpen(false));
-        }}
-        onReturnToNow={timeState.returnToNow}
-        onSelectLandscape={drawerFeature.selectLandscape}
-        onSetAzimuth={handleSetAzimuth}
-        onToggleGridLine={drawerFeature.toggleGridLine}
-        onToggleNightMode={() => setNightMode(value => !value)}
-        onToggleSkyLayer={toggleSkyLayer}
-        onToggleTimePanel={timeState.toggleTimePanel}
-        onUpdateEnvironment={drawerFeature.updateEnvironment}
-        onUpdateGridLines={drawerFeature.updateGridLines}
-        onUpdateSkyLayers={updateSkyLayers}
-        onUpdateTime={timeState.updateTime}
-        skyLayers={skyLayers}
-        timePanelOpen={timeState.timePanelOpen}
+        fullscreen={settings.fullscreen}
+        insetsTop={insets.top}
+        onExitFullscreen={() => settings.setFullscreen(false)}
+        suppressFullscreenButton={drawerOpen || Boolean(drawerFeature.active) || search.open || Boolean(selection.selectedObject)}
       />
       <StarMapModals
         compassFollowing={compassFollowing}
@@ -1905,6 +1966,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         setCurrentCulture={setCurrentCulture}
         setDrawerOpen={setDrawerOpen}
         setSelectedObject={selection.setSelectedObject}
+        settings={settings}
         showRestoreFab={showRestoreFab}
         stellaRef={stellaRef}
         timeState={timeState}
@@ -1984,6 +2046,7 @@ function FeaturePanels({
   onPreviewCulture,
   onResetAll,
   onToggleCompassFollowing,
+  settings,
   stellaRef,
 }: {
   clock: Date;
@@ -1992,6 +2055,7 @@ function FeaturePanels({
   onPreviewCulture: (id: string) => void;
   onResetAll?: () => void;
   onToggleCompassFollowing: () => void;
+  settings: ReturnType<typeof useStellariumSettings>;
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 }) {
   switch (feature.active) {
@@ -2021,9 +2085,11 @@ function FeaturePanels({
           observer={feature.observer}
           onClose={feature.close}
           onEnableAutomaticLocation={feature.enableAutomaticLocation}
+          onManualCoordinateChange={feature.setManualCoordinate}
           onResetAll={onResetAll}
           onSelect={feature.selectCity}
           onToggleCompassFollowing={onToggleCompassFollowing}
+          settings={settings}
         />
       );
     case 'tools':
@@ -2421,71 +2487,81 @@ function ToolsPanel({
   );
 }
 
-function SettingsLocationSheet({
-  automaticLocation,
+function LocationCoordinateRows({
   observer,
-  onBack,
-  onClose,
-  onEnableAutomaticLocation,
-  onSelect,
+  onOpenCityPicker,
+  onOpenLatitude,
+  onOpenLongitude,
 }: {
-  automaticLocation: boolean;
   observer: ReturnType<typeof useObserverLocation>['observer'];
-  onBack: () => void;
-  onClose: () => void;
-  onEnableAutomaticLocation: () => Promise<void>;
-  onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
+  onOpenCityPicker: () => void;
+  onOpenLatitude: () => void;
+  onOpenLongitude: () => void;
 }) {
-  const utcOffset = -new Date().getTimezoneOffset() / 60;
-
   return (
-    <FeatureSheet
-      headerLeft={(
-        <Pressable accessibilityLabel="返回设置" accessibilityRole="button" onPress={onBack} style={featureSheetStyles.featureClose}>
-          <BackIcon />
-        </Pressable>
-      )}
-      onClose={onClose}
-      placement="top"
-      scrollable
-      testID="deep-space-settings-panel"
-      title="所在位置"
-    >
+    <>
       <Pressable
-        accessibilityLabel="使用自动定位"
-        accessibilityRole="switch"
-        accessibilityState={{ checked: automaticLocation }}
-        onPress={onEnableAutomaticLocation}
+        accessibilityLabel="纬度"
+        accessibilityRole="button"
+        onPress={onOpenLatitude}
         style={featureSheetStyles.featureRow}
-        testID="deep-space-settings-auto-location-toggle"
+        testID="deep-space-settings-latitude-btn"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>使用自动定位</Text>
-        <View style={[styles.settingsSwitchTrack, automaticLocation && styles.settingsSwitchTrackOn]}>
-          <View style={[styles.settingsSwitchThumb, automaticLocation && styles.settingsSwitchThumbOn]} />
+        <Text style={featureSheetStyles.featureRowLabel}>纬度</Text>
+        <View style={styles.locationValueRow}>
+          <Text style={featureSheetStyles.featureRowHint}>{formatLatitudeDMS(observer.latitudeDeg)}</Text>
+          <Text style={featureSheetStyles.featureSelected}>›</Text>
+        </View>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="经度"
+        accessibilityRole="button"
+        onPress={onOpenLongitude}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-settings-longitude-btn"
+      >
+        <Text style={featureSheetStyles.featureRowLabel}>经度</Text>
+        <View style={styles.locationValueRow}>
+          <Text style={featureSheetStyles.featureRowHint}>{formatLongitudeDMS(observer.longitudeDeg)}</Text>
+          <Text style={featureSheetStyles.featureSelected}>›</Text>
+        </View>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="地名/城市"
+        accessibilityRole="button"
+        onPress={onOpenCityPicker}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-settings-city-btn"
+      >
+        <Text style={featureSheetStyles.featureRowLabel}>地名/城市:</Text>
+        <View style={styles.locationValueRow}>
+          <Text style={featureSheetStyles.featureRowHint}>{observer.name}</Text>
+          <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </Pressable>
       <View style={featureSheetStyles.featureRow}>
-        <Text style={featureSheetStyles.featureRowLabel}>纬度</Text>
-        <Text style={featureSheetStyles.featureRowHint}>{`${observer.latitudeDeg.toFixed(2)}°`}</Text>
-      </View>
-      <View style={featureSheetStyles.featureRow}>
-        <Text style={featureSheetStyles.featureRowLabel}>经度</Text>
-        <Text style={featureSheetStyles.featureRowHint}>{`${observer.longitudeDeg.toFixed(2)}°`}</Text>
-      </View>
-      <View style={featureSheetStyles.featureRow}>
-        <Text style={featureSheetStyles.featureRowLabel}>地名/城市:</Text>
-        <Text style={featureSheetStyles.featureRowHint}>{observer.name}</Text>
-      </View>
-      <View style={featureSheetStyles.featureRow}>
         <Text style={featureSheetStyles.featureRowLabel}>UTC偏移</Text>
-        <Text style={featureSheetStyles.featureRowHint}>{utcOffset.toString()}</Text>
+        <Text style={featureSheetStyles.featureRowHint}>{formatUtcOffset(new Date().getTimezoneOffset())}</Text>
       </View>
+    </>
+  );
+}
+
+function PresetCityList({
+  activeName,
+  onSelect,
+}: {
+  activeName: string;
+  onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
+}) {
+  return (
+    <>
       <Text style={featureSheetStyles.featureRowHint}>选择预置观测地点</Text>
       {OBSERVER_CITIES.map(city => (
         <Pressable
           accessibilityLabel={city.name}
           accessibilityRole="button"
-          accessibilityState={{ selected: city.name === observer.name }}
+          accessibilityState={{ selected: city.name === activeName }}
           key={city.name}
           onPress={() => onSelect(city)}
           style={featureSheetStyles.featureRow}
@@ -2495,24 +2571,215 @@ function SettingsLocationSheet({
             <Text style={featureSheetStyles.featureRowLabel}>{city.name}</Text>
             <Text style={featureSheetStyles.featureRowHint}>{`${city.latitudeDeg.toFixed(2)}°, ${city.longitudeDeg.toFixed(2)}°`}</Text>
           </View>
-          {city.name === observer.name && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
+          {city.name === activeName && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
         </Pressable>
       ))}
-    </FeatureSheet>
+    </>
+  );
+}
+
+function SettingsLocationSheet({
+  automaticLocation,
+  observer,
+  onBack,
+  onClose,
+  onEnableAutomaticLocation,
+  onManualCoordinateChange,
+  onSelect,
+}: {
+  automaticLocation: boolean;
+  observer: ReturnType<typeof useObserverLocation>['observer'];
+  onBack: () => void;
+  onClose: () => void;
+  onEnableAutomaticLocation: () => Promise<void>;
+  onManualCoordinateChange: (lat: number, lon: number, name?: string) => void;
+  onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
+}) {
+  const [editingCoordinate, setEditingCoordinate] = React.useState<'latitude' | 'longitude' | null>(null);
+  const [cityPickerOpen, setCityPickerOpen] = React.useState(false);
+
+  return (
+    <>
+      <FeatureSheet
+        headerLeft={(
+          <Pressable accessibilityLabel="返回设置" accessibilityRole="button" onPress={onBack} style={featureSheetStyles.featureClose}>
+            <BackIcon />
+          </Pressable>
+        )}
+        onClose={onClose}
+        placement="top"
+        scrollable
+        testID="deep-space-settings-panel"
+        title="所在位置"
+      >
+        <Pressable
+          accessibilityLabel="使用自动定位"
+          accessibilityRole="switch"
+          accessibilityState={{ checked: automaticLocation }}
+          onPress={onEnableAutomaticLocation}
+          style={featureSheetStyles.featureRow}
+          testID="deep-space-settings-auto-location-toggle"
+        >
+          <Text style={featureSheetStyles.featureRowLabel}>使用自动定位</Text>
+          <View style={[styles.settingsSwitchTrack, automaticLocation && styles.settingsSwitchTrackOn]}>
+            <View style={[styles.settingsSwitchThumb, automaticLocation && styles.settingsSwitchThumbOn]} />
+          </View>
+        </Pressable>
+        <LocationCoordinateRows
+          observer={observer}
+          onOpenCityPicker={() => setCityPickerOpen(true)}
+          onOpenLatitude={() => setEditingCoordinate('latitude')}
+          onOpenLongitude={() => setEditingCoordinate('longitude')}
+        />
+        <LocationWorldMap
+          latitudeDeg={observer.latitudeDeg}
+          longitudeDeg={observer.longitudeDeg}
+          onSelectCoordinate={(lat, lon) => {
+            onManualCoordinateChange(lat, lon, '自定义位置');
+          }}
+        />
+        <PresetCityList activeName={observer.name} onSelect={onSelect} />
+      </FeatureSheet>
+      <CoordinateInputDialog
+        initialValue={editingCoordinate === 'latitude' ? observer.latitudeDeg : observer.longitudeDeg}
+        kind={editingCoordinate ?? 'latitude'}
+        onCancel={() => setEditingCoordinate(null)}
+        onConfirm={(val) => {
+          if (editingCoordinate === 'latitude') {
+            onManualCoordinateChange(val, observer.longitudeDeg);
+          }
+          else if (editingCoordinate === 'longitude') {
+            onManualCoordinateChange(observer.latitudeDeg, val);
+          }
+          setEditingCoordinate(null);
+        }}
+        visible={editingCoordinate !== null}
+      />
+      <CityPickerModal
+        currentCity={observer.name}
+        onCancel={() => setCityPickerOpen(false)}
+        onSelect={(city) => {
+          onSelect(city);
+          setCityPickerOpen(false);
+        }}
+        visible={cityPickerOpen}
+      />
+    </>
+  );
+}
+
+function AdvancedStartTimeRow({
+  onSelectPolicy,
+  policy,
+}: {
+  onSelectPolicy: (p: StartTimePolicy) => void;
+  policy: StartTimePolicy;
+}) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <Pressable
+        accessibilityLabel="开始时间"
+        accessibilityRole="button"
+        onPress={() => setOpen(v => !v)}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-settings-start-time"
+      >
+        <Text style={featureSheetStyles.featureRowLabel}>开始时间</Text>
+        <View style={styles.advancedTimePicker}>
+          <Text style={styles.advancedTimePickerText}>{policy === 'now' ? '现在' : '沿用上次查看时间'}</Text>
+          <Text style={styles.advancedTimePickerArrow}>{open ? '▲' : '▼'}</Text>
+        </View>
+      </Pressable>
+      {open && (
+        <View style={styles.advancedTimePickerDropdown}>
+          <Pressable
+            accessibilityLabel="现在"
+            accessibilityRole="button"
+            onPress={() => {
+              onSelectPolicy('now');
+              setOpen(false);
+            }}
+            style={styles.advancedTimePickerOption}
+            testID="deep-space-settings-start-time-now"
+          >
+            <Text style={[styles.advancedTimePickerOptionText, policy === 'now' && styles.advancedTimePickerOptionSelected]}>
+              现在
+            </Text>
+            {policy === 'now' && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
+          </Pressable>
+          <Pressable
+            accessibilityLabel="沿用上次查看时间"
+            accessibilityRole="button"
+            onPress={() => {
+              onSelectPolicy('last_view');
+              setOpen(false);
+            }}
+            style={styles.advancedTimePickerOption}
+            testID="deep-space-settings-start-time-last"
+          >
+            <Text style={[styles.advancedTimePickerOptionText, policy === 'last_view' && styles.advancedTimePickerOptionSelected]}>
+              沿用上次查看时间
+            </Text>
+            {policy === 'last_view' && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
+          </Pressable>
+        </View>
+      )}
+    </>
+  );
+}
+
+function AdvancedLimitMagBlock({
+  enabled,
+  onChangeValue,
+  onToggle,
+  value,
+}: {
+  enabled: boolean;
+  onChangeValue: (val: number) => void;
+  onToggle: () => void;
+  value: number;
+}) {
+  return (
+    <View style={styles.advancedSliderBlock}>
+      <Pressable
+        accessibilityLabel="限制星等"
+        accessibilityRole="switch"
+        accessibilityState={{ checked: enabled }}
+        onPress={onToggle}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-settings-limitmag-toggle"
+      >
+        <Text style={featureSheetStyles.featureRowLabel}>限制星等</Text>
+        <View style={{ alignItems: 'center', flexDirection: 'row', gap: 12 }}>
+          {enabled && <Text style={styles.advancedBrightnessValue}>{value.toFixed(1)}</Text>}
+          <View style={[styles.settingsSwitchTrack, enabled && styles.settingsSwitchTrackOn]}>
+            <View style={[styles.settingsSwitchThumb, enabled && styles.settingsSwitchThumbOn]} />
+          </View>
+        </View>
+      </Pressable>
+      <AdvancedSlider
+        disabled={!enabled}
+        max={12.0}
+        min={3.5}
+        onChange={onChangeValue}
+        step={0.1}
+        testID="deep-space-settings-limitmag-slider"
+        value={value}
+      />
+    </View>
   );
 }
 
 function SettingsAdvancedSheet({
   onBack,
   onClose,
+  settings,
 }: {
   onBack: () => void;
   onClose: () => void;
+  settings: ReturnType<typeof useStellariumSettings>;
 }) {
-  const [fullscreen, setFullscreen] = React.useState(false);
-  const [limitMagEnabled, setLimitMagEnabled] = React.useState(false);
-  const brightnessValue = 1.0;
-
   return (
     <FeatureSheet
       headerLeft={(
@@ -2531,58 +2798,39 @@ function SettingsAdvancedSheet({
       testID="deep-space-settings-advanced-panel"
       title="高级的"
     >
-      <View style={featureSheetStyles.featureRow}>
-        <Text style={featureSheetStyles.featureRowLabel}>开始时间</Text>
-        <View style={styles.advancedTimePicker}>
-          <Text style={styles.advancedTimePickerText}>现在</Text>
-          <Text style={styles.advancedTimePickerArrow}>▼</Text>
-        </View>
-      </View>
+      <AdvancedStartTimeRow onSelectPolicy={settings.setStartTimePolicy} policy={settings.startTimePolicy} />
       <Pressable
         accessibilityLabel="全屏"
         accessibilityRole="switch"
-        accessibilityState={{ checked: fullscreen }}
-        onPress={() => setFullscreen(v => !v)}
+        accessibilityState={{ checked: settings.fullscreen }}
+        onPress={() => settings.setFullscreen(v => !v)}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-fullscreen-toggle"
       >
         <Text style={featureSheetStyles.featureRowLabel}>全屏</Text>
-        <View style={[styles.settingsSwitchTrack, fullscreen && styles.settingsSwitchTrackOn]}>
-          <View style={[styles.settingsSwitchThumb, fullscreen && styles.settingsSwitchThumbOn]} />
+        <View style={[styles.settingsSwitchTrack, settings.fullscreen && styles.settingsSwitchTrackOn]}>
+          <View style={[styles.settingsSwitchThumb, settings.fullscreen && styles.settingsSwitchThumbOn]} />
         </View>
       </Pressable>
-      <View style={styles.advancedSliderBlock}>
-        <Pressable
-          accessibilityLabel="限制星等"
-          accessibilityRole="switch"
-          accessibilityState={{ checked: limitMagEnabled }}
-          onPress={() => setLimitMagEnabled(v => !v)}
-          style={featureSheetStyles.featureRow}
-          testID="deep-space-settings-limitmag-toggle"
-        >
-          <Text style={featureSheetStyles.featureRowLabel}>限制星等</Text>
-          <View style={[styles.settingsSwitchTrack, limitMagEnabled && styles.settingsSwitchTrackOn]}>
-            <View style={[styles.settingsSwitchThumb, limitMagEnabled && styles.settingsSwitchThumbOn]} />
-          </View>
-        </Pressable>
-        <View style={styles.advancedSliderRow}>
-          <View style={styles.advancedSliderTrack}>
-            <View style={[styles.advancedSliderFill, { width: '50%' }]} />
-            <View style={[styles.advancedSliderThumb, { left: '50%' }]} />
-          </View>
-        </View>
-      </View>
+      <AdvancedLimitMagBlock
+        enabled={settings.limitMagEnabled}
+        onChangeValue={settings.setLimitMagValue}
+        onToggle={() => settings.setLimitMagEnabled(v => !v)}
+        value={settings.limitMagValue}
+      />
       <View style={styles.advancedSliderBlock}>
         <View style={featureSheetStyles.featureRow}>
           <Text style={featureSheetStyles.featureRowLabel}>亮度</Text>
-          <Text style={styles.advancedBrightnessValue}>{brightnessValue.toFixed(2)}</Text>
+          <Text style={styles.advancedBrightnessValue}>{settings.brightness.toFixed(1)}</Text>
         </View>
-        <View style={styles.advancedSliderRow}>
-          <View style={styles.advancedSliderTrack}>
-            <View style={[styles.advancedSliderFill, { width: `${(brightnessValue / 2.0) * 100}%` }]} />
-            <View style={[styles.advancedSliderThumb, { left: `${(brightnessValue / 2.0) * 100}%` }]} />
-          </View>
-        </View>
+        <AdvancedSlider
+          max={5.0}
+          min={0.2}
+          onChange={settings.setBrightness}
+          step={0.1}
+          testID="deep-space-settings-brightness-slider"
+          value={settings.brightness}
+        />
       </View>
     </FeatureSheet>
   );
@@ -2617,24 +2865,95 @@ function SettingsResetDialog({
   );
 }
 
+function SettingsRootSheet({
+  compassFollowing,
+  onClose,
+  onOpenAdvanced,
+  onOpenLocation,
+  onRequestReset,
+  onToggleCompassFollowing,
+}: {
+  compassFollowing: boolean;
+  onClose: () => void;
+  onOpenAdvanced: () => void;
+  onOpenLocation: () => void;
+  onRequestReset: () => void;
+  onToggleCompassFollowing: () => void;
+}) {
+  return (
+    <FeatureSheet onClose={onClose} placement="top" testID="deep-space-settings-panel" title="设置">
+      <Pressable
+        accessibilityLabel="传感器"
+        accessibilityRole="switch"
+        accessibilityState={{ checked: compassFollowing }}
+        onPress={onToggleCompassFollowing}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-settings-sensor-toggle"
+      >
+        <View style={featureSheetStyles.featureRowText}>
+          <Text style={featureSheetStyles.featureRowLabel}>传感器</Text>
+          <Text style={featureSheetStyles.featureRowHint}>自动</Text>
+        </View>
+        <View style={[styles.settingsSwitchTrack, compassFollowing && styles.settingsSwitchTrackOn]}>
+          <View style={[styles.settingsSwitchThumb, compassFollowing && styles.settingsSwitchThumbOn]} />
+        </View>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="所在位置"
+        accessibilityRole="button"
+        onPress={onOpenLocation}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-settings-location-entry"
+      >
+        <Text style={featureSheetStyles.featureRowLabel}>所在位置</Text>
+        <Text style={featureSheetStyles.featureSelected}>›</Text>
+      </Pressable>
+      <Pressable
+        accessibilityLabel="高级的"
+        accessibilityRole="button"
+        onPress={onOpenAdvanced}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-settings-advanced-entry"
+      >
+        <Text style={featureSheetStyles.featureRowLabel}>高级的</Text>
+        <Text style={featureSheetStyles.featureSelected}>›</Text>
+      </Pressable>
+      <View style={styles.settingsSectionDivider} />
+      <Pressable
+        accessibilityLabel="重置设置"
+        accessibilityRole="button"
+        onPress={onRequestReset}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-settings-reset-entry"
+      >
+        <Text style={featureSheetStyles.featureRowLabel}>重置设置</Text>
+      </Pressable>
+    </FeatureSheet>
+  );
+}
+
 function SettingsPanel({
   automaticLocation,
   compassFollowing,
   observer,
   onClose,
   onEnableAutomaticLocation,
+  onManualCoordinateChange,
   onResetAll,
   onSelect,
   onToggleCompassFollowing,
+  settings,
 }: {
   automaticLocation: boolean;
   compassFollowing: boolean;
   observer: ReturnType<typeof useObserverLocation>['observer'];
   onClose: () => void;
   onEnableAutomaticLocation: () => Promise<void>;
+  onManualCoordinateChange: (lat: number, lon: number, name?: string) => void;
   onResetAll?: () => void;
   onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
   onToggleCompassFollowing: () => void;
+  settings: ReturnType<typeof useStellariumSettings>;
 }) {
   const [section, setSection] = React.useState<'root' | 'location' | 'advanced'>('root');
   const [resetDialogOpen, setResetDialogOpen] = React.useState(false);
@@ -2647,6 +2966,7 @@ function SettingsPanel({
         onBack={() => setSection('root')}
         onClose={onClose}
         onEnableAutomaticLocation={onEnableAutomaticLocation}
+        onManualCoordinateChange={onManualCoordinateChange}
         onSelect={onSelect}
       />
     );
@@ -2657,65 +2977,27 @@ function SettingsPanel({
       <SettingsAdvancedSheet
         onBack={() => setSection('root')}
         onClose={onClose}
+        settings={settings}
       />
     );
   }
 
   return (
     <>
-      <FeatureSheet onClose={onClose} placement="top" testID="deep-space-settings-panel" title="设置">
-        <Pressable
-          accessibilityLabel="传感器"
-          accessibilityRole="switch"
-          accessibilityState={{ checked: compassFollowing }}
-          onPress={onToggleCompassFollowing}
-          style={featureSheetStyles.featureRow}
-          testID="deep-space-settings-sensor-toggle"
-        >
-          <View style={featureSheetStyles.featureRowText}>
-            <Text style={featureSheetStyles.featureRowLabel}>传感器</Text>
-            <Text style={featureSheetStyles.featureRowHint}>自动</Text>
-          </View>
-          <View style={[styles.settingsSwitchTrack, compassFollowing && styles.settingsSwitchTrackOn]}>
-            <View style={[styles.settingsSwitchThumb, compassFollowing && styles.settingsSwitchThumbOn]} />
-          </View>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="所在位置"
-          accessibilityRole="button"
-          onPress={() => setSection('location')}
-          style={featureSheetStyles.featureRow}
-          testID="deep-space-settings-location-entry"
-        >
-          <Text style={featureSheetStyles.featureRowLabel}>所在位置</Text>
-          <Text style={featureSheetStyles.featureSelected}>›</Text>
-        </Pressable>
-        <Pressable
-          accessibilityLabel="高级的"
-          accessibilityRole="button"
-          onPress={() => setSection('advanced')}
-          style={featureSheetStyles.featureRow}
-          testID="deep-space-settings-advanced-entry"
-        >
-          <Text style={featureSheetStyles.featureRowLabel}>高级的</Text>
-          <Text style={featureSheetStyles.featureSelected}>›</Text>
-        </Pressable>
-        <View style={styles.settingsSectionDivider} />
-        <Pressable
-          accessibilityLabel="重置设置"
-          accessibilityRole="button"
-          onPress={() => setResetDialogOpen(true)}
-          style={featureSheetStyles.featureRow}
-          testID="deep-space-settings-reset-entry"
-        >
-          <Text style={featureSheetStyles.featureRowLabel}>重置设置</Text>
-        </Pressable>
-      </FeatureSheet>
+      <SettingsRootSheet
+        compassFollowing={compassFollowing}
+        onClose={onClose}
+        onOpenAdvanced={() => setSection('advanced')}
+        onOpenLocation={() => setSection('location')}
+        onRequestReset={() => setResetDialogOpen(true)}
+        onToggleCompassFollowing={onToggleCompassFollowing}
+      />
       <SettingsResetDialog
         onCancel={() => setResetDialogOpen(false)}
         onConfirm={() => {
           setResetDialogOpen(false);
           onResetAll?.();
+          settings.resetSettings();
           showDeepSpaceFeedback({ message: '已恢复默认设置', tone: 'success' });
         }}
         visible={resetDialogOpen}
@@ -4500,6 +4782,48 @@ const styles = StyleSheet.create({
   advancedTimePickerText: {
     color: OVERLAY.text,
     fontSize: 15,
+  },
+  locationValueRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  advancedTimePickerDropdown: {
+    backgroundColor: '#26292E',
+    borderBottomColor: OVERLAY.hairline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 20,
+    paddingVertical: 4,
+  },
+  advancedTimePickerOption: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  advancedTimePickerOptionSelected: {
+    color: '#83B4FF',
+    fontWeight: '600',
+  },
+  advancedTimePickerOptionText: {
+    color: OVERLAY.text,
+    fontSize: 15,
+  },
+  exitFullscreenButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(20, 23, 28, 0.75)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    position: 'absolute',
+    zIndex: 10,
+  },
+  exitFullscreenText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '500',
   },
   drawerRowIcon: {
     alignItems: 'center',
