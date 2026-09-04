@@ -6,6 +6,7 @@ if (!Array.prototype.toReversed) {
   };
 }
 
+const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 const { getDefaultConfig } = require('expo/metro-config');
@@ -364,7 +365,30 @@ const finalConfig = withUniwindConfig(config, {
 finalConfig.server = finalConfig.server || {};
 finalConfig.server.enhanceMiddleware = (middleware, _server) => {
   const httpProxy = createCameraHttpProxyMiddleware();
+  const stellarDir = path.join(__dirname, 'src', 'assets', 'stellar');
+  const contentTypes = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.wasm': 'application/wasm',
+    '.json': 'application/json; charset=utf-8',
+    '.ttf': 'font/ttf',
+    '.webp': 'image/webp',
+    '.png': 'image/png',
+  };
+
   return function (req, res, next) {
+    if (req.url && req.url.startsWith('/stellar/')) {
+      const rel = req.url.slice('/stellar/'.length).split('?')[0];
+      const filePath = path.join(stellarDir, rel);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const ext = path.extname(filePath).toLowerCase();
+        res.writeHead(200, {
+          'Content-Type': contentTypes[ext] || 'application/octet-stream',
+          'Access-Control-Allow-Origin': '*',
+        });
+        return fs.createReadStream(filePath).pipe(res);
+      }
+    }
     httpProxy(req, res, () => middleware(req, res, next));
   };
 };

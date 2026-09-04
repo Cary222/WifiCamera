@@ -13,6 +13,45 @@
 <body>
   <canvas id="sky"></canvas>
   <canvas id="overlay"></canvas>
+  <script>
+    // WKWebView rejects fetch() on file:// URLs (XMLHttpRequest is allowed), so when the
+    // scene runs from the iOS app bundle, route file:// fetches through XHR. On Android's
+    // https appassets origin this is a no-op passthrough.
+    (function () {
+      const nativeFetch = window.fetch ? window.fetch.bind(window) : null;
+      if (!nativeFetch) return;
+      window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : (input && input.url);
+        const method = (init && init.method) ? String(init.method).toUpperCase() : 'GET';
+        if (url && url.startsWith('file://') && method === 'GET') {
+          return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', url, true);
+            xhr.responseType = 'arraybuffer';
+            xhr.onload = () => {
+              if (xhr.status === 200 || (xhr.status === 0 && xhr.response)) {
+                const contentType = url.endsWith('.wasm')
+                  ? 'application/wasm'
+                  : url.endsWith('.json')
+                    ? 'application/json'
+                    : 'application/octet-stream';
+                resolve(new Response(xhr.response, {
+                  status: 200,
+                  statusText: 'OK',
+                  headers: { 'Content-Type': contentType },
+                }));
+              } else {
+                reject(new TypeError(`fetch failed for ${url} with status ${xhr.status}`));
+              }
+            };
+            xhr.onerror = () => reject(new TypeError(`fetch network error for ${url}`));
+            xhr.send(null);
+          });
+        }
+        return nativeFetch(input, init);
+      };
+    })();
+  </script>
   <script src="stellarium-web-engine.js"></script>
   <script>
     (() => {
@@ -23,8 +62,13 @@
       const loadedLandscapes = new Set(['guereins']);
       let flushTimer = null;
       function flushMessages() {
-        if (!window.ReactNativeWebView?.postMessage) return false;
-        while (pendingMessages.length) window.ReactNativeWebView.postMessage(pendingMessages.shift());
+        const sendFn = window.ReactNativeWebView?.postMessage
+          ? msg => window.ReactNativeWebView.postMessage(msg)
+          : (window.parent && window.parent !== window)
+            ? msg => window.parent.postMessage(msg, '*')
+            : null;
+        if (!sendFn) return false;
+        while (pendingMessages.length) sendFn(pendingMessages.shift());
         if (flushTimer !== null) {
           clearInterval(flushTimer);
           flushTimer = null;
@@ -817,15 +861,22 @@
           case 'set_fov_frame':
             // The engine has no overlay-frame API; preserve the old command by setting its FOV.
             return zoomTo({ fovDeg: message.fovDeg ?? message.fov });
-          default: return reportError(`Unknown Stellarium command: ${message.type}`);
+          default: return;
         }
       }
+      const STELLARIUM_COMMANDS = new Set([
+        'goto_radec', 'zoom_to', 'clear_selection', 'point_and_lock', 'search_target',
+        'toggle_constellations', 'set_sky_layers', 'set_landscape', 'set_environment',
+        'set_sky_culture', 'set_time', 'set_magnitude_limit', 'set_grid_lines',
+        'set_location', 'compute_tonight', 'compute_events', 'set_view_bearing', 'set_fov_frame',
+      ]);
       function receive(event) {
         try {
+          if (!event.data) return;
           const message = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-          if (!message || typeof message.type !== 'string') throw new Error('Invalid Stellarium command.');
+          if (!message || typeof message.type !== 'string' || !STELLARIUM_COMMANDS.has(message.type)) return;
           if (!stel) pendingCommands.push(message); else execute(message);
-        } catch (error) { reportError(error); }
+        } catch { /* ignore non-Stellarium or third-party extension messages */ }
       }
       document.addEventListener('message', receive);
       window.addEventListener('message', receive);
@@ -834,7 +885,7 @@
 
       if (typeof StelWebEngine !== 'function') return reportError('Stellarium engine was not found.');
       // The app injects __STEL_LANG before this document loads; it restarts on language change.
-      window.__STEL_LANG = window.__STEL_LANG || 'en';
+      window.__STEL_LANG = window.__STEL_LANG || (new URLSearchParams(window.location.search).get('lang')) || 'en';
       // Names must resolve before the engine boots, because translateFn runs during init.
       Promise.all([
         fetch(assetUrl('names-zh.json')).then(response => response.json()).catch(() => ({})),

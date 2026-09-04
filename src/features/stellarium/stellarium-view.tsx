@@ -52,6 +52,7 @@ function useStellariumLifecycle({
   }, []);
 
   const reportError = React.useCallback((message: string) => {
+    console.error('[StellariumView Error]:', message);
     clearTimeout();
     bridge.current.setReady(false);
     setLoading(false);
@@ -147,6 +148,13 @@ export function StellariumView({
         style={[styles.webView, style]}
         javaScriptEnabled
         domStorageEnabled
+        // iOS loads file://<bundle>/stellar/index.html: the '*' whitelist lets the file:// navigation
+        // through, and folder read access lets the engine fetch its js/wasm/data siblings.
+        originWhitelist={['*']}
+        allowingReadAccessToURL={Platform.OS === 'ios' ? 'stellar' : undefined}
+        allowFileAccess
+        allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
         injectedJavaScriptBeforeContentLoaded={LANGUAGE_SCRIPT}
         scrollEnabled={false}
         bounces={false}
@@ -155,10 +163,14 @@ export function StellariumView({
         allowsBackForwardNavigationGestures={false}
         onLoadStart={beginLoading}
         onMessage={onMessage}
-        onError={() => {
+        onError={(syntheticEvent) => {
+          console.error('[StellariumView onError]:', syntheticEvent.nativeEvent);
           // Sky-culture tiles 404 on demand; only a failure before ready means the map is dead.
           if (!readyRef.current)
-            reportError('WebView failed to load Stellarium.');
+            reportError(`WebView failed to load Stellarium: ${syntheticEvent.nativeEvent.description || 'unknown error'}`);
+        }}
+        onHttpError={(syntheticEvent) => {
+          console.error('[StellariumView onHttpError]:', syntheticEvent.nativeEvent.statusCode, syntheticEvent.nativeEvent.url);
         }}
       />
       {loading && <LoadingOverlay />}

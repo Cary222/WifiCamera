@@ -3340,29 +3340,27 @@ function TimeControl({
   const formattedTime = `${hours}:${minutes}`;
 
   return (
-    <Pressable
-      accessibilityHint="点击打开时间调节滑块"
-      accessibilityLabel={`当前时间 ${formattedTime}`}
-      accessibilityRole="button"
-      hitSlop={6}
-      onPress={onPress}
-      style={[styles.timeControl, isCustomTime && styles.timeControlCustom]}
-      testID="deep-space-reference-time"
-    >
+    <View style={[styles.timeControl, isCustomTime && styles.timeControlCustom]}>
       <Pressable
         accessibilityLabel={translate('deep_space.return_to_now')}
         accessibilityRole="button"
         hitSlop={6}
-        onPress={(e) => {
-          e.stopPropagation();
-          onReturnToNow();
-        }}
+        onPress={onReturnToNow}
         style={[styles.historyButton, isCustomTime && styles.historyButtonActive]}
       >
         <HistoryIcon active={isCustomTime} />
       </Pressable>
-      <Text style={[styles.timeText, isCustomTime && styles.timeTextCustom]}>{formattedTime}</Text>
-    </Pressable>
+      <Pressable
+        accessibilityHint="点击打开时间调节滑块"
+        accessibilityLabel={`当前时间 ${formattedTime}`}
+        accessibilityRole="button"
+        hitSlop={6}
+        onPress={onPress}
+        testID="deep-space-reference-time"
+      >
+        <Text style={[styles.timeText, isCustomTime && styles.timeTextCustom]}>{formattedTime}</Text>
+      </Pressable>
+    </View>
   );
 }
 

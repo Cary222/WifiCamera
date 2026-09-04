@@ -49,8 +49,9 @@ function getWifiWhepUrl(): string {
   return WIFI_FALLBACK_WHEP_URL;
 }
 
-const USB_BASE_URL = 'http://10.0.2.2:18999';
-const USB_WHEP_URL = 'http://10.0.2.2:18787/board-webrtc/cam0/whep';
+const USB_HOST = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
+const USB_BASE_URL = `http://${USB_HOST}:18999`;
+const USB_WHEP_URL = `http://${USB_HOST}:18787/board-webrtc/cam0/whep`;
 
 /**
  * `.env` only overrides the USB slot: those values describe host-side ADB
