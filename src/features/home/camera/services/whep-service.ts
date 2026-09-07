@@ -110,10 +110,20 @@ export type WhepSession = {
   getStats: () => Promise<string>;
 };
 
+export type WhepNegotiation = {
+  /** POST the prepared offer. Call only after start_streaming ack. */
+  post: () => Promise<WhepSession>;
+  /** Close a PC that was never posted (leave landscape during ack wait). */
+  discard: () => void;
+};
+
 type WhepSessionOptions = {
   onDisconnected?: () => void;
   onTrack?: (stream: MediaStream, track: MediaStreamTrack) => void;
 };
+
+/** Wait this long after setLocal so host ICE can land in the offer SDP. */
+const WHEP_OFFER_ICE_WAIT_MS = 80;
 
 // Diagnostic counter: multiple live sessions mean multiple screens are pulling
 // the same board stream at once and starving the WiFi link.
@@ -134,18 +144,16 @@ let liveSessionCount = 0;
  * - retry the offer POST (short per-try timeout) while the stream source is
  *   still starting, so a fast WHEP connect never races the RTSP source.
  */
-export async function openWhepSession(
+export function startWhepNegotiation(
   whepUrl: string,
   options: WhepSessionOptions = {},
-): Promise<WhepSession> {
+): WhepNegotiation {
   if (!RTCPeerConnection || !MediaStreamClass) {
     appLogger.error('WHEP', 'WebRTC 不可用（无原生模块且非浏览器环境）');
     throw new Error('WebRTC is not available in this environment');
   }
-  // Browser MediaStream has no `release()`; only the native bridge does.
   const releaseStream = (target: MediaStream) => {
     const releasable = target as MediaStream & { release?: () => void };
-
     releasable.release?.();
   };
   appLogger.info('WHEP', '开始协商视频流', { whepUrl });
@@ -155,9 +163,14 @@ export async function openWhepSession(
   let offerData: OfferData | null = null;
   let queuedCandidates: LocalCandidate[] = [];
   let closed = false;
+  let posted = false;
   let disconnectNotified = false;
   let firstDecodedLogged = false;
   let firstFrameTimer: ReturnType<typeof setInterval> | null = null;
+  let resolveFirstIce: (() => void) | undefined;
+  const firstIce = new Promise<void>((resolve) => {
+    resolveFirstIce = resolve;
+  });
 
   const stopFirstFrameWatch = () => {
     if (!firstFrameTimer)
@@ -173,10 +186,6 @@ export async function openWhepSession(
     options.onDisconnected?.();
   };
 
-  // WHEP trickle ICE: every candidate discovered after the offer was posted has
-  // to be PATCHed to the session URL. Without this the board only ever sees the
-  // handful of candidates that happened to be ready at offer time, which leaves
-  // the connection on a poor path (heavy packet loss / constant stalling).
   const sendLocalCandidates = (candidates: LocalCandidate[]) => {
     if (closed || !sessionUrl || !offerData || candidates.length === 0)
       return;
@@ -187,31 +196,28 @@ export async function openWhepSession(
         'If-Match': '*',
       },
       body: generateSdpFragment(offerData, candidates),
-    }).catch(() => {
-      // Candidate delivery is best effort; the already-negotiated pair keeps working.
-    });
+    }).catch(() => {});
   };
 
   peer.onicecandidate = (event: { candidate: LocalCandidate | null }) => {
-    if (closed || !event.candidate)
+    if (closed)
+      return;
+    resolveFirstIce?.();
+    resolveFirstIce = undefined;
+    if (!event.candidate)
       return;
     if (!sessionUrl)
       queuedCandidates.push(event.candidate);
     else sendLocalCandidates([event.candidate]);
   };
 
-  // Android WebRTC may briefly report `disconnected` during a normal WHEP
-  // handshake. Reconnecting at that point tears down a healthy session before
-  // the first video frame arrives, so only terminal failures trigger recovery.
   peer.onconnectionstatechange = () => {
-    if (peer.connectionState === 'failed') {
+    if (peer.connectionState === 'failed')
       notifyDisconnected();
-    }
   };
   peer.oniceconnectionstatechange = () => {
-    if (peer.iceConnectionState === 'failed') {
+    if (peer.iceConnectionState === 'failed')
       notifyDisconnected();
-    }
   };
 
   peer.addTransceiver('video', { direction: 'recvonly' });
@@ -241,137 +247,168 @@ export async function openWhepSession(
     }
   };
 
-  try {
+  const offerSdpPromise = (async () => {
     const offer = await peer.createOffer();
     await peer.setLocalDescription(offer);
-    // The browser posts the offer immediately and lets trickle ICE finish
-    // afterwards. Blocking on gathering here only delays the first frame.
-
+    logStreamPoint('whep_offer_local');
+    await Promise.race([firstIce, sleep(WHEP_OFFER_ICE_WAIT_MS)]);
+    if (closed)
+      throw new Error('WHEP offer cancelled');
     const localSdp = peer.localDescription?.sdp;
     if (!localSdp)
       throw new Error('WHEP offer SDP is unavailable');
     offerData = parseOffer(localSdp);
+    logStreamPoint('whep_offer_ready');
+    return localSdp;
+  })();
+  void offerSdpPromise.catch(() => {});
 
-    const response = await postWhepOfferWhenReady(
-      whepUrl,
-      localSdp,
-      () => closed,
-    );
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      appLogger.warn('WHEP', '视频协商请求失败', {
-        status: response.status,
-        error: errorText,
-      });
-      throw new Error(
-        `WHEP negotiation failed: HTTP ${response.status} ${errorText}`,
-      );
-    }
-
-    const location = response.headers.get('location');
-    if (location) {
-      // Web proxy returns a root-relative Location; resolve it against the
-      // page origin since `new URL()` requires an absolute base.
-      const baseUrl
-        = whepUrl.startsWith('/') && typeof globalThis.location !== 'undefined'
-          ? globalThis.location.origin
-          : whepUrl;
-      sessionUrl = new URL(location, baseUrl).toString();
-    }
-    const answerSdp = await response.text();
-    await peer.setRemoteDescription(
-      new RTCSessionDescription({ type: 'answer', sdp: answerSdp }),
-    );
-
-    // Candidates gathered before the session URL existed are delivered now.
-    if (queuedCandidates.length > 0) {
-      sendLocalCandidates(queuedCandidates);
-      queuedCandidates = [];
-    }
-
-    liveSessionCount += 1;
-    appLogger.info('WHEP', '视频流已连接', { liveSessionCount });
-    logStreamPoint('sdp_live', { liveSessionCount });
-    if (__DEV__)
-      console.warn(`[CameraWHEP] session live, total=${liveSessionCount}`);
-
-    const watchStartedAt = Date.now();
-    firstFrameTimer = setInterval(() => {
-      if (closed || firstDecodedLogged) {
-        stopFirstFrameWatch();
-        return;
-      }
-      if (Date.now() - watchStartedAt > 10_000) {
-        firstDecodedLogged = true;
-        stopFirstFrameWatch();
-        logStreamPoint('first_decoded_timeout');
-        return;
-      }
-      void peer.getStats().then((report) => {
-        if (closed || firstDecodedLogged)
-          return;
-        let decoded = 0;
-        report.forEach((item: Record<string, unknown>) => {
-          if (item.type === 'inbound-rtp' && item.kind === 'video')
-            decoded = Number(item.framesDecoded) || 0;
-        });
-        if (decoded > 0) {
-          firstDecodedLogged = true;
-          stopFirstFrameWatch();
-          logStreamPoint('first_decoded_frame', { framesDecoded: decoded });
-        }
-      }).catch(() => {});
-    }, 80);
-  }
-  catch (error) {
-    appLogger.error('WHEP', '视频流协商失败', String(error));
+  const discard = () => {
+    if (posted || closed)
+      return;
+    closed = true;
+    stopFirstFrameWatch();
     peer.close();
     releaseStream(stream);
-    throw error;
-  }
-
-  return {
-    stream,
-    getStats: async () => {
-      const report = await peer.getStats();
-      const rows: string[] = [];
-      report.forEach((item: Record<string, unknown>) => {
-        if (item.type === 'inbound-rtp') {
-          rows.push(
-            `inbound-rtp kind=${item.kind} pktsLost=${item.packetsLost} `
-            + `framesDecoded=${item.framesDecoded} fps=${item.framesPerSecond} `
-            + `jitterMs=${Math.round(Number(item.jitter) * 1000)} bytes=${item.bytesReceived}`,
-          );
-        }
-        if (
-          item.type === 'candidate-pair'
-          && (item.state === 'succeeded' || item.nominated)
-        ) {
-          rows.push(`pair nominated=${item.nominated} state=${item.state}`);
-        }
-      });
-      return rows.join(' | ');
-    },
-    close: async () => {
-      if (closed)
-        return;
-      closed = true;
-      stopFirstFrameWatch();
-      peer.close();
-      releaseStream(stream);
-      liveSessionCount = Math.max(0, liveSessionCount - 1);
-      if (__DEV__)
-        console.warn(`[CameraWHEP] session closed, live=${liveSessionCount}`);
-      if (sessionUrl) {
-        try {
-          await fetch(sessionUrl, { method: 'DELETE' });
-        }
-        catch {
-          // The board cleans stale WHEP sessions itself; teardown is best effort.
-        }
-      }
-    },
   };
+
+  const post = async (): Promise<WhepSession> => {
+    const localSdp = await offerSdpPromise;
+    if (closed)
+      throw new Error('WHEP offer cancelled');
+    posted = true;
+
+    try {
+      const response = await postWhepOfferWhenReady(
+        whepUrl,
+        localSdp,
+        () => closed,
+      );
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        appLogger.warn('WHEP', '视频协商请求失败', {
+          status: response.status,
+          error: errorText,
+        });
+        throw new Error(
+          `WHEP negotiation failed: HTTP ${response.status} ${errorText}`,
+        );
+      }
+
+      const location = response.headers.get('location');
+      if (location) {
+        const baseUrl
+          = whepUrl.startsWith('/') && typeof globalThis.location !== 'undefined'
+            ? globalThis.location.origin
+            : whepUrl;
+        sessionUrl = new URL(location, baseUrl).toString();
+      }
+      if (queuedCandidates.length > 0) {
+        sendLocalCandidates(queuedCandidates);
+        queuedCandidates = [];
+      }
+      const answerSdp = await response.text();
+      await peer.setRemoteDescription(
+        new RTCSessionDescription({ type: 'answer', sdp: answerSdp }),
+      );
+
+      liveSessionCount += 1;
+      appLogger.info('WHEP', '视频流已连接', { liveSessionCount });
+      logStreamPoint('sdp_live', { liveSessionCount });
+      if (__DEV__)
+        console.warn(`[CameraWHEP] session live, total=${liveSessionCount}`);
+
+      const watchStartedAt = Date.now();
+      firstFrameTimer = setInterval(() => {
+        if (closed || firstDecodedLogged) {
+          stopFirstFrameWatch();
+          return;
+        }
+        if (Date.now() - watchStartedAt > 10_000) {
+          firstDecodedLogged = true;
+          stopFirstFrameWatch();
+          logStreamPoint('first_decoded_timeout');
+          return;
+        }
+        void peer.getStats().then((report) => {
+          if (closed || firstDecodedLogged)
+            return;
+          let decoded = 0;
+          report.forEach((item: Record<string, unknown>) => {
+            if (item.type === 'inbound-rtp' && item.kind === 'video')
+              decoded = Number(item.framesDecoded) || 0;
+          });
+          if (decoded > 0) {
+            firstDecodedLogged = true;
+            stopFirstFrameWatch();
+            logStreamPoint('first_decoded_frame', { framesDecoded: decoded });
+          }
+        }).catch(() => {});
+      }, 80);
+    }
+    catch (error) {
+      appLogger.error('WHEP', '视频流协商失败', String(error));
+      if (!closed) {
+        closed = true;
+        stopFirstFrameWatch();
+        peer.close();
+        releaseStream(stream);
+      }
+      throw error;
+    }
+
+    return {
+      stream,
+      getStats: async () => {
+        const report = await peer.getStats();
+        const rows: string[] = [];
+        report.forEach((item: Record<string, unknown>) => {
+          if (item.type === 'inbound-rtp') {
+            rows.push(
+              `inbound-rtp kind=${item.kind} pktsLost=${item.packetsLost} `
+              + `framesDecoded=${item.framesDecoded} fps=${item.framesPerSecond} `
+              + `jitterMs=${Math.round(Number(item.jitter) * 1000)} bytes=${item.bytesReceived}`,
+            );
+          }
+          if (
+            item.type === 'candidate-pair'
+            && (item.state === 'succeeded' || item.nominated)
+          ) {
+            rows.push(`pair nominated=${item.nominated} state=${item.state}`);
+          }
+        });
+        return rows.join(' | ');
+      },
+      close: async () => {
+        if (closed)
+          return;
+        closed = true;
+        stopFirstFrameWatch();
+        peer.close();
+        releaseStream(stream);
+        liveSessionCount = Math.max(0, liveSessionCount - 1);
+        if (__DEV__)
+          console.warn(`[CameraWHEP] session closed, live=${liveSessionCount}`);
+        if (sessionUrl) {
+          try {
+            await fetch(sessionUrl, { method: 'DELETE' });
+          }
+          catch {
+            // The board cleans stale WHEP sessions itself; teardown is best effort.
+          }
+        }
+      },
+    };
+  };
+
+  return { post, discard };
+}
+
+export async function openWhepSession(
+  whepUrl: string,
+  options: WhepSessionOptions = {},
+): Promise<WhepSession> {
+  return startWhepNegotiation(whepUrl, options).post();
 }
 
 async function postWhepOfferOnce(

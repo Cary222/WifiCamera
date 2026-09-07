@@ -10,7 +10,7 @@ import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
 import { getCameraWhepUrl } from '../config';
 import { logStreamPoint, markStreamStart } from '../services/stream-start-probe';
-import { openWhepSession } from '../services/whep-service';
+import { openWhepSession, startWhepNegotiation } from '../services/whep-service';
 
 const NativeWebRTC = NativeModules.WebRTCModule
   ? require('react-native-webrtc')
@@ -151,26 +151,71 @@ export function useLandscapeCameraPreview(
     setPreviewState('connecting');
 
     // 与网页端一致：只在进入风景模式时开流一次；WHEP 重连只重挂预览，绝不重启板端推流。
-    // 等 start_streaming 回包再 POST：回包时 554 已在听，避免第一枪 WHEP 去拉空源卡 3s。
+    // createOffer 和等开流回包并行；POST 仍等回包 + 上次 DELETE 结束。
     const bringUp = async () => {
       const storeState = useCameraStore.getState();
       const auto = storeState.landscapeAutoMode;
       markStreamStart(auto ? 'auto' : 'manual');
+      const negotiation = startWhepNegotiation(getCameraWhepUrl(), {
+        onDisconnected: scheduleReconnect,
+        onTrack: (incomingStream) => {
+          if (active)
+            setStream(incomingStream);
+        },
+      });
       const ack = auto
         ? await startStreaming('auto')
         : await startStreamingManual(
             storeState.landscapeManualExposure,
             storeState.landscapeManualGain,
           );
-      if (!active)
+      if (!active) {
+        negotiation.discard();
         return;
+      }
       logStreamPoint('stream_ack', {
         timeout: Boolean(ack.timeout),
         error: ack.error ?? null,
         success: ack.msg?.success !== false,
         waitMs: ack.elapsedMs,
       });
-      void connect();
+      connecting = true;
+      try {
+        await activePreviewTeardown;
+        if (!active) {
+          negotiation.discard();
+          return;
+        }
+        logStreamPoint('whep_connect');
+        const session = await negotiation.post();
+        if (!active) {
+          await session.close();
+          return;
+        }
+        closeSession = session.close;
+        setStream(session.stream);
+        setPreviewState('live');
+        let ticks = 0;
+        statsTimer = setInterval(() => {
+          ticks += 1;
+          if (ticks <= 4 || ticks % 6 === 0) {
+            void session.getStats().then((stats) => {
+              if (__DEV__)
+                console.info(`[CameraWHEP-stats] ${stats}`);
+            });
+          }
+        }, 2_000);
+      }
+      catch (error) {
+        negotiation.discard();
+        if (__DEV__)
+          console.warn('[CameraWHEP]', error);
+        if (active)
+          scheduleReconnect();
+      }
+      finally {
+        connecting = false;
+      }
     };
     void bringUp();
     return () => {
