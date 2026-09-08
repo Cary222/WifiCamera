@@ -84,7 +84,9 @@ describe('stellarium advanced settings', () => {
     expect(sceneHtml).toContain('translateFn: (domain, str) => (window.__STEL_LANG === \'zh\' ? NAMES_ZH[str] ?? str : str),');
     expect(sceneHtml).toContain('let NAMES_ZH = {};');
     expect(sceneHtml).toContain('fetch(assetUrl(\'names-zh.json\'))');
-    expect(sceneHtml).toContain('window.__STEL_LANG = window.__STEL_LANG || \'en\';');
+    // The merged scene resolves the language from the injected global first, then
+    // the `?lang=` query parameter used by the web host, and finally falls back to English.
+    expect(sceneHtml).toContain('window.__STEL_LANG = window.__STEL_LANG || (new URLSearchParams(window.location.search).get(\'lang\')) || \'en\';');
   });
 
   it('loads a TrueType CJK subset that the bundled renderer can safely parse', () => {
