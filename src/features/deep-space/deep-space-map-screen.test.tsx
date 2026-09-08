@@ -456,7 +456,7 @@ describe('deep space advanced settings and reset features', () => {
     expect(screen.getByText('全屏')).toBeOnTheScreen();
     expect(screen.getByText('限制星等')).toBeOnTheScreen();
     expect(screen.getByText('亮度')).toBeOnTheScreen();
-    expect(screen.getByText('3.0')).toBeOnTheScreen();
+    expect(screen.getByText('1.0')).toBeOnTheScreen();
 
     await user.press(screen.getByTestId('deep-space-settings-advanced-back'));
     expect(screen.getByTestId('deep-space-settings-panel')).toBeOnTheScreen();
@@ -483,7 +483,7 @@ describe('deep space advanced settings and reset features', () => {
     expect(mockSetMagnitudeLimit).toHaveBeenCalledWith(expect.any(Number));
   });
 
-  it('hides star-map chrome when fullscreen is enabled', async () => {
+  it('retains star-map controls when fullscreen is enabled, reveals exit button on corner tap and restores standard mode on exit', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-menu'));
     await user.press(screen.getByText('设置'));
@@ -492,9 +492,21 @@ describe('deep space advanced settings and reset features', () => {
     await user.press(screen.getByLabelText('deep_space.back'));
 
     expect(screen.queryByTestId('deep-space-settings-advanced-panel')).not.toBeOnTheScreen();
-    expect(screen.queryByTestId('deep-space-reference-menu')).not.toBeOnTheScreen();
-    expect(screen.queryByTestId('deep-space-reference-search')).not.toBeOnTheScreen();
-    expect(screen.queryByTestId('deep-space-grid-quick-toggle')).not.toBeOnTheScreen();
+    // In full-screen mode, star-map own controls remain accessible
+    expect(screen.getByTestId('deep-space-reference-menu')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-reference-search')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-grid-quick-toggle')).toBeOnTheScreen();
+    // Exit button is not shown permanently to avoid cluttering the view.
+    expect(screen.queryByTestId('deep-space-exit-fullscreen')).not.toBeOnTheScreen();
+
+    // Tapping the top-right corner reveals the exit button.
+    await user.press(screen.getByTestId('deep-space-fullscreen-corner-trigger'));
+    expect(screen.getByTestId('deep-space-exit-fullscreen')).toBeOnTheScreen();
+
+    // Pressing the revealed exit button exits full-screen mode.
+    await user.press(screen.getByTestId('deep-space-exit-fullscreen'));
+    expect(screen.getByTestId('deep-space-reference-menu')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-reference-search')).toBeOnTheScreen();
   });
 
   it('shows the official reset settings confirmation dialog and cancels or confirms', async () => {
@@ -737,6 +749,9 @@ describe('deep space labels detail sheet', () => {
 
     expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
     expect(screen.getByText('标签和注记数量')).toBeOnTheScreen();
+    expect(screen.getByText('调节天体注记与标识的显示密度')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-close')).toBeOnTheScreen();
+    expect(screen.queryByText('‹')).not.toBeOnTheScreen();
     expect(screen.getByText('恒星')).toBeOnTheScreen();
     expect(screen.getByText('行星')).toBeOnTheScreen();
     expect(screen.getByText('深空天体')).toBeOnTheScreen();

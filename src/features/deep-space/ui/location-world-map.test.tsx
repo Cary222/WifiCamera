@@ -1,28 +1,34 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import * as React from 'react';
-import { formatLatitudeDMS, formatLongitudeDMS, formatUtcOffset } from './location-format';
+import { formatLatitudeDMS, formatLongitudeDMS, formatUtcOffset, formatUtcOffsetHours } from './location-format';
 import { LocationWorldMap } from './location-world-map';
 
 describe('location world map formatting', () => {
   it('formats positive latitude as North with DMS', () => {
-    expect(formatLatitudeDMS(39.9042)).toMatch(/39° 54' \d+" N/);
+    expect(formatLatitudeDMS(39.9042)).toMatch(/39° 54' \d+" (N|北)/);
+    expect(formatLatitudeDMS(39.9042, 'en')).toMatch(/39° 54' \d+" N/);
   });
 
   it('formats negative latitude as South with DMS', () => {
-    expect(formatLatitudeDMS(-33.8688)).toMatch(/33° 52' \d+" S/);
+    expect(formatLatitudeDMS(-33.8688)).toMatch(/33° 52' \d+" (S|南)/);
+    expect(formatLatitudeDMS(-33.8688, 'en')).toMatch(/33° 52' \d+" S/);
   });
 
   it('formats positive longitude as East with DMS', () => {
-    expect(formatLongitudeDMS(116.4074)).toMatch(/116° 24' \d+" E/);
+    expect(formatLongitudeDMS(116.4074)).toMatch(/116° 24' \d+" (E|东)/);
+    expect(formatLongitudeDMS(116.4074, 'en')).toMatch(/116° 24' \d+" E/);
   });
 
   it('formats negative longitude as West with DMS', () => {
-    expect(formatLongitudeDMS(-122.4194)).toMatch(/122° 25' \d+" W/);
+    expect(formatLongitudeDMS(-122.4194)).toMatch(/122° 25' \d+" (W|西)/);
+    expect(formatLongitudeDMS(-122.4194, 'en')).toMatch(/122° 25' \d+" W/);
   });
 
   it('formats UTC offset cleanly', () => {
     expect(formatUtcOffset(-480)).toBe('+8:00');
     expect(formatUtcOffset(300)).toBe('-5:00');
+    expect(formatUtcOffsetHours(-480)).toBe('8');
+    expect(formatUtcOffsetHours(300)).toBe('-5');
   });
 });
 
@@ -55,5 +61,46 @@ describe('location world map component', () => {
 
     fireEvent(map, 'press', { nativeEvent: { locationX: 180, locationY: 90 } });
     expect(onSelect).toHaveBeenCalledWith(expect.closeTo(0, 1), expect.closeTo(0, 1));
+  });
+
+  it('converts non-zero tap and clamps boundaries correctly', () => {
+    const onSelect = jest.fn();
+    render(
+      <LocationWorldMap
+        latitudeDeg={39.9}
+        longitudeDeg={116.41}
+        onSelectCoordinate={onSelect}
+      />,
+    );
+
+    const map = screen.getByTestId('deep-space-location-world-map');
+    fireEvent(map, 'layout', { nativeEvent: { layout: { width: 360, height: 180 } } });
+
+    // locationX = 270 -> lon = (270 / 360) * 360 - 180 = 90
+    // locationY = 45 -> lat = 90 - (45 / 180) * 180 = 45
+    fireEvent(map, 'press', { nativeEvent: { locationX: 270, locationY: 45 } });
+    expect(onSelect).toHaveBeenCalledWith(45, 90);
+
+    // Negative overflow test
+    fireEvent(map, 'press', { nativeEvent: { locationX: -10, locationY: -10 } });
+    expect(onSelect).toHaveBeenCalledWith(90, -180);
+  });
+
+  it('ignores taps when enabled is false', () => {
+    const onSelect = jest.fn();
+    render(
+      <LocationWorldMap
+        enabled={false}
+        latitudeDeg={39.9}
+        longitudeDeg={116.41}
+        onSelectCoordinate={onSelect}
+      />,
+    );
+
+    const map = screen.getByTestId('deep-space-location-world-map');
+    fireEvent(map, 'layout', { nativeEvent: { layout: { width: 360, height: 180 } } });
+
+    fireEvent(map, 'press', { nativeEvent: { locationX: 270, locationY: 45 } });
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

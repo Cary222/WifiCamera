@@ -41,7 +41,7 @@ describe('useStellariumSettings', () => {
     expect(result.current.fullscreen).toBe(false);
     expect(result.current.limitMagEnabled).toBe(false);
     expect(result.current.limitMagValue).toBe(6.5);
-    expect(result.current.brightness).toBe(3.0);
+    expect(result.current.brightness).toBe(1.0);
 
     act(() => {
       result.current.setBrightness(2.5);
@@ -114,12 +114,12 @@ describe('useStellariumSettings', () => {
       result.current.resetSettings();
     });
 
-    expect(result.current.brightness).toBe(3.0);
+    expect(result.current.brightness).toBe(1.0);
     expect(result.current.limitMagEnabled).toBe(false);
     expect(result.current.limitMagValue).toBe(6.5);
     expect(result.current.fullscreen).toBe(false);
     expect(result.current.startTimePolicy).toBe('now');
     expect(mockSetMagnitudeLimit).toHaveBeenLastCalledWith(99);
-    expect(mockSetBrightness).toHaveBeenLastCalledWith(3.0);
+    expect(mockSetBrightness).toHaveBeenLastCalledWith(1.0);
   });
 });

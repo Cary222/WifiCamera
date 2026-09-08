@@ -1,5 +1,5 @@
-export function formatLatitudeDMS(lat: number): string {
-  const hemi = lat >= 0 ? 'N' : 'S';
+export function formatLatitudeDMS(lat: number, lang: 'en' | 'zh' = 'zh'): string {
+  const hemi = lat >= 0 ? (lang === 'zh' ? '北' : 'N') : lang === 'zh' ? '南' : 'S';
   const abs = Math.abs(lat);
   const deg = Math.floor(abs);
   const min = Math.floor((abs - deg) * 60);
@@ -7,8 +7,8 @@ export function formatLatitudeDMS(lat: number): string {
   return `${deg}° ${min}' ${sec}" ${hemi}`;
 }
 
-export function formatLongitudeDMS(lon: number): string {
-  const hemi = lon >= 0 ? 'E' : 'W';
+export function formatLongitudeDMS(lon: number, lang: 'en' | 'zh' = 'zh'): string {
+  const hemi = lon >= 0 ? (lang === 'zh' ? '东' : 'E') : lang === 'zh' ? '西' : 'W';
   const abs = Math.abs(lon);
   const deg = Math.floor(abs);
   const min = Math.floor((abs - deg) * 60);
@@ -23,4 +23,9 @@ export function formatUtcOffset(minutesOffset: number): string {
   const hours = Math.floor(absMinutes / 60);
   const mins = absMinutes % 60;
   return `${sign}${hours}:${mins.toString().padStart(2, '0')}`;
+}
+
+export function formatUtcOffsetHours(minutesOffset: number): string {
+  const hours = Math.round(-minutesOffset / 60);
+  return String(hours);
 }

@@ -90,7 +90,7 @@ export const TRANSPORT_FALLBACK_GRACE_MS = 5_000;
 export const TRANSPORT_PROBE_MIN_INTERVAL_MS = 5_000;
 
 let activeTransport: CameraTransport
-  = readStoredPreference() === 'wifi' ? 'wifi' : 'usb';
+  = readStoredPreference() === 'usb' ? 'usb' : 'wifi';
 
 export function getTransportEndpoints(
   transport: CameraTransport,
@@ -188,14 +188,16 @@ export async function probeTransportReachability(): Promise<Record<CameraTranspo
  * transport so a total outage does not look like a link change.
  */
 export async function probeTransports(
-  preferred: CameraTransport = activeTransport,
+  _preferred: CameraTransport = 'wifi',
 ): Promise<CameraTransport | null> {
-  const other: CameraTransport = preferred === 'usb' ? 'wifi' : 'usb';
-  const [preferredOk, otherOk] = await Promise.all([
-    isTransportReachable(preferred),
-    isTransportReachable(other),
+  const [wifiOk, usbOk] = await Promise.all([
+    isTransportReachable('wifi'),
+    isTransportReachable('usb'),
   ]);
-  if (preferredOk)
-    return preferred;
-  return otherOk ? other : null;
+  // Always prioritize Wi-Fi if reachable
+  if (wifiOk)
+    return 'wifi';
+  if (usbOk)
+    return 'usb';
+  return null;
 }

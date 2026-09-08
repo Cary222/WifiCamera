@@ -45,7 +45,7 @@ describe('MuMu App MCP project path boundaries', () => {
   const root = process.platform === 'win32' ? 'D:/app/WifiCamera' : '/app/WifiCamera';
 
   it('allows APK and screenshot files inside the project root', () => {
-    const expected = path.resolve(root, 'android/app/build/outputs/apk/release/app-release.apk');
+    const expected = path.resolve(root, 'android/app/build/outputs/apk/release/app-release.apk').replaceAll('\\', '/');
     expect(resolveProjectPath(root, 'android/app/build/outputs/apk/release/app-release.apk'))
       .toBe(expected);
   });

@@ -107,6 +107,67 @@ describe('cameraWebSocketService', () => {
     jest.useRealTimers();
   });
 
+  it('does not reconnect when close is an explicit user disconnect', () => {
+    jest.useFakeTimers();
+    const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250 });
+    service.connect();
+    const socket = MockWebSocket.instances[0];
+    service.close();
+    socket.finish();
+    jest.advanceTimersByTime(1_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+  });
+
+  it('stays connected on the same socket when an open link reports a transient error', () => {
+    jest.useFakeTimers();
+    const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250 });
+    service.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    service.send({ method: 'ping' });
+    socket.fail();
+    jest.advanceTimersByTime(1_000);
+    expect(MockWebSocket.instances).toHaveLength(1);
+    service.send({ method: 'capture' });
+    expect(socket.sent).toEqual(['{"method":"ping"}', '{"method":"capture"}']);
+    socket.finish();
+    jest.advanceTimersByTime(250);
+    expect(MockWebSocket.instances).toHaveLength(2);
+    service.close();
+  });
+
+  it('retries a closed WiFi link so USB/WiFi fallback probes get time to run', () => {
+    const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250, retryForever: true });
+    service.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.fail();
+    socket.finish();
+    jest.advanceTimersByTime(250);
+    expect(MockWebSocket.instances).toHaveLength(2);
+    MockWebSocket.instances[1].open();
+    service.send({ method: 'ping' });
+    expect(MockWebSocket.instances[1].sent).toEqual(['{"method":"ping"}']);
+    service.close();
+  });
+
+  it('survives an application double-connect at startup and reconnects cleanly', () => {
+    jest.useFakeTimers();
+    const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250, retryForever: true });
+    service.connect();
+    service.connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.close();
+    socket.finish();
+    jest.advanceTimersByTime(250);
+    expect(MockWebSocket.instances).toHaveLength(2);
+    MockWebSocket.instances[1].open();
+    service.send({ method: 'ping' });
+    expect(MockWebSocket.instances[1].sent).toEqual(['{"method":"ping"}']);
+    service.close();
+  });
+
   it('stops reconnecting after the configured attempt limit', () => {
     jest.useFakeTimers();
     const service = new CameraWebSocketService({
@@ -168,6 +229,99 @@ describe('cameraWebSocketService', () => {
     const service = new CameraWebSocketService({ url: 'ws://camera/ws/device/' });
 
     expect(() => service.send({ method: 'ping' })).toThrow('not open');
+  });
+
+  describe('automatic recovery', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => {
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    });
+
+    it('reconnects when error is followed by an asynchronous close', () => {
+      const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250 });
+      service.connect();
+      const socket = MockWebSocket.instances[0];
+      socket.close = () => {
+        socket.readyState = 2;
+        setTimeout(() => socket.finish(), 50);
+      };
+      socket.fail();
+      jest.advanceTimersByTime(250);
+      expect(MockWebSocket.instances).toHaveLength(2);
+      MockWebSocket.instances[1].open();
+      service.send({ method: 'ping' });
+      expect(MockWebSocket.instances[1].sent).toEqual(['{"method":"ping"}']);
+      service.close();
+    });
+
+    it('recovers even when closing a failed socket throws', () => {
+      const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250 });
+      service.connect();
+      const socket = MockWebSocket.instances[0];
+      socket.close = () => {
+        throw new Error('native socket is gone');
+      };
+      socket.fail();
+      jest.advanceTimersByTime(250);
+      expect(MockWebSocket.instances).toHaveLength(2);
+      service.close();
+    });
+
+    it('keeps the connection deadline when connect is called again', () => {
+      const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250, retryForever: true });
+      service.connect();
+      jest.advanceTimersByTime(2_000);
+      service.connect();
+      jest.advanceTimersByTime(2_250);
+      expect(MockWebSocket.instances).toHaveLength(2);
+      service.close();
+    });
+
+    it('uses the retry budget before giving up on connection timeouts', () => {
+      const onGiveUp = jest.fn();
+      const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250, maxReconnectAttempts: 1, onGiveUp });
+      service.connect();
+      jest.advanceTimersByTime(4_000);
+      expect(onGiveUp).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(4_250);
+      expect(MockWebSocket.instances).toHaveLength(2);
+      expect(onGiveUp).toHaveBeenCalledTimes(1);
+      service.close();
+    });
+
+    it('recovers after a heartbeat send failure without replaying commands', () => {
+      const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250, heartbeatIntervalMs: 1_000 });
+      service.connect();
+      const socket = MockWebSocket.instances[0];
+      socket.open();
+      service.send({ instruction: 'capture_stream_frame' });
+      socket.send = () => {
+        throw new Error('connection lost');
+      };
+      jest.advanceTimersByTime(1_250);
+      expect(MockWebSocket.instances).toHaveLength(2);
+      MockWebSocket.instances[1].open();
+      expect(MockWebSocket.instances[1].sent).toEqual([]);
+      service.close();
+    });
+
+    it('ignores stale callbacks and cancels retries after a manual close', () => {
+      const service = new CameraWebSocketService({ url: 'ws://camera/', reconnectDelayMs: 250, retryForever: true });
+      service.connect();
+      const oldSocket = MockWebSocket.instances[0];
+      oldSocket.fail();
+      jest.advanceTimersByTime(250);
+      MockWebSocket.instances[1].open();
+      oldSocket.finish();
+      oldSocket.fail();
+      jest.advanceTimersByTime(250);
+      expect(MockWebSocket.instances).toHaveLength(2);
+      service.close();
+      oldSocket.finish();
+      jest.advanceTimersByTime(10_000);
+      expect(MockWebSocket.instances).toHaveLength(2);
+    });
   });
 
   it('sends periodic keep-alive heartbeats while open', () => {

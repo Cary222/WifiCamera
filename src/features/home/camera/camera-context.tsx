@@ -26,11 +26,10 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
   const [currentRaDec, setCurrentRaDec] = React.useState<{ ra: number; dec: number } | null>(null);
 
   useEffect(() => {
-    // Resolve the link first so the socket opens against the reachable address.
+    // initTransport resolves and opens the current reachable link.
     initTransport();
-    connect();
     return disconnect;
-  }, [connect, disconnect, initTransport]);
+  }, [disconnect, initTransport]);
 
   useEffect(() => {
     if (connectionStatus === 'open') {

@@ -280,7 +280,7 @@ let lastProbeAt = 0;
  */
 function maybeFallbackTransport(): void {
   const state = _useCameraStore.getState();
-  if (state.transportPreference !== 'auto' || state.transportProbing)
+  if (state.transportProbing)
     return;
   if (disconnectedSince === null || Date.now() - disconnectedSince < TRANSPORT_FALLBACK_GRACE_MS)
     return;
@@ -291,8 +291,10 @@ function maybeFallbackTransport(): void {
   _useCameraStore.setState({ transportProbing: true });
   void probeTransports(state.transport)
     .then((reachable) => {
-      if (reachable && reachable !== _useCameraStore.getState().transport)
+      if (reachable && reachable !== _useCameraStore.getState().transport) {
+        console.log('[CONN]', '当前通道故障断开，自动故障转移至可用通道:', reachable);
         applyTransport(reachable);
+      }
     })
     .finally(() => _useCameraStore.setState({ transportProbing: false }));
 }
@@ -655,7 +657,14 @@ const _useCameraStore = create<CameraState>(set => ({
         clearTimeout(timer);
         resolve({ ...result, elapsedMs: Date.now() - startedAt });
       });
-      cameraWebSocket?.send({ device_name: 'main_camera', instruction, params, id });
+      try {
+        cameraWebSocket?.send({ device_name: 'main_camera', instruction, params, id });
+      }
+      catch (e) {
+        pendingCommands.delete(id);
+        clearTimeout(timer);
+        resolve({ error: e instanceof Error ? e.message : 'WebSocket 未处于就绪状态', elapsedMs: Date.now() - startedAt });
+      }
     });
   },
   sendInstruction: (instruction, params = []) => {

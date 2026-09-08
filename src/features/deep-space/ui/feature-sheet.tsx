@@ -15,6 +15,7 @@ type FeatureSheetProps = {
   placement?: 'bottom' | 'top';
   scrollTestID?: string;
   scrollable?: boolean;
+  showCloseButton?: boolean;
   testID: string;
   title: string;
 };
@@ -33,6 +34,7 @@ export function FeatureSheet({
   placement = 'bottom',
   scrollTestID,
   scrollable = false,
+  showCloseButton = true,
   testID,
   title,
 }: FeatureSheetProps): React.ReactElement {
@@ -43,9 +45,13 @@ export function FeatureSheet({
         <View style={featureSheetStyles.featureHeader}>
           {headerLeft}
           <Text style={featureSheetStyles.featureTitle}>{title}</Text>
-          <Pressable accessibilityLabel={translate('deep_space.back')} accessibilityRole="button" onPress={onClose} style={featureSheetStyles.featureClose}>
-            <CloseIcon />
-          </Pressable>
+          {showCloseButton
+            ? (
+                <Pressable accessibilityLabel={translate('deep_space.back')} accessibilityRole="button" onPress={onClose} style={featureSheetStyles.featureClose}>
+                  <CloseIcon />
+                </Pressable>
+              )
+            : headerLeft ? <View style={featureSheetStyles.featureClose} /> : null}
         </View>
         {scrollable
           ? (

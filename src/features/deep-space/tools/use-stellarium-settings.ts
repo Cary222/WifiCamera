@@ -6,7 +6,7 @@ import { STORAGE_KEYS } from '@/lib/storage-keys';
 export type StartTimePolicy = 'now' | 'last_view';
 
 export const DEFAULT_SETTINGS = {
-  brightness: 3.0,
+  brightness: 1.0,
   fullscreen: false,
   limitMagEnabled: false,
   limitMagValue: 6.5,

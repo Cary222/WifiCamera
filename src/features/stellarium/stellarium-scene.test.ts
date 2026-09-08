@@ -37,8 +37,33 @@ describe('stellarium default scene', () => {
     expect(sceneHtml).toContain('setModuleFlag(stel.core.planets, \'hints_mag_offset\', message.planetHintsOffset);');
     expect(sceneHtml).toContain('setModuleFlag(stel.core.dsos, \'hints_mag_offset\', message.dsoHintsOffset);');
     expect(sceneHtml).toContain('setModuleFlag(stel.core.satellites, \'hints_mag_offset\', message.satelliteHintsOffset);');
-    // An unsupported optional flag must not abort the remaining layers in the same batch.
-    expect(sceneHtml).toContain('try { module[key] = value; } catch {}');
+    // An unsupported optional flag must not abort the remaining layers in the
+    // same batch, but the failure is reported instead of silently swallowed —
+    // a dropped assignment used to be indistinguishable from a working one.
+    expect(sceneHtml).toContain('try { module[key] = value; } catch (e) { reportError(\'Failed to set \' + key + \': \' + e); }');
+  });
+});
+
+describe('stellarium advanced settings', () => {
+  it('resolves the magnitude limit through a single decision point', () => {
+    // The user's explicit limit and the Bortle-derived estimate both target
+    // `display_limit_mag`. Writing it directly let whichever ran last win, so
+    // any environment change silently wiped the user's setting.
+    expect(sceneHtml).toContain('const magnitudeState = { userLimit: null, bortleLimit: 99 };');
+    expect(sceneHtml).toContain('const value = magnitudeState.userLimit ?? magnitudeState.bortleLimit;');
+    expect(sceneHtml).toContain('magnitudeState.userLimit = message.magnitude >= 99 ? null : message.magnitude;');
+    expect(sceneHtml).toContain('magnitudeState.bortleLimit = nelmMappings[b - 1] ?? 99;');
+    // Exactly one writer may touch the engine property.
+    expect(sceneHtml.match(/setModuleFlag\(stel\.core, 'display_limit_mag'/g)).toHaveLength(1);
+  });
+
+  it('modulates native exposure scale and star point-spread scale for brightness', () => {
+    // Instead of CSS filter/opacity which washes out the true-black sky background
+    // and fades out the canvas on mobile GPUs, brightness modulates the native
+    // Stellarium Web engine exposure_scale and star_linear_scale directly.
+    expect(sceneHtml).toContain('setModuleFlag(stel.core, \'exposure_scale\', b);');
+    expect(sceneHtml).toContain('setModuleFlag(stel.core, \'star_linear_scale\', Math.max(0.05, Math.min(2.5, b * 0.4)));');
+    expect(sceneHtml).not.toContain('document.getElementById(\'canvas\')');
   });
 
   it('publishes the live view bearing so the compass can follow the engine', () => {

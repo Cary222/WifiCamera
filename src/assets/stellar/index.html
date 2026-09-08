@@ -617,10 +617,30 @@
           stel.lookAt(forward, 0);
         } catch {}
       }
-      /** Some builds omit optional module flags; a throw here must not skip the rest of a layer batch. */
+      /**
+       * Some builds omit optional module flags; a throw here must not skip the
+       * rest of a layer batch. The failure is reported rather than swallowed:
+       * a silently dropped assignment is indistinguishable from a working one,
+       * which is exactly how the magnitude-limit bug stayed hidden.
+       */
       function setModuleFlag(module, key, value) {
         if (!module) return;
-        try { module[key] = value; } catch {}
+        try { module[key] = value; } catch (e) { reportError('Failed to set ' + key + ': ' + e); }
+      }
+
+      /**
+       * `display_limit_mag` has two writers: the user's explicit limit from the
+       * advanced panel, and the value derived from the Bortle light-pollution
+       * level. They used to write the property directly, so whichever ran last
+       * won and any environment change silently wiped the user's setting.
+       * Both now record their own slot and defer to this single decision point.
+       */
+      const magnitudeState = { userLimit: null, bortleLimit: 99 };
+
+      /** User intent wins; fall back to the light-pollution estimate. */
+      function applyMagnitudeLimit() {
+        const value = magnitudeState.userLimit ?? magnitudeState.bortleLimit;
+        setModuleFlag(stel.core, 'display_limit_mag', value);
       }
 
       function execute(message) {
@@ -691,7 +711,8 @@
               const limit = message.starHintsOffset <= 0
                 ? 6.5 + message.starHintsOffset * 1.0
                 : 6.5 + message.starHintsOffset * 13.0;
-              setModuleFlag(stel.core, 'display_limit_mag', Math.max(3.5, Math.min(99, limit)));
+              magnitudeState.bortleLimit = Math.max(3.5, Math.min(99, limit));
+              applyMagnitudeLimit();
             }
             if (typeof message.planetHintsOffset === 'number') {
               setModuleFlag(stel.core.planets, 'hints_mag_offset', message.planetHintsOffset);
@@ -727,7 +748,8 @@
               // Astronomical naked-eye limiting magnitude (NELM) mapping per Bortle class:
               // Bortle 1: pristine dark sky (mag 7.6+, 99 = full catalog), down to Bortle 9: city center (mag ~3.5)
               const nelmMappings = [99, 7.3, 6.8, 6.3, 5.8, 5.3, 4.8, 4.2, 3.4];
-              setModuleFlag(stel.core, 'display_limit_mag', nelmMappings[b - 1] ?? 99);
+              magnitudeState.bortleLimit = nelmMappings[b - 1] ?? 99;
+              applyMagnitudeLimit();
               // Milky Way visibility: brilliant in dark skies (Bortle 1-4), faint in suburbs (5-6), washed out in city (7-9)
               setModuleFlag(stel.core.milkyway, 'visible', b <= 6);
               // Scale aerosol turbidity with urban air quality / Bortle rating
@@ -767,15 +789,24 @@
           case 'set_magnitude_limit': {
             if (typeof message.magnitude !== 'number' || message.magnitude < 3.5 || message.magnitude > 99)
               return reportError('Invalid magnitude limit.');
-            setModuleFlag(stel.core, 'display_limit_mag', message.magnitude);
+            // 99 is the "no limit" sentinel: clearing the slot lets the
+            // light-pollution estimate take over again.
+            magnitudeState.userLimit = message.magnitude >= 99 ? null : message.magnitude;
+            applyMagnitudeLimit();
             forceRender();
             return;
           }
           case 'set_brightness': {
             if (typeof message.brightness !== 'number' || message.brightness < 0.1 || message.brightness > 10)
               return reportError('Invalid brightness.');
-            const canvas = document.getElementById('canvas');
-            if (canvas) canvas.style.filter = `brightness(${message.brightness})`;
+            const b = message.brightness;
+            // Native Stellarium Web exposure and star point-spread scale.
+            // Factory defaults at brightness 1.0:
+            // exposure_scale = 1.0, star_linear_scale = 0.4, star_relative_scale = 1.0
+            setModuleFlag(stel.core, 'exposure_scale', b);
+            setModuleFlag(stel.core, 'star_linear_scale', Math.max(0.05, Math.min(2.5, b * 0.4)));
+            setModuleFlag(stel.core, 'star_relative_scale', Math.max(0.5, Math.min(2.0, Math.sqrt(b))));
+            forceRender();
             return;
           }
           case 'set_grid_lines': {
@@ -851,6 +882,7 @@
         translateFn: (domain, str) => (window.__STEL_LANG === 'zh' ? NAMES_ZH[str] ?? str : str),
         onReady(engine) {
           stel = engine;
+          window.stel = engine;
           const core = stel.core;
           // Fonts must be in place before any label is rasterised, or CJK names render as tofu.
           // Roboto has no CJK glyphs, so Chinese needs the bundled Noto subset.

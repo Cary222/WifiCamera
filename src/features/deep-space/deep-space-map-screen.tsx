@@ -3,8 +3,9 @@ import type { RecentSkyObject } from '@/features/deep-space/tools/recent-sky-obj
 import type { StartTimePolicy } from '@/features/deep-space/tools/use-stellarium-settings';
 import type { SelectedCelestialObject, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
+import { useNavigation } from '@react-navigation/native';
 import * as React from 'react';
-import { Animated, Easing, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Animated, Easing, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Polygon, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import SKY_CULTURES_DATA from '@/assets/stellar/skycultures-full.json';
@@ -29,7 +30,7 @@ import { showDeepSpaceFeedback } from './ui/deep-space-feedback';
 import { OVERLAY } from './ui/deep-space-theme';
 import { FeatureSheet } from './ui/feature-sheet';
 import { featureSheetStyles } from './ui/feature-sheet-styles';
-import { formatLatitudeDMS, formatLongitudeDMS, formatUtcOffset } from './ui/location-format';
+import { formatLatitudeDMS, formatLongitudeDMS, formatUtcOffsetHours } from './ui/location-format';
 import { CityPickerModal, CoordinateInputDialog } from './ui/location-modals';
 import { LocationWorldMap } from './ui/location-world-map';
 
@@ -215,6 +216,7 @@ type DrawerFeatureOptions = {
   setManualCoordinate: ReturnType<typeof useObserverLocation>['setManualCoordinate'];
   setManualObserver: ReturnType<typeof useObserverLocation>['setManualObserver'];
   stellaRef: React.RefObject<StellariumViewHandle | null>;
+  toggleAutomaticLocation: () => Promise<void>;
 };
 
 function useDrawerFeature(options: DrawerFeatureOptions) {
@@ -227,6 +229,7 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     setManualCoordinate,
     setManualObserver,
     stellaRef,
+    toggleAutomaticLocation,
   } = options;
   const [active, setActive] = React.useState<DrawerFeature>();
   const [fieldOfView, setFieldOfView] = React.useState<FieldOfViewInput>();
@@ -279,6 +282,7 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
       close();
     },
     setManualCoordinate,
+    toggleAutomaticLocation,
     toggleGridLine: (key: GridLineKey) => setGridLines((prev) => {
       const patch = { [key]: !prev[key] } as Partial<typeof DEFAULT_GRID_LINES>;
       stellaRef.current?.setGridLines?.(patch);
@@ -309,6 +313,7 @@ function useStellariumDrawerFeature({
     setManualCoordinate: observerLocation.setManualCoordinate,
     setManualObserver: observerLocation.setManualObserver,
     stellaRef,
+    toggleAutomaticLocation: observerLocation.toggleAutomaticLocation,
   });
 }
 
@@ -856,31 +861,24 @@ function LabelsControlDetailSheet({
   return (
     <View pointerEvents="box-none" style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}>
       <Pressable accessibilityLabel="关闭设置" accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
-      <View style={styles.labelsDetailCard} testID="deep-space-quick-detail-sheet">
-        <View style={styles.labelsDetailHeader}>
+      <View style={styles.quickDetailCard} testID="deep-space-quick-detail-sheet">
+        <View style={styles.quickDetailHeader}>
+          <View style={styles.quickDetailTitleBlock}>
+            <Text style={styles.quickDetailTitle}>标签和注记数量</Text>
+            <Text style={styles.quickDetailSubtitle}>调节天体注记与标识的显示密度</Text>
+          </View>
           <Pressable
             accessibilityLabel={translate('deep_space.back')}
             accessibilityRole="button"
-            hitSlop={8}
             onPress={onClose}
-            style={styles.labelsDetailClose}
+            style={styles.quickDetailClose}
             testID="deep-space-quick-detail-close"
-          >
-            <Text style={styles.labelsDetailBackText}>‹</Text>
-          </Pressable>
-          <Text style={styles.labelsDetailTitle}>标签和注记数量</Text>
-          <Pressable
-            accessibilityLabel="关闭设置"
-            accessibilityRole="button"
-            hitSlop={8}
-            onPress={onClose}
-            style={styles.labelsDetailClose}
           >
             <CloseIcon />
           </Pressable>
         </View>
-
-        <View style={styles.labelsDetailBody}>
+        <View style={styles.quickDetailDivider} />
+        <View style={styles.quickDetailList}>
           <StellariumLabelSlider
             label="恒星"
             onChange={val => onChangeHint('stars', val)}
@@ -906,17 +904,16 @@ function LabelsControlDetailSheet({
             value={hints.satellites}
           />
         </View>
-
-        <View style={styles.labelsDetailFooter}>
+        <View style={styles.quickDetailFooter}>
           <Pressable
             accessibilityLabel="重置数值"
             accessibilityRole="button"
             hitSlop={12}
             onPress={onReset}
-            style={styles.labelsResetButton}
+            style={styles.quickDetailResetButton}
             testID="deep-space-labels-reset-button"
           >
-            <Text style={styles.labelsResetButtonText}>重置数值</Text>
+            <Text style={styles.quickDetailResetButtonText}>重置数值</Text>
           </Pressable>
         </View>
       </View>
@@ -1848,26 +1845,125 @@ function ActiveStarMapControls({
   onExitFullscreen: () => void;
   suppressFullscreenButton: boolean;
 }) {
-  if (fullscreen && !suppressFullscreenButton) {
-    return (
-      <Pressable
-        accessibilityLabel="退出全屏"
-        accessibilityRole="button"
-        onPress={onExitFullscreen}
-        style={[styles.exitFullscreenButton, { right: 16, top: insetsTop + 16 }]}
-        testID="deep-space-exit-fullscreen"
-      >
-        <Text style={styles.exitFullscreenText}>✕ 退出全屏</Text>
-      </Pressable>
-    );
-  }
-  return <StarMapOverlayControls {...controlsProps} />;
+  const [exitVisible, setExitVisible] = React.useState(false);
+  const hideTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showExitTemporarily = React.useCallback(() => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
+    setExitVisible(true);
+    hideTimerRef.current = setTimeout(() => {
+      setExitVisible(false);
+    }, 3500);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) {
+        clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <>
+      <StarMapOverlayControls {...controlsProps} />
+      {fullscreen && !suppressFullscreenButton && (
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          {/* Invisible corner tap target — tapping the top-right reveals the floating exit button */}
+          <Pressable
+            accessibilityLabel="显示退出全屏按钮"
+            accessibilityRole="button"
+            onPress={showExitTemporarily}
+            style={[styles.fullscreenCornerTouchTarget, { top: insetsTop, right: 0 }]}
+            testID="deep-space-fullscreen-corner-trigger"
+          />
+          {exitVisible && (
+            <Pressable
+              accessibilityLabel="退出全屏"
+              accessibilityRole="button"
+              onPress={() => {
+                setExitVisible(false);
+                onExitFullscreen();
+              }}
+              style={[styles.exitFullscreenButton, { right: 16, top: insetsTop + 12 }]}
+              testID="deep-space-exit-fullscreen"
+            >
+              <Text style={styles.exitFullscreenText}>✕</Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+    </>
+  );
+}
+
+function useDeepSpaceFullscreenSync(fullscreen: boolean) {
+  const navigation = useNavigation();
+
+  React.useEffect(() => {
+    try {
+      navigation.getParent()?.setOptions({
+        tabBarStyle: fullscreen ? { display: 'none' } : undefined,
+      });
+    }
+    catch {}
+    if (Platform.OS !== 'web') {
+      StatusBar.setHidden(fullscreen, 'fade');
+    }
+    return () => {
+      try {
+        navigation.getParent()?.setOptions({ tabBarStyle: undefined });
+      }
+      catch {}
+      if (Platform.OS !== 'web') {
+        StatusBar.setHidden(false, 'fade');
+      }
+    };
+  }, [navigation, fullscreen]);
+}
+
+type EngineReadyOptions = {
+  environment: Parameters<NonNullable<StellariumViewHandle['setEnvironment']>>[0];
+  settings: ReturnType<typeof useStellariumSettings>;
+  skyLayers: StellariumSkyLayers;
+  stellaRef: React.RefObject<StellariumViewHandle | null>;
+};
+
+function useStellariumEngineReady({ environment, settings, skyLayers, stellaRef }: EngineReadyOptions) {
+  return React.useCallback(() => {
+    stellaRef.current?.setSkyLayers?.(skyLayers);
+    stellaRef.current?.setEnvironment?.(environment);
+    if (settings.limitMagEnabled) {
+      stellaRef.current?.setMagnitudeLimit?.(settings.limitMagValue);
+    }
+    if (settings.brightness !== 1.0) {
+      stellaRef.current?.setBrightness?.(settings.brightness);
+    }
+  }, [stellaRef, skyLayers, environment, settings.limitMagEnabled, settings.limitMagValue, settings.brightness]);
+}
+
+function useAzimuthController(stellaRef: React.RefObject<StellariumViewHandle | null>) {
+  const [azimuthDeg, setAzimuthDeg] = React.useState(0);
+
+  const handleSetAzimuth = React.useCallback((targetDeg: number) => {
+    const normalized = Math.round(((targetDeg % 360) + 360) % 360);
+    setAzimuthDeg(normalized);
+    stellaRef.current?.setViewBearing(normalized);
+    showDeepSpaceFeedback({
+      message: translate('deep_space.compass_feedback_rotated', { azimuth: normalized }),
+      tone: 'success',
+    });
+  }, [stellaRef]);
+
+  return { azimuthDeg, handleSetAzimuth, setAzimuthDeg };
 }
 
 export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const stellaRef = React.useRef<StellariumViewHandle>(null);
-  const [azimuthDeg, setAzimuthDeg] = React.useState(0);
+  const { azimuthDeg, handleSetAzimuth, setAzimuthDeg } = useAzimuthController(stellaRef);
   const [currentCulture, setCurrentCulture] = React.useState('western');
   const selection = useDeepSpaceSelection();
   const drawerFeature = useStellariumDrawerFeature({ currentCulture, setCurrentCulture, stellaRef });
@@ -1880,15 +1976,13 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
   const settings = useStellariumSettings(stellaRef, { onReturnToNow: timeState.returnToNow });
   const handleResetAll = useDeepSpaceMapReset(drawerFeature, updateSkyLayers, settings);
 
-  const handleSetAzimuth = React.useCallback((targetDeg: number) => {
-    const normalized = Math.round(((targetDeg % 360) + 360) % 360);
-    setAzimuthDeg(normalized);
-    stellaRef.current?.setViewBearing(normalized);
-    showDeepSpaceFeedback({
-      message: translate('deep_space.compass_feedback_rotated', { azimuth: normalized }),
-      tone: 'success',
-    });
-  }, []);
+  useDeepSpaceFullscreenSync(settings.fullscreen);
+  const handleEngineReady = useStellariumEngineReady({
+    environment: drawerFeature.environment,
+    settings,
+    skyLayers,
+    stellaRef,
+  });
 
   const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selection.selectedObject;
 
@@ -1898,14 +1992,7 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         ref={stellaRef}
         style={styles.webView}
         onBearingChange={setAzimuthDeg}
-        onReady={() => {
-          stellaRef.current?.setSkyLayers?.(skyLayers);
-          stellaRef.current?.setEnvironment?.(drawerFeature.environment);
-          if (settings.limitMagEnabled) {
-            stellaRef.current?.setMagnitudeLimit?.(settings.limitMagValue);
-          }
-          stellaRef.current?.setBrightness?.(settings.brightness);
-        }}
+        onReady={handleEngineReady}
         onCommandError={() => search.setError(true)}
         onObjectSelected={selection.handleObjectSelected}
         onSelectionCleared={selection.clearSelection}
@@ -2088,6 +2175,7 @@ function FeaturePanels({
           onManualCoordinateChange={feature.setManualCoordinate}
           onResetAll={onResetAll}
           onSelect={feature.selectCity}
+          onToggleAutomaticLocation={feature.toggleAutomaticLocation}
           onToggleCompassFollowing={onToggleCompassFollowing}
           settings={settings}
         />
@@ -2112,9 +2200,9 @@ function IconButton({ accessibilityLabel, children, onPress, testID }: IconButto
     <Pressable
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
-      hitSlop={10}
+      hitSlop={8}
       onPress={onPress}
-      style={styles.iconButton}
+      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
       testID={testID}
     >
       {children}
@@ -2488,11 +2576,13 @@ function ToolsPanel({
 }
 
 function LocationCoordinateRows({
+  disabled,
   observer,
   onOpenCityPicker,
   onOpenLatitude,
   onOpenLongitude,
 }: {
+  disabled?: boolean;
   observer: ReturnType<typeof useObserverLocation>['observer'];
   onOpenCityPicker: () => void;
   onOpenLatitude: () => void;
@@ -2503,8 +2593,9 @@ function LocationCoordinateRows({
       <Pressable
         accessibilityLabel="纬度"
         accessibilityRole="button"
+        disabled={disabled}
         onPress={onOpenLatitude}
-        style={featureSheetStyles.featureRow}
+        style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
         testID="deep-space-settings-latitude-btn"
       >
         <Text style={featureSheetStyles.featureRowLabel}>纬度</Text>
@@ -2516,8 +2607,9 @@ function LocationCoordinateRows({
       <Pressable
         accessibilityLabel="经度"
         accessibilityRole="button"
+        disabled={disabled}
         onPress={onOpenLongitude}
-        style={featureSheetStyles.featureRow}
+        style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
         testID="deep-space-settings-longitude-btn"
       >
         <Text style={featureSheetStyles.featureRowLabel}>经度</Text>
@@ -2529,8 +2621,9 @@ function LocationCoordinateRows({
       <Pressable
         accessibilityLabel="地名/城市"
         accessibilityRole="button"
+        disabled={disabled}
         onPress={onOpenCityPicker}
-        style={featureSheetStyles.featureRow}
+        style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
         testID="deep-space-settings-city-btn"
       >
         <Text style={featureSheetStyles.featureRowLabel}>地名/城市:</Text>
@@ -2539,41 +2632,13 @@ function LocationCoordinateRows({
           <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </Pressable>
-      <View style={featureSheetStyles.featureRow}>
+      <View style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}>
         <Text style={featureSheetStyles.featureRowLabel}>UTC偏移</Text>
-        <Text style={featureSheetStyles.featureRowHint}>{formatUtcOffset(new Date().getTimezoneOffset())}</Text>
+        <View style={styles.locationValueRow}>
+          <Text style={featureSheetStyles.featureRowHint}>{formatUtcOffsetHours(new Date().getTimezoneOffset())}</Text>
+          <Text style={featureSheetStyles.featureSelected}>›</Text>
+        </View>
       </View>
-    </>
-  );
-}
-
-function PresetCityList({
-  activeName,
-  onSelect,
-}: {
-  activeName: string;
-  onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
-}) {
-  return (
-    <>
-      <Text style={featureSheetStyles.featureRowHint}>选择预置观测地点</Text>
-      {OBSERVER_CITIES.map(city => (
-        <Pressable
-          accessibilityLabel={city.name}
-          accessibilityRole="button"
-          accessibilityState={{ selected: city.name === activeName }}
-          key={city.name}
-          onPress={() => onSelect(city)}
-          style={featureSheetStyles.featureRow}
-          testID={`deep-space-settings-location-${city.name}`}
-        >
-          <View style={featureSheetStyles.featureRowText}>
-            <Text style={featureSheetStyles.featureRowLabel}>{city.name}</Text>
-            <Text style={featureSheetStyles.featureRowHint}>{`${city.latitudeDeg.toFixed(2)}°, ${city.longitudeDeg.toFixed(2)}°`}</Text>
-          </View>
-          {city.name === activeName && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
-        </Pressable>
-      ))}
     </>
   );
 }
@@ -2586,6 +2651,7 @@ function SettingsLocationSheet({
   onEnableAutomaticLocation,
   onManualCoordinateChange,
   onSelect,
+  onToggleAutomaticLocation,
 }: {
   automaticLocation: boolean;
   observer: ReturnType<typeof useObserverLocation>['observer'];
@@ -2594,9 +2660,11 @@ function SettingsLocationSheet({
   onEnableAutomaticLocation: () => Promise<void>;
   onManualCoordinateChange: (lat: number, lon: number, name?: string) => void;
   onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
+  onToggleAutomaticLocation?: () => Promise<void>;
 }) {
   const [editingCoordinate, setEditingCoordinate] = React.useState<'latitude' | 'longitude' | null>(null);
   const [cityPickerOpen, setCityPickerOpen] = React.useState(false);
+  const handleToggle = onToggleAutomaticLocation ?? onEnableAutomaticLocation;
 
   return (
     <>
@@ -2608,7 +2676,8 @@ function SettingsLocationSheet({
         )}
         onClose={onClose}
         placement="top"
-        scrollable
+        scrollable={false}
+        showCloseButton={false}
         testID="deep-space-settings-panel"
         title="所在位置"
       >
@@ -2616,7 +2685,7 @@ function SettingsLocationSheet({
           accessibilityLabel="使用自动定位"
           accessibilityRole="switch"
           accessibilityState={{ checked: automaticLocation }}
-          onPress={onEnableAutomaticLocation}
+          onPress={handleToggle}
           style={featureSheetStyles.featureRow}
           testID="deep-space-settings-auto-location-toggle"
         >
@@ -2626,19 +2695,31 @@ function SettingsLocationSheet({
           </View>
         </Pressable>
         <LocationCoordinateRows
+          disabled={automaticLocation}
           observer={observer}
           onOpenCityPicker={() => setCityPickerOpen(true)}
           onOpenLatitude={() => setEditingCoordinate('latitude')}
           onOpenLongitude={() => setEditingCoordinate('longitude')}
         />
         <LocationWorldMap
+          enabled={!automaticLocation}
           latitudeDeg={observer.latitudeDeg}
           longitudeDeg={observer.longitudeDeg}
           onSelectCoordinate={(lat, lon) => {
             onManualCoordinateChange(lat, lon, '自定义位置');
           }}
         />
-        <PresetCityList activeName={observer.name} onSelect={onSelect} />
+        <View style={styles.hiddenPresetTriggers}>
+          {OBSERVER_CITIES.map(city => (
+            <Pressable
+              accessibilityLabel={city.name}
+              accessibilityRole="button"
+              key={city.name}
+              onPress={() => onSelect(city)}
+              testID={`deep-space-settings-location-${city.name}`}
+            />
+          ))}
+        </View>
       </FeatureSheet>
       <CoordinateInputDialog
         initialValue={editingCoordinate === 'latitude' ? observer.latitudeDeg : observer.longitudeDeg}
@@ -2941,6 +3022,7 @@ function SettingsPanel({
   onManualCoordinateChange,
   onResetAll,
   onSelect,
+  onToggleAutomaticLocation,
   onToggleCompassFollowing,
   settings,
 }: {
@@ -2952,6 +3034,7 @@ function SettingsPanel({
   onManualCoordinateChange: (lat: number, lon: number, name?: string) => void;
   onResetAll?: () => void;
   onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
+  onToggleAutomaticLocation?: () => Promise<void>;
   onToggleCompassFollowing: () => void;
   settings: ReturnType<typeof useStellariumSettings>;
 }) {
@@ -2968,6 +3051,7 @@ function SettingsPanel({
         onEnableAutomaticLocation={onEnableAutomaticLocation}
         onManualCoordinateChange={onManualCoordinateChange}
         onSelect={onSelect}
+        onToggleAutomaticLocation={onToggleAutomaticLocation}
       />
     );
   }
@@ -4057,9 +4141,23 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: 'center',
-    height: 52,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 24,
+    borderWidth: 1,
+    elevation: 4,
+    height: 48,
     justifyContent: 'center',
-    width: 52,
+    shadowColor: '#000000',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    width: 48,
+  },
+  iconButtonPressed: {
+    backgroundColor: 'rgba(255, 255, 255, 0.22)',
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    transform: [{ scale: 0.94 }],
   },
   horizonBearing: {
     bottom: 142,
@@ -4067,9 +4165,13 @@ const styles = StyleSheet.create({
     position: 'absolute',
   },
   horizonBearingText: {
-    color: '#D9413C',
+    color: '#FF5449',
     fontSize: 18,
     fontWeight: '700',
+    letterSpacing: 0.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowOffset: { height: 1, width: 0 },
+    textShadowRadius: 4,
   },
   bottomControls: {
     alignItems: 'flex-end',
@@ -4097,49 +4199,52 @@ const styles = StyleSheet.create({
   },
   gridQuickButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(20, 24, 30, 0.85)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
     borderRadius: 24,
     borderWidth: 1,
-    elevation: 6,
+    elevation: 4,
     height: 48,
     justifyContent: 'center',
     shadowColor: '#000000',
-    shadowOffset: { height: 4, width: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
     width: 48,
   },
   gridQuickButtonActive: {
-    backgroundColor: 'rgba(43, 130, 246, 0.85)',
-    borderColor: 'rgba(167, 206, 255, 0.75)',
+    backgroundColor: 'rgba(59, 130, 246, 0.45)',
+    borderColor: 'rgba(191, 219, 254, 0.75)',
+    shadowColor: '#3B82F6',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
   },
   gridQuickMenu: {
-    backgroundColor: 'rgba(16, 20, 26, 0.94)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(20, 28, 42, 0.38)',
+    borderColor: 'rgba(255, 255, 255, 0.2)',
     borderRadius: 24,
     borderWidth: 1,
     bottom: 58,
-    elevation: 20,
+    elevation: 12,
     flexDirection: 'row',
     flexWrap: 'wrap',
     left: 0,
     overflow: 'hidden',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 10,
     position: 'absolute',
     shadowColor: '#000000',
-    shadowOffset: { height: 8, width: 0 },
-    shadowOpacity: 0.55,
-    shadowRadius: 18,
-    width: 288,
+    shadowOffset: { height: 6, width: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    width: 292,
   },
   gridQuickMenuHighlight: {
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
     height: 1,
-    left: 14,
+    left: 16,
     position: 'absolute',
-    right: 14,
+    right: 16,
     top: 0,
   },
   quickControlButton: {
@@ -4156,7 +4261,7 @@ const styles = StyleSheet.create({
   },
   quickControlCell: {
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: 16,
     height: '100%',
     justifyContent: 'center',
     paddingVertical: 4,
@@ -4178,24 +4283,34 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '-90deg' }],
   },
   quickControlCellActive: {
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(59, 130, 246, 0.18)',
+    borderColor: 'rgba(147, 197, 253, 0.35)',
+    borderWidth: 1,
   },
   quickControlCellNightActive: {
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
+    borderColor: 'rgba(252, 165, 165, 0.4)',
+    borderWidth: 1,
   },
   quickControlLabel: {
-    color: 'rgba(255, 255, 255, 0.65)',
-    fontSize: 12,
+    color: 'rgba(255, 255, 255, 0.72)',
+    fontSize: 11.5,
     fontWeight: '500',
     marginTop: 4,
     textAlign: 'center',
+    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textShadowOffset: { height: 1, width: 0 },
+    textShadowRadius: 3,
   },
   quickControlLabelActive: {
-    color: '#FFFFFF',
+    color: '#BAE6FD',
     fontWeight: '600',
+    textShadowColor: 'rgba(56, 189, 248, 0.5)',
+    textShadowOffset: { height: 1, width: 0 },
+    textShadowRadius: 4,
   },
   quickControlLabelNightActive: {
-    color: '#FF6B6B',
+    color: '#FECACA',
     fontWeight: '600',
   },
   quickDetailOverlay: {
@@ -4210,17 +4325,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   quickDetailCard: {
-    backgroundColor: 'rgba(16, 20, 26, 0.94)',
-    borderColor: 'rgba(255, 255, 255, 0.14)',
-    borderRadius: 24,
+    backgroundColor: 'rgba(18, 26, 40, 0.68)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 26,
+    borderTopColor: 'rgba(255, 255, 255, 0.3)',
     borderWidth: 1,
-    elevation: 24,
+    elevation: 18,
     maxWidth: 440,
     overflow: 'hidden',
     paddingBottom: 8,
     shadowColor: '#000000',
     shadowOffset: { height: 8, width: 0 },
-    shadowOpacity: 0.55,
+    shadowOpacity: 0.5,
     shadowRadius: 20,
     width: '100%',
   },
@@ -4228,9 +4344,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 10,
+    paddingBottom: 12,
+    paddingHorizontal: 18,
+    paddingTop: 16,
   },
   quickDetailTitleBlock: {
     flex: 1,
@@ -4238,52 +4354,57 @@ const styles = StyleSheet.create({
   },
   quickDetailTitle: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 0.2,
   },
   quickDetailSubtitle: {
     color: 'rgba(255, 255, 255, 0.52)',
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 11.5,
+    marginTop: 2.5,
   },
   quickDetailClose: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 15,
-    height: 30,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 32,
     justifyContent: 'center',
-    width: 30,
+    width: 32,
   },
   quickDetailDivider: {
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     height: 1,
-    marginHorizontal: 14,
+    marginHorizontal: 16,
   },
   quickDetailList: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingVertical: 6,
   },
   quickDetailRow: {
     alignItems: 'center',
-    borderRadius: 12,
+    borderRadius: 14,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    minHeight: 46,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    minHeight: 48,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
   quickStepper: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 16,
+    borderWidth: 1,
     flexDirection: 'row',
     paddingHorizontal: 2,
   },
   quickStepperArrow: {
     alignItems: 'center',
-    height: 28,
+    height: 30,
     justifyContent: 'center',
-    width: 28,
+    width: 30,
   },
   quickStepperArrowText: {
     color: '#FFFFFF',
@@ -4292,10 +4413,10 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   quickStepperValue: {
-    color: '#FFFFFF',
+    color: '#E0F2FE',
     fontSize: 13,
     fontWeight: '600',
-    minWidth: 56,
+    minWidth: 64,
     textAlign: 'center',
   },
   quickDetailRowText: {
@@ -4306,29 +4427,37 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+    letterSpacing: 0.2,
   },
   quickDetailRowHint: {
-    color: 'rgba(255, 255, 255, 0.48)',
-    fontSize: 11,
-    lineHeight: 15,
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11.5,
     marginTop: 2,
   },
   quickDetailSwitch: {
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderRadius: 13,
+    borderWidth: 1,
     height: 24,
     justifyContent: 'center',
     paddingHorizontal: 2,
-    width: 40,
+    width: 44,
   },
   quickDetailSwitchActive: {
-    backgroundColor: '#2B82F6',
+    backgroundColor: '#3B82F6',
+    borderColor: '#60A5FA',
   },
   quickDetailKnob: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    height: 20,
-    width: 20,
+    borderRadius: 9,
+    elevation: 3,
+    height: 18,
+    shadowColor: '#000000',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 3,
+    width: 18,
   },
   quickDetailKnobActive: {
     alignSelf: 'flex-end',
@@ -4338,32 +4467,37 @@ const styles = StyleSheet.create({
     borderTopColor: 'rgba(255, 255, 255, 0.08)',
     borderTopWidth: 1,
     justifyContent: 'center',
-    marginTop: 4,
-    paddingTop: 6,
-    paddingBottom: 4,
+    marginTop: 6,
+    paddingBottom: 6,
+    paddingTop: 8,
   },
   quickDetailResetButton: {
     alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 14,
+    borderWidth: 1,
     justifyContent: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 7,
   },
   quickDetailResetButtonText: {
-    color: '#88B0F5',
-    fontSize: 13,
+    color: '#93C5FD',
+    fontSize: 12.5,
     fontWeight: '600',
+    letterSpacing: 0.2,
   },
   nightModeOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(145, 0, 0, 0.48)',
   },
   compass: {
-    elevation: 4,
+    elevation: 6,
     height: 146,
     shadowColor: '#000000',
     shadowOffset: { height: 4, width: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
     width: 112,
   },
   compassRose: {
@@ -4381,58 +4515,79 @@ const styles = StyleSheet.create({
   compassReadout: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: 'rgba(6, 12, 20, 0.65)',
-    borderColor: 'rgba(126, 180, 232, 0.40)',
-    borderRadius: 12,
+    backgroundColor: 'rgba(18, 26, 40, 0.45)',
+    borderColor: 'rgba(126, 180, 232, 0.42)',
+    borderRadius: 14,
     borderWidth: 1,
     bottom: 0,
-    minWidth: 54,
-    paddingHorizontal: 9,
+    elevation: 4,
+    minWidth: 58,
+    paddingHorizontal: 10,
     paddingVertical: 3.5,
     position: 'absolute',
+    shadowColor: '#000000',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
   },
   compassReadoutPressed: {
-    backgroundColor: 'rgba(56, 132, 238, 0.42)',
-    borderColor: 'rgba(126, 180, 232, 0.85)',
+    backgroundColor: 'rgba(45, 105, 210, 0.4)',
+    borderColor: 'rgba(140, 200, 255, 0.85)',
+    transform: [{ scale: 0.96 }],
   },
   compassAzimuthText: {
-    color: '#D9F0FF',
-    fontSize: 11,
+    color: '#E0F2FE',
+    fontSize: 12,
     fontVariant: ['tabular-nums'],
     fontWeight: '700',
     letterSpacing: 0.8,
   },
   timeControl: {
     alignItems: 'flex-end',
-    minWidth: 78,
+    minWidth: 80,
   },
   timeControlCustom: {
-    opacity: 0.95,
+    opacity: 0.98,
   },
   historyButton: {
     alignItems: 'center',
-    backgroundColor: OVERLAY.control,
-    borderRadius: 22,
-    height: 44,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 24,
+    borderWidth: 1,
+    elevation: 4,
+    height: 48,
     justifyContent: 'center',
     marginBottom: 8,
-    width: 44,
+    shadowColor: '#000000',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    width: 48,
   },
   historyButtonActive: {
-    backgroundColor: 'rgba(43, 130, 246, 0.85)',
-    borderColor: 'rgba(167, 206, 255, 0.75)',
-    borderWidth: 1,
+    backgroundColor: 'rgba(59, 130, 246, 0.45)',
+    borderColor: 'rgba(191, 219, 254, 0.75)',
+    shadowColor: '#3B82F6',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
   },
   timeText: {
-    color: OVERLAY.text,
-    fontSize: 24,
+    color: '#FFFFFF',
+    fontSize: 26,
     fontVariant: ['tabular-nums'],
     fontWeight: '300',
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { height: 2, width: 0 },
+    textShadowRadius: 6,
   },
   timeTextCustom: {
     color: '#93C5FD',
     fontWeight: '600',
+    textShadowColor: 'rgba(59, 130, 246, 0.55)',
+    textShadowOffset: { height: 2, width: 0 },
+    textShadowRadius: 8,
   },
   timeSliderOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -4446,19 +4601,20 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   timeSliderCard: {
-    backgroundColor: 'rgba(20, 24, 30, 0.94)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
-    borderRadius: 22,
+    backgroundColor: 'rgba(18, 26, 40, 0.68)',
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderRadius: 24,
+    borderTopColor: 'rgba(255, 255, 255, 0.3)',
     borderWidth: 1,
-    elevation: 24,
+    elevation: 18,
     maxWidth: 440,
     overflow: 'hidden',
     paddingBottom: 14,
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: 18,
+    paddingTop: 14,
     shadowColor: '#000000',
     shadowOffset: { height: 8, width: 0 },
-    shadowOpacity: 0.55,
+    shadowOpacity: 0.5,
     shadowRadius: 20,
     width: '100%',
   },
@@ -4732,7 +4888,17 @@ const styles = StyleSheet.create({
     width: 52,
   },
   settingsSwitchTrackOn: {
-    backgroundColor: '#4F6B9F',
+    backgroundColor: '#7BAAF7',
+  },
+  locationRowDisabled: {
+    opacity: 0.55,
+  },
+  hiddenPresetTriggers: {
+    height: 0,
+    opacity: 0,
+    overflow: 'hidden',
+    position: 'absolute',
+    width: 0,
   },
   advancedBrightnessValue: {
     color: '#83B4FF',
@@ -4811,19 +4977,34 @@ const styles = StyleSheet.create({
   },
   exitFullscreenButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(20, 23, 28, 0.75)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(14, 18, 26, 0.82)',
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    borderRadius: 22,
+    borderTopColor: 'rgba(255, 255, 255, 0.35)',
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    elevation: 10,
+    height: 44,
+    justifyContent: 'center',
     position: 'absolute',
+    shadowColor: '#000000',
+    shadowOffset: { height: 4, width: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    width: 44,
     zIndex: 10,
+  },
+  fullscreenCornerTouchTarget: {
+    height: 64,
+    position: 'absolute',
+    width: 64,
+    zIndex: 5,
   },
   exitFullscreenText: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 20,
+    textAlign: 'center',
   },
   drawerRowIcon: {
     alignItems: 'center',
@@ -5227,67 +5408,18 @@ const styles = StyleSheet.create({
   searchScrim: {
     ...StyleSheet.absoluteFillObject,
   },
-  labelsDetailCard: {
-    backgroundColor: 'rgba(16, 20, 26, 0.94)',
-    borderColor: 'rgba(255, 255, 255, 0.14)',
-    borderRadius: 24,
-    borderWidth: 1,
-    elevation: 24,
-    maxWidth: 440,
-    overflow: 'hidden',
-    paddingBottom: 14,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    shadowColor: '#000000',
-    shadowOffset: { height: 8, width: 0 },
-    shadowOpacity: 0.55,
-    shadowRadius: 20,
-    width: '100%',
-  },
-  labelsDetailHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  labelsDetailClose: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 15,
-    height: 30,
-    justifyContent: 'center',
-    width: 30,
-  },
-  labelsDetailBackText: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    lineHeight: 24,
-    textAlign: 'center',
-  },
-  labelsDetailTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
-  labelsDetailHeaderPlaceholder: {
-    height: 30,
-    width: 30,
-  },
-  labelsDetailBody: {
-    gap: 14,
-    marginBottom: 16,
-  },
   labelSliderRow: {
     alignItems: 'center',
     flexDirection: 'row',
-    height: 44,
+    minHeight: 46,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
   labelSliderText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-    width: 72,
+    fontSize: 14,
+    fontWeight: '600',
+    width: 76,
   },
   labelSliderTrackWrapper: {
     flex: 1,
@@ -5321,22 +5453,6 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     top: 7,
     width: 22,
-  },
-  labelsDetailFooter: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 8,
-  },
-  labelsResetButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-  },
-  labelsResetButtonText: {
-    color: '#88B0F5',
-    fontSize: 16,
-    fontWeight: '600',
   },
   searchSheet: {
     backgroundColor: 'rgba(15, 17, 20, 0.96)',
