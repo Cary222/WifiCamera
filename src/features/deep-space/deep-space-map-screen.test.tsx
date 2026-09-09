@@ -1,6 +1,7 @@
 import type { TonightReport } from '@/features/stellarium/stellarium-service';
 import * as React from 'react';
 
+import { translate } from '@/lib/i18n';
 import { act, cleanup, fireEvent, screen, setup } from '@/lib/test-utils';
 
 import { DeepSpaceMapScreen } from './deep-space-map-screen';
@@ -84,73 +85,25 @@ jest.mock('@/components/ui', () => {
   };
 });
 
-jest.mock('@/lib/i18n', () => ({
-  getLanguage: () => 'zh',
-  translate: (key: string, options?: Record<string, unknown>) => {
-    if (key === 'deep_space.compass_feedback_rotated' && options?.azimuth !== undefined) {
-      return `视角已转向 ${options.azimuth}°`;
-    }
-    return ({
-      'deep_space.calendar_error': '计算失败',
-      'deep_space.calendar_events': '活动',
-      'deep_space.calendar_loading': '正在计算…',
-      'deep_space.calendar_retry': '重试',
-      'deep_space.calendar_tonight': '今晚',
-      'deep_space.compass_azimuth_apply': '调整视角',
-      'deep_space.compass_azimuth_hint': '输入 0° ~ 360° 方位角调整星图朝向',
-      'deep_space.compass_azimuth_input_placeholder': '方位角 (0-360)',
-      'deep_space.compass_custom_azimuth': '设置视角方位角',
-      'deep_space.compass_permission_denied': '需要位置权限才能使用真实罗盘航向',
-      'deep_space.compass_preset_east': '90° 东',
-      'deep_space.compass_preset_north': '0° 北',
-      'deep_space.compass_preset_south': '180° 南',
-      'deep_space.compass_preset_west': '270° 西',
-      'deep_space.compass_start': '开启真实罗盘航向',
-      'deep_space.compass_started': '正在按真实罗盘航向跟随',
-      'deep_space.compass_stop': '停止罗盘航向跟随',
-      'deep_space.compass_stopped': '已停止罗盘航向跟随',
-      'deep_space.compass_unavailable': '当前设备无法提供罗盘航向',
-      'deep_space.dawn_start': '天文晨光始',
-      'deep_space.dusk_end': '天文昏影终',
-      'deep_space.feedback_labels_reset': '标签注记已重置',
-      'deep_space.feedback_returned_to_now': '已回到当前时间',
-      'deep_space.feedback_telescope_controls': '已打开望远镜控制，可检查连接后发送 GOTO',
-      'deep_space.full_moon': '满月',
-      'deep_space.meteor_shower': '流星雨极大',
-      'deep_space.moon': '月',
-      'deep_space.moon_phase': '月相',
-      'deep_space.moonrise': '月出',
-      'deep_space.moonset': '月落',
-      'deep_space.no_events': '该时段没有天象事件',
-      'deep_space.no_planets': '今晚没有行星在地平线以上',
-      'deep_space.peak_altitude': '最高',
-      'deep_space.satellite_altitude': '高程',
-      'deep_space.satellite_error': '无法获取卫星轨道数据',
-      'deep_space.satellite_magnitude': '星等',
-      'deep_space.satellite_none': '今晚没有可见卫星经过',
-      'deep_space.satellite_passes': '有卫星经过',
-      'deep_space.satellite_retry': '重试',
-      'deep_space.satellite_time': '时间',
-      'deep_space.saturn': '土星',
-      'deep_space.solar_system': '太阳系',
-      'deep_space.sunrise': '日出',
-      'deep_space.sunset': '日落',
-      'deep_space.visible_tonight': '今晚可见',
-      'deep_space.waxing_gibbous': '盈凸月',
-      'deep_space.atmosphere': '大气',
-      'deep_space.constellation_art': '星座图',
-      'deep_space.constellations': '星座连线',
-      'deep_space.horizon': '地平线',
-      'deep_space.layers': '图层',
-      'deep_space.menu': '菜单',
-      'deep_space.return_to_now': '回到当前时间',
-      'deep_space.search': '搜索天体',
-      'deep_space.search_not_found': '未找到该天体，请改用标准名称或编号',
-      'deep_space.search_placeholder': '输入天体名称或编号',
-      'deep_space.time': '时间',
-    } as Record<string, string>)[key] ?? key;
-  },
-}));
+// Resolve every key from the shipped zh translations so this mock cannot drift
+// from the copy the app actually renders.
+jest.mock('@/lib/i18n', () => {
+  const zh = jest.requireActual('@/translations/zh.json').deep_space as Record<string, unknown>;
+  return {
+    getLanguage: () => 'zh',
+    translate: (key: string, options?: Record<string, unknown>) => {
+      const value = key
+        .split('.')
+        .slice(1)
+        .reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], zh);
+      if (typeof value !== 'string')
+        return key;
+      return options
+        ? value.replace(/\{\{(\w+)\}\}/g, (_match: string, name: string) => String(options[name] ?? ''))
+        : value;
+    },
+  };
+});
 
 jest.mock('@/features/deep-space/calendar/satellite-pass-service', () => ({
   loadVisualOmm: jest.fn(async () => []),
@@ -489,7 +442,7 @@ describe('deep space advanced settings and reset features', () => {
     await user.press(screen.getByText('设置'));
     await user.press(screen.getByTestId('deep-space-settings-advanced-entry'));
     await user.press(screen.getByTestId('deep-space-settings-fullscreen-toggle'));
-    await user.press(screen.getByLabelText('deep_space.back'));
+    await user.press(screen.getByLabelText(translate('deep_space.back')));
 
     expect(screen.queryByTestId('deep-space-settings-advanced-panel')).not.toBeOnTheScreen();
     // In full-screen mode, star-map own controls remain accessible

@@ -9,6 +9,7 @@ import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { storage } from '@/lib/storage';
 
+import { cityLabel } from '../ui/location-format';
 import { SatellitePassList } from './satellite-pass-list';
 import { loadVisualOmm, predictVisiblePasses } from './satellite-pass-service';
 import photometryJson from './satellite-photometry.json';
@@ -26,7 +27,20 @@ type SatelliteResult
     | { status: 'failed' }
     | { status: 'ready'; passes: SatellitePass[] };
 
-const MONTHS_ZH = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+const MONTH_KEYS = [
+  'deep_space.month.m1',
+  'deep_space.month.m2',
+  'deep_space.month.m3',
+  'deep_space.month.m4',
+  'deep_space.month.m5',
+  'deep_space.month.m6',
+  'deep_space.month.m7',
+  'deep_space.month.m8',
+  'deep_space.month.m9',
+  'deep_space.month.m10',
+  'deep_space.month.m11',
+  'deep_space.month.m12',
+] as const;
 const PLANET_KEYS = {
   jupiter: 'deep_space.jupiter',
   mars: 'deep_space.mars',
@@ -149,7 +163,7 @@ export function CalendarPanel({
   const tonight = calendar.result.status === 'ready' ? calendar.result.tonight : null;
   const satellites = useSatellitePasses(tonight, city);
   const nextDay = new Date(clock.getTime() + 86_400_000);
-  const heading = `${clock.getMonth() + 1}月 ${clock.getDate()}-${nextDay.getDate()}, ${city.name}`;
+  const heading = translate('deep_space.calendar.range', { city: cityLabel(city.name), from: clock.getDate(), month: clock.getMonth() + 1, to: nextDay.getDate() });
 
   return (
     <Modal animationType="none" onRequestClose={onClose} transparent visible>
@@ -164,7 +178,7 @@ export function CalendarPanel({
           >
             <BackIcon />
           </Pressable>
-          <Text style={styles.headerTitle}>日历</Text>
+          <Text style={styles.headerTitle}>{translate('deep_space.calendar.title')}</Text>
           <View style={styles.headerButton} />
         </View>
         <View style={styles.tabs}>
@@ -270,7 +284,7 @@ function eventLabel(event: SkyEvent): string {
 
 function eventTime(event: SkyEvent): string {
   const date = new Date(event.time);
-  const day = `${MONTHS_ZH[date.getMonth()]} ${date.getDate()}`;
+  const day = `${translate(MONTH_KEYS[date.getMonth()])} ${date.getDate()}`;
   if (event.type === 'meteor_shower')
     return day;
   const offset = -date.getTimezoneOffset();
@@ -284,7 +298,7 @@ function EventsTab({ events }: { events: SkyEvent[] }) {
   const groups = new Map<string, SkyEvent[]>();
   for (const event of events) {
     const date = new Date(event.time);
-    const key = `${MONTHS_ZH[date.getMonth()]} ${date.getFullYear()}`;
+    const key = `${translate(MONTH_KEYS[date.getMonth()])} ${date.getFullYear()}`;
     groups.set(key, [...(groups.get(key) ?? []), event]);
   }
   if (events.length === 0)

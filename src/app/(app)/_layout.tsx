@@ -3,9 +3,10 @@ import { Redirect, SplashScreen, Tabs } from 'expo-router';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { Text } from 'react-native';
+import { useMMKVBoolean } from 'react-native-mmkv';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUniwind } from 'uniwind';
 
+import { useUniwind } from 'uniwind';
 import {
   HomeFilled,
   SettingsFilled,
@@ -13,6 +14,8 @@ import {
 } from '@/components/ui/icons';
 import { useAppGate } from '@/lib/hooks/use-app-gate';
 import { translate } from '@/lib/i18n';
+import { storage } from '@/lib/storage';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 function renderTabBarLabel(label: string, isDark: boolean) {
   return ({ focused }: { focused: boolean }) => (
@@ -35,6 +38,7 @@ export default function TabLayout() {
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
   const insets = useSafeAreaInsets();
+  const [deepSpaceFullscreen] = useMMKVBoolean(STORAGE_KEYS.DEEP_SPACE_SETTINGS_FULLSCREEN, storage);
 
   const hideSplash = useCallback(async () => {
     await SplashScreen.hideAsync();
@@ -86,7 +90,7 @@ export default function TabLayout() {
         name="(deep-space)"
         options={({ route }) => {
           const routeName = getFocusedRouteNameFromRoute(route);
-          const hideTabs = routeName === 'star-map';
+          const hideTabs = routeName === 'star-map' || Boolean(deepSpaceFullscreen);
           return {
             title: translate('deep_space.title'),
             tabBarIcon: ({ focused }) => <StarmapFilled focused={focused} />,

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui';
+import { translate } from '@/lib/i18n';
 
 type TelescopeControlPanelProps = {
   onGoto: (raHours: number, decDeg: number) => void;
@@ -33,17 +34,17 @@ export function TelescopeControlPanel({ onGoto }: TelescopeControlPanelProps): R
 
   return (
     <View style={styles.content}>
-      <Text style={styles.description}>控制星图指向；尚未连接实体赤道仪。</Text>
+      <Text style={styles.description}>{translate('deep_space.telescope.hint')}</Text>
       <View style={styles.coordinateRow}>
-        <CoordinateInput label="赤经 RA（小时）" onChangeText={setRa} testID="deep-space-telescope-ra-input" value={ra} />
-        <CoordinateInput label="赤纬 Dec（°）" onChangeText={setDec} testID="deep-space-telescope-dec-input" value={dec} />
+        <CoordinateInput label={translate('deep_space.telescope.ra')} onChangeText={setRa} testID="deep-space-telescope-ra-input" value={ra} />
+        <CoordinateInput label={translate('deep_space.telescope.dec')} onChangeText={setDec} testID="deep-space-telescope-dec-input" value={dec} />
       </View>
-      {!valid && <Text style={styles.error}>RA 应在 0–24 小时，Dec 应在 -90–90°。</Text>}
+      {!valid && <Text style={styles.error}>{translate('deep_space.telescope.invalid')}</Text>}
       <View style={styles.stepRow}>
-        <Text style={styles.stepLabel}>步进</Text>
+        <Text style={styles.stepLabel}>{translate('deep_space.telescope.step')}</Text>
         {STEPS.map(value => (
           <Pressable
-            accessibilityLabel={`${value} 度步进`}
+            accessibilityLabel={translate('deep_space.telescope.step_a11y', { value })}
             accessibilityRole="button"
             key={value}
             onPress={() => setStep(value)}
@@ -57,15 +58,15 @@ export function TelescopeControlPanel({ onGoto }: TelescopeControlPanelProps): R
         ))}
       </View>
       <View style={styles.pad}>
-        <DirectionButton label="北" onPress={() => move(0, step)} />
+        <DirectionButton label={translate('deep_space.compass_dir.n')} onPress={() => move(0, step)} />
         <View style={styles.padRow}>
-          <DirectionButton label="西" onPress={() => move(-step / 15, 0)} />
-          <Pressable accessibilityLabel="转到坐标" accessibilityRole="button" disabled={!valid} onPress={() => valid && onGoto(raHours as number, decDeg as number)} style={[styles.gotoButton, !valid && styles.gotoButtonDisabled]} testID="deep-space-telescope-goto">
-            <Text style={styles.gotoText}>转到</Text>
+          <DirectionButton label={translate('deep_space.compass_dir.w')} onPress={() => move(-step / 15, 0)} />
+          <Pressable accessibilityLabel={translate('deep_space.telescope.goto')} accessibilityRole="button" disabled={!valid} onPress={() => valid && onGoto(raHours as number, decDeg as number)} style={[styles.gotoButton, !valid && styles.gotoButtonDisabled]} testID="deep-space-telescope-goto">
+            <Text style={styles.gotoText}>{translate('deep_space.telescope.goto_short')}</Text>
           </Pressable>
-          <DirectionButton label="东" onPress={() => move(step / 15, 0)} />
+          <DirectionButton label={translate('deep_space.compass_dir.e')} onPress={() => move(step / 15, 0)} />
         </View>
-        <DirectionButton label="南" onPress={() => move(0, -step)} />
+        <DirectionButton label={translate('deep_space.compass_dir.s')} onPress={() => move(0, -step)} />
       </View>
     </View>
   );
@@ -81,7 +82,7 @@ function CoordinateInput({ label, onChangeText, testID, value }: { label: string
 }
 
 function DirectionButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return <Pressable accessibilityLabel={`${label}向微调`} accessibilityRole="button" onPress={onPress} style={styles.directionButton}><Text style={styles.directionText}>{label}</Text></Pressable>;
+  return <Pressable accessibilityLabel={translate('deep_space.telescope.nudge', { label })} accessibilityRole="button" onPress={onPress} style={styles.directionButton}><Text style={styles.directionText}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({

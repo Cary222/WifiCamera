@@ -3,6 +3,7 @@ import * as React from 'react';
 import { Image, PanResponder, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { STELLARIUM_WORLD_MAP_BASE64 } from '@/assets/stellar/world-map-texture';
+import { translate } from '@/lib/i18n';
 
 type LocationWorldMapProps = {
   enabled?: boolean;
@@ -106,7 +107,7 @@ export function LocationWorldMap({
 
   return (
     <Pressable
-      accessibilityLabel="世界地图位置选择"
+      accessibilityLabel={translate('deep_space.location.world_map')}
       accessibilityRole="imagebutton"
       onLayout={onLayout}
       onPress={(e: GestureResponderEvent) => handleTouch(e.nativeEvent.locationX, e.nativeEvent.locationY)}

@@ -1,6 +1,7 @@
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import * as Location from 'expo-location';
 import * as React from 'react';
+import { translate } from '@/lib/i18n';
 
 export type ObserverLocation = {
   altitudeM?: number;
@@ -128,7 +129,7 @@ export function useObserverLocation(stellaRef: React.RefObject<StellariumViewHan
       altitudeM: observer.altitudeM ?? 0,
       latitudeDeg,
       longitudeDeg,
-      name: name ?? (observer.name === '当前位置' ? '自定义位置' : observer.name),
+      name: name ?? (observer.name === '当前位置' ? translate('deep_space.settings.custom_location') : observer.name),
     });
   }, [observer.altitudeM, observer.name, setManualObserver]);
 

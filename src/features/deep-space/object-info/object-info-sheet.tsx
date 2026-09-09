@@ -66,7 +66,8 @@ function ObjectAvatar({
   phase?: number | null;
   type?: string;
 }) {
-  const isMoonOrPlanet = type === 'planet' || type === 'moon' || ['金星', '水星', '月球', '火星'].includes(name);
+  // The engine returns names in the app language, so match both scripts.
+  const isMoonOrPlanet = type === 'planet' || type === 'moon' || ['金星', 'Venus', '水星', 'Mercury', '月球', 'Moon', '火星', 'Mars'].includes(name);
 
   if (isMoonOrPlanet && typeof phase === 'number') {
     return <PlanetMoonAvatar phase={phase} />;
@@ -97,7 +98,7 @@ function PageStepper({
   return (
     <View style={styles.stepperPill} testID="deep-space-object-page-stepper">
       <Pressable
-        accessibilityLabel="上一页"
+        accessibilityLabel={translate('deep_space.object.prev')}
         accessibilityRole="button"
         hitSlop={6}
         onPress={onPrev}
@@ -107,7 +108,7 @@ function PageStepper({
         <Text style={styles.stepperArrowText}>‹</Text>
       </Pressable>
       <Pressable
-        accessibilityLabel="下一页"
+        accessibilityLabel={translate('deep_space.object.next')}
         accessibilityRole="button"
         hitSlop={6}
         onPress={onNext}
@@ -153,7 +154,7 @@ function CoordinatePage({
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>时角</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.hour_angle')}</Text>
         <Text style={styles.dataValue}>{haStr}</Text>
       </View>
 
@@ -183,7 +184,7 @@ function PhysicalPage({
   return (
     <View style={styles.dataPage} testID="deep-space-object-physical-page">
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>星座</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.constellation_panel.label')}</Text>
         <View style={styles.dataValueWithStepper}>
           <Text style={styles.dataValue}>{constellation}</Text>
           <PageStepper onNext={onNextPage} onPrev={onPrevPage} />
@@ -191,22 +192,22 @@ function PhysicalPage({
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>星等</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.magnitude')}</Text>
         <Text style={styles.dataValue}>{vmagStr}</Text>
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>距离</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.distance')}</Text>
         <Text style={styles.dataValue}>{distStr}</Text>
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>阶段</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.phase')}</Text>
         <Text style={styles.dataValue}>{phaseStr}</Text>
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>直径</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.diameter')}</Text>
         <Text style={styles.dataValue}>{sizeStr}</Text>
       </View>
     </View>
@@ -235,7 +236,7 @@ function ObjectHeader({
   onZoomOut?: (object: ObjectInfoSheetProps['object']) => void;
 }) {
   const subtitleFromDesig = formatSubtitle(object.name, object.englishName, object.designations);
-  const displaySubtitle = object.typeZh || subtitleFromDesig || '天体';
+  const displaySubtitle = object.typeZh || subtitleFromDesig || translate('deep_space.object.object');
 
   return (
     <View style={styles.header}>
@@ -249,7 +250,7 @@ function ObjectHeader({
       <View style={styles.zoomControlBlock}>
         <View style={styles.zoomButtonsRow}>
           <Pressable
-            accessibilityLabel="缩小视角"
+            accessibilityLabel={translate('deep_space.object.zoom_out')}
             accessibilityRole="button"
             hitSlop={6}
             onPress={() => (onZoomOut ? onZoomOut(object) : onZoomIn(object))}
@@ -262,7 +263,7 @@ function ObjectHeader({
           </Pressable>
 
           <Pressable
-            accessibilityLabel="放大视角"
+            accessibilityLabel={translate('deep_space.object.zoom_in')}
             accessibilityRole="button"
             hitSlop={6}
             onPress={() => onZoomIn(object)}
@@ -275,7 +276,7 @@ function ObjectHeader({
             </Svg>
           </Pressable>
         </View>
-        <Text style={styles.zoomLabel}>缩放</Text>
+        <Text style={styles.zoomLabel}>{translate('deep_space.object.zoom')}</Text>
       </View>
     </View>
   );
@@ -301,7 +302,7 @@ function ObjectActionPills({
   return (
     <View style={styles.actionPillsRow}>
       <Pressable
-        accessibilityLabel="可见度"
+        accessibilityLabel={translate('deep_space.object.visibility')}
         accessibilityRole="button"
         onPress={() => onCenter(object)}
         style={styles.pillButton}
@@ -311,11 +312,11 @@ function ObjectActionPills({
           <Circle cx={8} cy={8} fill="none" r={6.5} stroke="#7BA7F7" strokeWidth={1.8} />
           <Circle cx={8} cy={8} fill="#7BA7F7" r={2.5} />
         </Svg>
-        <Text style={styles.pillButtonText}>可见度</Text>
+        <Text style={styles.pillButtonText}>{translate('deep_space.object.visibility')}</Text>
       </Pressable>
 
       <Pressable
-        accessibilityLabel="3D视角"
+        accessibilityLabel={translate('deep_space.object.view_3d')}
         accessibilityRole="button"
         onPress={() => onZoomIn(object)}
         style={styles.pillButton}
@@ -329,7 +330,7 @@ function ObjectActionPills({
       </Pressable>
 
       <Pressable
-        accessibilityLabel="收藏"
+        accessibilityLabel={translate('deep_space.object.favorite')}
         accessibilityRole="button"
         onPress={onToggleLike}
         style={styles.heartButton}
@@ -347,18 +348,18 @@ function ObjectActionPills({
 
       {onGoto && (
         <Pressable
-          accessibilityLabel="望远镜指向"
+          accessibilityLabel={translate('deep_space.object.telescope')}
           accessibilityRole="button"
           onPress={() => onGoto(object.raHours, object.decDeg)}
           style={styles.gotoPillButton}
           testID="deep-space-object-goto-btn"
         >
-          <Text style={styles.gotoPillButtonText}>指向望远镜</Text>
+          <Text style={styles.gotoPillButtonText}>{translate('deep_space.object.goto_telescope')}</Text>
         </Pressable>
       )}
 
       <Pressable
-        accessibilityLabel="关闭天体信息"
+        accessibilityLabel={translate('deep_space.object.close')}
         accessibilityRole="button"
         hitSlop={8}
         onPress={onClose}
@@ -412,7 +413,7 @@ export function ObjectInfoSheet({
     toggleFavoriteSkyObject(storage, object.id);
     setLiked(isFavorite);
     showDeepSpaceFeedback({
-      message: isFavorite ? `已收藏${object.name}` : `已取消收藏${object.name}`,
+      message: translate(isFavorite ? 'deep_space.object.favorited' : 'deep_space.object.unfavorited', { name: object.name }),
       tone: 'success',
     });
   };

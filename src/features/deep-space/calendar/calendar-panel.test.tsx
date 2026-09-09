@@ -6,31 +6,24 @@ import { screen, setup } from '@/lib/test-utils';
 import { CalendarPanel } from './calendar-panel';
 import { loadVisualOmm, predictVisiblePasses } from './satellite-pass-service';
 
-jest.mock('@/lib/i18n', () => ({
-  translate: (key: string) => ({
-    'deep_space.back': '返回',
-    'deep_space.calendar_error': '计算失败',
-    'deep_space.calendar_events': '活动',
-    'deep_space.calendar_loading': '正在计算…',
-    'deep_space.calendar_retry': '重试',
-    'deep_space.calendar_tonight': '今晚',
-    'deep_space.full_moon': '满月',
-    'deep_space.meteor_shower': '流星雨极大',
-    'deep_space.moon': '月',
-    'deep_space.no_events': '该时段没有天象事件',
-    'deep_space.no_planets': '今晚没有行星在地平线以上',
-    'deep_space.satellite_altitude': '高程',
-    'deep_space.satellite_error': '无法获取卫星轨道数据',
-    'deep_space.satellite_magnitude': '星等',
-    'deep_space.satellite_none': '今晚没有可见卫星经过',
-    'deep_space.satellite_passes': '有卫星经过',
-    'deep_space.satellite_retry': '重试',
-    'deep_space.satellite_time': '时间',
-    'deep_space.solar_system': '太阳系',
-    'deep_space.sunrise': '日出',
-    'deep_space.sunset': '日落',
-  }[key] ?? key),
-}));
+// Resolve every key from the shipped zh translations so this mock cannot drift
+// from the copy the app actually renders.
+jest.mock('@/lib/i18n', () => {
+  const zh = jest.requireActual('@/translations/zh.json').deep_space as Record<string, unknown>;
+  return {
+    translate: (key: string, options?: Record<string, unknown>) => {
+      const value = key
+        .split('.')
+        .slice(1)
+        .reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], zh);
+      if (typeof value !== 'string')
+        return key;
+      return options
+        ? value.replace(/\{\{(\w+)\}\}/g, (_match: string, name: string) => String(options[name] ?? ''))
+        : value;
+    },
+  };
+});
 
 jest.mock('./satellite-pass-service', () => ({
   ...jest.requireActual('./satellite-pass-service'),

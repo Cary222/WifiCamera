@@ -3,7 +3,6 @@ import type { RecentSkyObject } from '@/features/deep-space/tools/recent-sky-obj
 import type { StartTimePolicy } from '@/features/deep-space/tools/use-stellarium-settings';
 import type { SelectedCelestialObject, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
-import { useNavigation } from '@react-navigation/native';
 import * as React from 'react';
 import { Animated, Easing, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,7 +29,7 @@ import { showDeepSpaceFeedback } from './ui/deep-space-feedback';
 import { OVERLAY } from './ui/deep-space-theme';
 import { FeatureSheet } from './ui/feature-sheet';
 import { featureSheetStyles } from './ui/feature-sheet-styles';
-import { formatLatitudeDMS, formatLongitudeDMS, formatUtcOffsetHours } from './ui/location-format';
+import { cityLabel, formatLatitudeDMS, formatLongitudeDMS, formatUtcOffsetHours } from './ui/location-format';
 import { CityPickerModal, CoordinateInputDialog } from './ui/location-modals';
 import { LocationWorldMap } from './ui/location-world-map';
 
@@ -128,12 +127,21 @@ const OBSERVER_CITIES = [
 
 const REGION_LABELS: Record<string, string> = SKY_CULTURES_DATA.regionsZh;
 
-const BEARING_LABELS = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+const BEARING_KEYS = [
+  'deep_space.compass_dir.n',
+  'deep_space.compass_dir.ne',
+  'deep_space.compass_dir.e',
+  'deep_space.compass_dir.se',
+  'deep_space.compass_dir.s',
+  'deep_space.compass_dir.sw',
+  'deep_space.compass_dir.w',
+  'deep_space.compass_dir.nw',
+] as const;
 const COMPASS_MAJOR_TICKS = Array.from({ length: 12 }, (_, index) => index * 30);
 const COMPASS_MINOR_TICKS = Array.from({ length: 60 }, (_, index) => index * 6).filter(angle => angle % 30 !== 0);
 
 function bearingLabel(azimuthDeg: number): string {
-  return BEARING_LABELS[Math.round(((azimuthDeg % 360) + 360) % 360 / 45) % 8];
+  return translate(BEARING_KEYS[Math.round(((azimuthDeg % 360) + 360) % 360 / 45) % 8]);
 }
 
 function landscapeStepper(activeId: string, onSelect: (id: string) => void) {
@@ -144,36 +152,36 @@ function landscapeStepper(activeId: string, onSelect: (id: string) => void) {
       const next = (index + delta + LANDSCAPES.length) % LANDSCAPES.length;
       onSelect(LANDSCAPES[next].id);
     },
-    position: `第 ${index + 1} / ${LANDSCAPES.length} 套`,
-    value: LANDSCAPES[index]?.titleZh ?? activeId,
+    position: translate('deep_space.landscape.position', { index: index + 1, total: LANDSCAPES.length }),
+    value: ((getLanguage() || 'zh').startsWith('zh') ? LANDSCAPES[index]?.titleZh : LANDSCAPES[index]?.title) ?? activeId,
   };
 }
 
-const BORTLE_LEVELS = [
-  'Bortle 1 · 极佳暗空',
-  'Bortle 2 · 典型暗空',
-  'Bortle 3 · 乡村暗空',
-  'Bortle 4 · 乡村过渡',
-  'Bortle 5 · 郊区天空',
-  'Bortle 6 · 明亮郊区',
-  'Bortle 7 · 城郊天空',
-  'Bortle 8 · 城市天空',
-  'Bortle 9 · 市中心天空',
+const BORTLE_KEYS = [
+  'deep_space.bortle.b1',
+  'deep_space.bortle.b2',
+  'deep_space.bortle.b3',
+  'deep_space.bortle.b4',
+  'deep_space.bortle.b5',
+  'deep_space.bortle.b6',
+  'deep_space.bortle.b7',
+  'deep_space.bortle.b8',
+  'deep_space.bortle.b9',
 ] as const;
 
 /** User-selected safe default: Bortle 1, the lowest skyglow / best dark sky. */
 const DEFAULT_BORTLE_INDEX = 1;
 
 function airQualityStepper(bortleIndex: number, onSelect: (next: number) => void) {
-  const index = Math.min(BORTLE_LEVELS.length - 1, Math.max(0, bortleIndex - 1));
+  const index = Math.min(BORTLE_KEYS.length - 1, Math.max(0, bortleIndex - 1));
 
   return {
     onStep: (delta: number) => {
-      const next = (index + delta + BORTLE_LEVELS.length) % BORTLE_LEVELS.length;
+      const next = (index + delta + BORTLE_KEYS.length) % BORTLE_KEYS.length;
       onSelect(next + 1);
     },
-    position: `第 ${index + 1} / ${BORTLE_LEVELS.length} 级`,
-    value: BORTLE_LEVELS[index],
+    position: translate('deep_space.bortle.position', { index: index + 1, total: BORTLE_KEYS.length }),
+    value: translate(BORTLE_KEYS[index]),
   };
 }
 
@@ -664,7 +672,7 @@ function QuickDetailStepperRow({ item, stepper }: { item: QuickSubItem; stepper:
       </View>
       <View style={styles.quickStepper}>
         <Pressable
-          accessibilityLabel={`上一个${item.label}`}
+          accessibilityLabel={translate('deep_space.a11y.previous_item', { label: item.label })}
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => stepper.onStep(-1)}
@@ -681,7 +689,7 @@ function QuickDetailStepperRow({ item, stepper }: { item: QuickSubItem; stepper:
           {stepper.value}
         </Text>
         <Pressable
-          accessibilityLabel={`下一个${item.label}`}
+          accessibilityLabel={translate('deep_space.a11y.next_item', { label: item.label })}
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => stepper.onStep(1)}
@@ -860,12 +868,12 @@ function LabelsControlDetailSheet({
 }) {
   return (
     <View pointerEvents="box-none" style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}>
-      <Pressable accessibilityLabel="关闭设置" accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
+      <Pressable accessibilityLabel={translate('deep_space.quick.close')} accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
       <View style={styles.quickDetailCard} testID="deep-space-quick-detail-sheet">
         <View style={styles.quickDetailHeader}>
           <View style={styles.quickDetailTitleBlock}>
-            <Text style={styles.quickDetailTitle}>标签和注记数量</Text>
-            <Text style={styles.quickDetailSubtitle}>调节天体注记与标识的显示密度</Text>
+            <Text style={styles.quickDetailTitle}>{translate('deep_space.quick.title')}</Text>
+            <Text style={styles.quickDetailSubtitle}>{translate('deep_space.quick.subtitle')}</Text>
           </View>
           <Pressable
             accessibilityLabel={translate('deep_space.back')}
@@ -880,25 +888,25 @@ function LabelsControlDetailSheet({
         <View style={styles.quickDetailDivider} />
         <View style={styles.quickDetailList}>
           <StellariumLabelSlider
-            label="恒星"
+            label={translate('deep_space.quick.stars')}
             onChange={val => onChangeHint('stars', val)}
             testID="deep-space-label-slider-stars"
             value={hints.stars}
           />
           <StellariumLabelSlider
-            label="行星"
+            label={translate('deep_space.quick.planets')}
             onChange={val => onChangeHint('planets', val)}
             testID="deep-space-label-slider-planets"
             value={hints.planets}
           />
           <StellariumLabelSlider
-            label="深空天体"
+            label={translate('deep_space.quick.dso')}
             onChange={val => onChangeHint('dsos', val)}
             testID="deep-space-label-slider-dsos"
             value={hints.dsos}
           />
           <StellariumLabelSlider
-            label="人造卫星"
+            label={translate('deep_space.quick.satellites')}
             onChange={val => onChangeHint('satellites', val)}
             testID="deep-space-label-slider-satellites"
             value={hints.satellites}
@@ -906,14 +914,14 @@ function LabelsControlDetailSheet({
         </View>
         <View style={styles.quickDetailFooter}>
           <Pressable
-            accessibilityLabel="重置数值"
+            accessibilityLabel={translate('deep_space.quick.reset_value')}
             accessibilityRole="button"
             hitSlop={12}
             onPress={onReset}
             style={styles.quickDetailResetButton}
             testID="deep-space-labels-reset-button"
           >
-            <Text style={styles.quickDetailResetButtonText}>重置数值</Text>
+            <Text style={styles.quickDetailResetButtonText}>{translate('deep_space.quick.reset_value')}</Text>
           </Pressable>
         </View>
       </View>
@@ -940,7 +948,7 @@ function QuickControlDetailSheet({
 }) {
   return (
     <View pointerEvents="box-none" style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}>
-      <Pressable accessibilityLabel="关闭设置" accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
+      <Pressable accessibilityLabel={translate('deep_space.quick.close')} accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
       <View style={styles.quickDetailCard} testID="deep-space-quick-detail-sheet">
         <View style={styles.quickDetailHeader}>
           <View style={styles.quickDetailTitleBlock}>
@@ -964,14 +972,14 @@ function QuickControlDetailSheet({
         {onReset && (
           <View style={styles.quickDetailFooter}>
             <Pressable
-              accessibilityLabel={resetLabel ?? '重置默认'}
+              accessibilityLabel={resetLabel ?? translate('deep_space.quick.reset_default')}
               accessibilityRole="button"
               hitSlop={12}
               onPress={onReset}
               style={styles.quickDetailResetButton}
               testID="deep-space-quick-detail-reset"
             >
-              <Text style={styles.quickDetailResetButtonText}>{resetLabel ?? '重置默认'}</Text>
+              <Text style={styles.quickDetailResetButtonText}>{resetLabel ?? translate('deep_space.quick.reset_default')}</Text>
             </Pressable>
           </View>
         )}
@@ -1005,52 +1013,52 @@ function getGridControls({
     detailItems: [
       {
         active: lines.azimuthal,
-        hint: '以地平线与天顶为基准的仰角与方位网格',
+        hint: translate('deep_space.grid.azimuthal_hint'),
         id: 'azimuthal',
-        label: '地平坐标网格 (Azimuthal)',
+        label: translate('deep_space.grid.azimuthal'),
         onToggle: () => onToggleGridLine('azimuthal'),
       },
       {
         active: lines.equatorial_jnow,
-        hint: '随天球旋转的即时天赤道与赤经赤纬网格',
+        hint: translate('deep_space.grid.jnow_hint'),
         id: 'equatorial_jnow',
-        label: '赤道坐标网格 (JNow)',
+        label: translate('deep_space.grid.jnow'),
         onToggle: () => onToggleGridLine('equatorial_jnow'),
       },
       {
         active: lines.equatorial_j2000,
-        hint: '基于 J2000.0 标准固定参考系的赤经赤纬网格',
+        hint: translate('deep_space.grid.j2000_hint'),
         id: 'equatorial_j2000',
-        label: '赤道坐标网格 (J2000)',
+        label: translate('deep_space.grid.j2000'),
         onToggle: () => onToggleGridLine('equatorial_j2000'),
       },
       {
         active: lines.ecliptic,
-        hint: '太阳在天球上的视周年运动轨迹（黄道大圆）',
+        hint: translate('deep_space.grid.ecliptic_hint'),
         id: 'ecliptic',
-        label: '黄道线 (Ecliptic)',
+        label: translate('deep_space.grid.ecliptic'),
         onToggle: () => onToggleGridLine('ecliptic'),
       },
       {
         active: lines.equator,
-        hint: '地球赤道面延伸至天球的投影（赤纬 0° 线）',
+        hint: translate('deep_space.grid.equator_hint'),
         id: 'equator',
-        label: '天赤道 (Celestial Equator)',
+        label: translate('deep_space.grid.equator'),
         onToggle: () => onToggleGridLine('equator'),
       },
       {
         active: lines.meridian,
-        hint: '连接天顶与正南正北地平圈点的天球大圆',
+        hint: translate('deep_space.grid.meridian_hint'),
         id: 'meridian',
-        label: '子午线 (Meridian)',
+        label: translate('deep_space.grid.meridian'),
         onToggle: () => onToggleGridLine('meridian'),
       },
     ],
-    detailSubtitle: '天球与地平参考坐标网格与基准线',
-    detailTitle: '网格和线条设置',
+    detailSubtitle: translate('deep_space.grid.subtitle'),
+    detailTitle: translate('deep_space.grid.title'),
     icon: 'grid-lines',
     id: 'grid-lines',
-    label: '网格和线条',
+    label: translate('deep_space.grid.label'),
     onPress: () => {
       if (gridsActive) {
         onUpdateGridLines({
@@ -1070,7 +1078,7 @@ function getGridControls({
       }
     },
     onReset: () => onUpdateGridLines(DEFAULT_GRID_LINES),
-    resetLabel: '重置坐标网格',
+    resetLabel: translate('deep_space.grid.reset'),
   };
 }
 
@@ -1086,45 +1094,45 @@ function getConstellationControls({
     detailItems: [
       {
         active: skyLayers.constellationLines,
-        hint: '连接主要明亮恒星的几何线条骨架',
+        hint: translate('deep_space.constellation_panel.lines_hint'),
         id: 'constellationLines',
-        label: '星座连线',
+        label: translate('deep_space.constellation_panel.lines'),
         onToggle: () => onToggleSkyLayer('constellationLines'),
       },
       {
         active: skyLayers.constellationArt,
-        hint: '古典神话星图的手绘形象画像',
+        hint: translate('deep_space.constellation_panel.art_hint'),
         id: 'constellationArt',
-        label: '星座古典艺术画',
+        label: translate('deep_space.constellation_panel.art'),
         onToggle: () => onToggleSkyLayer('constellationArt'),
       },
       {
         active: skyLayers.constellationLabels,
-        hint: '在星空中标注所有星座的名称',
+        hint: translate('deep_space.constellation_panel.names_hint'),
         id: 'constellationLabels',
-        label: '星座名称注记',
+        label: translate('deep_space.constellation_panel.names'),
         onToggle: () => onToggleSkyLayer('constellationLabels'),
       },
       {
         active: skyLayers.constellationBoundaries,
-        hint: '国际天文联合会 1928 年划定的 88 星座天区界线',
+        hint: translate('deep_space.constellation_panel.bounds_hint'),
         id: 'constellationBoundaries',
-        label: '星座边界',
+        label: translate('deep_space.constellation_panel.bounds'),
         onToggle: () => onToggleSkyLayer('constellationBoundaries'),
       },
       {
         active: skyLayers.constellationOnlyPointed,
-        hint: '只绘制视野中心指向的那个星座，其余星座隐藏',
+        hint: translate('deep_space.constellation_panel.only_pointed_hint'),
         id: 'constellationOnlyPointed',
-        label: '仅显示指向星座',
+        label: translate('deep_space.constellation_panel.only_pointed'),
         onToggle: () => onToggleSkyLayer('constellationOnlyPointed'),
       },
     ],
-    detailSubtitle: '星座连线、艺术图画、名称、边界与聚焦',
-    detailTitle: '星座显示设置',
+    detailSubtitle: translate('deep_space.constellation_panel.subtitle'),
+    detailTitle: translate('deep_space.constellation_panel.title'),
     icon: 'constellation',
     id: 'constellation',
-    label: '星座',
+    label: translate('deep_space.constellation_panel.label'),
     onPress: () => {
       const next = !constellationActive;
       onUpdateSkyLayers({
@@ -1139,7 +1147,7 @@ function getConstellationControls({
       constellationLines: true,
       constellationOnlyPointed: false,
     }),
-    resetLabel: '重置星座设置',
+    resetLabel: translate('deep_space.constellation_panel.reset'),
   };
 }
 
@@ -1155,38 +1163,38 @@ function getAtmosphereControl({
     detailItems: [
       {
         active: skyLayers.atmosphere,
-        hint: '模拟日光散射、晨昏蒙影与天光消光',
+        hint: translate('deep_space.atmosphere_panel.scattering_hint'),
         id: 'atmosphere',
-        label: '大气散射与消光',
+        label: translate('deep_space.atmosphere_panel.scattering'),
         onToggle: () => onToggleSkyLayer('atmosphere'),
       },
       {
         active: environment.fog,
-        hint: '在地景上显示雾气',
+        hint: translate('deep_space.atmosphere_panel.fog_hint'),
         id: 'fog',
-        label: '雾',
+        label: translate('deep_space.atmosphere_panel.fog'),
         onToggle: () => onUpdateEnvironment({ fog: !environment.fog }),
       },
       {
         active: true,
-        hint: 'Bortle 1 为最佳暗空，Bortle 9 为市中心光污染',
+        hint: translate('deep_space.atmosphere_panel.air_quality_hint'),
         id: 'air-quality',
-        label: '空气质量',
+        label: translate('deep_space.atmosphere_panel.air_quality'),
         onToggle: () => {},
         stepper: airQualityStepper(environment.bortleIndex, bortleIndex => onUpdateEnvironment({ bortleIndex })),
       },
     ],
-    detailSubtitle: '日照散射、晨昏蒙影、天光消光、空气质量与地景雾气',
-    detailTitle: '大气层与空气质量设置',
+    detailSubtitle: translate('deep_space.atmosphere_panel.subtitle'),
+    detailTitle: translate('deep_space.atmosphere_panel.title'),
     icon: 'atmosphere',
     id: 'atmosphere',
-    label: '大气层',
+    label: translate('deep_space.atmosphere_panel.label'),
     onPress: () => onToggleSkyLayer('atmosphere'),
     onReset: () => {
       onUpdateSkyLayers({ atmosphere: true });
       onUpdateEnvironment({ bortleIndex: DEFAULT_BORTLE_INDEX, fog: false, turbidity: DEFAULT_TURBIDITY });
     },
-    resetLabel: '重置大气与空气质量',
+    resetLabel: translate('deep_space.atmosphere_panel.reset'),
   };
 }
 
@@ -1203,10 +1211,10 @@ function getLabelsControl({
     active: labelsActive,
     detailItems: [],
     detailSubtitle: '',
-    detailTitle: '标签',
+    detailTitle: translate('deep_space.labels.title'),
     icon: 'labels',
     id: 'labels',
-    label: '标签',
+    label: translate('deep_space.labels.title'),
     onPress: () => {
       const next = !labelsActive;
       onUpdateSkyLayers({
@@ -1236,39 +1244,39 @@ function getEnvironmentAndNightControls({
       detailItems: [
         {
           active: skyLayers.landscape,
-          hint: '显示观测地点周围的真实地表全景与遮挡',
+          hint: translate('deep_space.landscape.panorama_hint'),
           id: 'landscape',
-          label: '地面全景景观',
+          label: translate('deep_space.landscape.panorama'),
           onToggle: () => onToggleSkyLayer('landscape'),
         },
         {
           active: environment.cardinals,
-          hint: '显示红色的方位标示',
+          hint: translate('deep_space.landscape.cardinal_hint'),
           id: 'cardinals',
-          label: '基本点',
+          label: translate('deep_space.landscape.cardinal'),
           onToggle: () => onUpdateEnvironment({ cardinals: !environment.cardinals }),
         },
         {
           active: true,
           hint: '',
           id: 'landscape-library',
-          label: '地景',
+          label: translate('deep_space.landscape.label'),
           onToggle: () => {},
           stepper: landscapeStepper(landscapeId, onSelectLandscape),
         },
       ],
-      detailSubtitle: '真实地面地景与地平线模拟',
-      detailTitle: '地景设置',
+      detailSubtitle: translate('deep_space.landscape.subtitle'),
+      detailTitle: translate('deep_space.landscape.title'),
       icon: 'landscape',
       id: 'landscape',
-      label: '地景',
+      label: translate('deep_space.landscape.label'),
       onPress: () => onToggleSkyLayer('landscape'),
       onReset: () => {
         onUpdateSkyLayers({ landscape: true });
         onUpdateEnvironment({ cardinals: false });
         onSelectLandscape(DEFAULT_LANDSCAPE_ID);
       },
-      resetLabel: '重置地景设置',
+      resetLabel: translate('deep_space.landscape.reset'),
     },
     getAtmosphereControl({
       environment,
@@ -1286,17 +1294,17 @@ function getEnvironmentAndNightControls({
       detailItems: [
         {
           active: nightMode,
-          hint: '过滤全屏蓝绿光波长，保护暗夜视网膜暗适应能力',
+          hint: translate('deep_space.night.red_light_hint'),
           id: 'nightMode',
-          label: '暗适应天文红光',
+          label: translate('deep_space.night.red_light'),
           onToggle: onToggleNightMode,
         },
       ],
-      detailSubtitle: '天文观测暗适应红光保护',
-      detailTitle: '夜间模式设置',
+      detailSubtitle: translate('deep_space.night.subtitle'),
+      detailTitle: translate('deep_space.night.title'),
       icon: 'night',
       id: 'night-mode',
-      label: '夜间模式',
+      label: translate('deep_space.night.label'),
       onPress: onToggleNightMode,
     },
   ];
@@ -1418,7 +1426,7 @@ function QuickControlButton({
 
   return (
     <Pressable
-      accessibilityHint="长按进入细分设置"
+      accessibilityHint={translate('deep_space.quick.long_press_hint')}
       accessibilityLabel={control.label}
       accessibilityRole="switch"
       accessibilityState={{ checked: control.active }}
@@ -1486,7 +1494,7 @@ function GridQuickBar({
         </View>
       )}
       <Pressable
-        accessibilityLabel="星图叠加"
+        accessibilityLabel={translate('deep_space.overlay_toggle')}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         onPress={() => onOpenChange(!open)}
@@ -1566,7 +1574,7 @@ function RestoreCultureFlow({
     <>
       {showFab && (
         <Pressable
-          accessibilityLabel="恢复默认天空文化"
+          accessibilityLabel={translate('deep_space.culture.restore')}
           accessibilityRole="button"
           onPress={() => setDialogOpen(true)}
           style={[styles.restoreCultureFab, { bottom: insetsBottom + 84 }]}
@@ -1873,7 +1881,7 @@ function ActiveStarMapControls({
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
           {/* Invisible corner tap target — tapping the top-right reveals the floating exit button */}
           <Pressable
-            accessibilityLabel="显示退出全屏按钮"
+            accessibilityLabel={translate('deep_space.exit_fullscreen_hint')}
             accessibilityRole="button"
             onPress={showExitTemporarily}
             style={[styles.fullscreenCornerTouchTarget, { top: insetsTop, right: 0 }]}
@@ -1881,7 +1889,7 @@ function ActiveStarMapControls({
           />
           {exitVisible && (
             <Pressable
-              accessibilityLabel="退出全屏"
+              accessibilityLabel={translate('deep_space.exit_fullscreen')}
               accessibilityRole="button"
               onPress={() => {
                 setExitVisible(false);
@@ -1900,28 +1908,16 @@ function ActiveStarMapControls({
 }
 
 function useDeepSpaceFullscreenSync(fullscreen: boolean) {
-  const navigation = useNavigation();
-
   React.useEffect(() => {
-    try {
-      navigation.getParent()?.setOptions({
-        tabBarStyle: fullscreen ? { display: 'none' } : undefined,
-      });
-    }
-    catch {}
     if (Platform.OS !== 'web') {
       StatusBar.setHidden(fullscreen, 'fade');
     }
     return () => {
-      try {
-        navigation.getParent()?.setOptions({ tabBarStyle: undefined });
-      }
-      catch {}
       if (Platform.OS !== 'web') {
         StatusBar.setHidden(false, 'fade');
       }
     };
-  }, [navigation, fullscreen]);
+  }, [fullscreen]);
 }
 
 type EngineReadyOptions = {
@@ -2083,22 +2079,22 @@ function RestoreCultureDialog({
       <View style={styles.modalOverlay}>
         <View style={styles.dialogCard} testID="deep-space-restore-culture-dialog">
           <Text style={styles.dialogTitle}>
-            天空文化：
+            {translate('deep_space.culture.dialog_title')}
             {activeCultureName}
           </Text>
-          <Text style={styles.dialogMessage}>你想回到默认的天空文化（西方）吗？</Text>
+          <Text style={styles.dialogMessage}>{translate('deep_space.culture.restore_confirm')}</Text>
           <View style={styles.dialogButtons}>
             <Pressable
-              accessibilityLabel="取消"
+              accessibilityLabel={translate('deep_space.dialog.cancel')}
               accessibilityRole="button"
               onPress={onCancel}
               style={styles.dialogButton}
               testID="deep-space-restore-culture-cancel"
             >
-              <Text style={styles.dialogButtonTextCancel}>取消</Text>
+              <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.dialog.cancel')}</Text>
             </Pressable>
             <Pressable
-              accessibilityLabel="确定"
+              accessibilityLabel={translate('deep_space.dialog.confirm')}
               accessibilityRole="button"
               onPress={onConfirm}
               style={[styles.dialogButton, styles.dialogButtonPrimary]}
@@ -2227,13 +2223,13 @@ function ReferenceDrawer({ onClose, onOpen }: ReferenceDrawerProps) {
           </Pressable>
           <Text style={styles.drawerTitle}>{translate('deep_space.menu')}</Text>
         </View>
-        <ReferenceDrawerRow icon={<GlossaryIcon />} label="星空述语" onPress={() => onOpen('glossary')} />
-        <ReferenceDrawerRow icon={<CalendarIcon />} label="日历" onPress={() => onOpen('calendar')} />
-        <ReferenceDrawerRow icon={<ObservationIcon />} label="观测工具" onPress={() => onOpen('tools')} />
-        <ReferenceDrawerRow icon={<SettingsIcon />} label="设置" onPress={() => onOpen('settings')} />
+        <ReferenceDrawerRow icon={<GlossaryIcon />} label={translate('deep_space.drawer.glossary')} onPress={() => onOpen('glossary')} />
+        <ReferenceDrawerRow icon={<CalendarIcon />} label={translate('deep_space.calendar.title')} onPress={() => onOpen('calendar')} />
+        <ReferenceDrawerRow icon={<ObservationIcon />} label={translate('deep_space.drawer.tools')} onPress={() => onOpen('tools')} />
+        <ReferenceDrawerRow icon={<SettingsIcon />} label={translate('deep_space.drawer.settings')} onPress={() => onOpen('settings')} />
         <View style={styles.drawerSectionDivider} />
-        <ReferenceDrawerRow icon={<HelpIcon />} label="帮助与反馈" />
-        <ReferenceDrawerRow icon={<ExitIcon />} label="退出" showChevron={false} />
+        <ReferenceDrawerRow icon={<HelpIcon />} label={translate('deep_space.drawer.help')} />
+        <ReferenceDrawerRow icon={<ExitIcon />} label={translate('deep_space.drawer.exit')} showChevron={false} />
       </View>
     </View>
   );
@@ -2277,7 +2273,7 @@ function GlossaryHero({
         <Text style={styles.glossaryDetailRegion}>{regionName}</Text>
       </View>
       <Pressable
-        accessibilityLabel={isUsing ? '已在使用中' : '使用该天空文化'}
+        accessibilityLabel={isUsing ? translate('deep_space.culture.in_use') : translate('deep_space.culture.use_this')}
         accessibilityRole="button"
         disabled={isUsing}
         onPress={() => onSelect(culture.id, culture.highlight)}
@@ -2285,7 +2281,7 @@ function GlossaryHero({
         testID="deep-space-glossary-use-button"
       >
         <Text style={[styles.glossaryUseButtonText, isUsing && styles.glossaryUseButtonTextDisabled]}>
-          {isUsing ? '已使用' : '使用'}
+          {isUsing ? translate('deep_space.culture.used') : translate('deep_space.culture.use')}
         </Text>
       </Pressable>
     </View>
@@ -2324,7 +2320,7 @@ function GlossarySections({
                   <View key={imgKey} style={styles.imageBlock}>
                     <View style={styles.imageContainer}>
                       <Text style={styles.imagePlaceholderText}>
-                        [插图:
+                        {translate('deep_space.glossary.image_placeholder')}
                         {block.image}
                         ]
                       </Text>
@@ -2368,7 +2364,7 @@ function GlossaryDetail({
     <View style={styles.glossaryDetailScreen} testID={`deep-space-glossary-detail-${culture.id}`}>
       <View style={styles.glossaryDetailHeader}>
         <Pressable
-          accessibilityLabel="返回列表"
+          accessibilityLabel={translate('deep_space.culture.back_to_list')}
           accessibilityRole="button"
           onPress={onBack}
           style={styles.glossaryDetailHeaderButton}
@@ -2376,7 +2372,7 @@ function GlossaryDetail({
         >
           <Text style={styles.glossaryDetailBack}>‹</Text>
         </Pressable>
-        <Text style={styles.glossaryDetailHeaderTitle}>星空述语</Text>
+        <Text style={styles.glossaryDetailHeaderTitle}>{translate('deep_space.drawer.glossary')}</Text>
         <Pressable
           accessibilityLabel={translate('deep_space.back')}
           accessibilityRole="button"
@@ -2491,7 +2487,7 @@ function GlossaryPanel({
           >
             <Text style={styles.glossaryHeaderBack}>‹</Text>
           </Pressable>
-          <Text style={styles.glossaryHeaderTitle}>星空述语</Text>
+          <Text style={styles.glossaryHeaderTitle}>{translate('deep_space.drawer.glossary')}</Text>
           <View style={styles.glossaryHeaderButton} />
         </View>
         <ScrollView bounces={false} contentContainerStyle={styles.glossaryListContent}>
@@ -2525,21 +2521,21 @@ function ToolsPanel({
 }) {
   const [activeTool, setActiveTool] = React.useState<'home' | 'telescope' | 'fov'>('home');
   const backButton = (
-    <Pressable accessibilityLabel="返回观测工具" accessibilityRole="button" onPress={() => setActiveTool('home')} style={featureSheetStyles.featureClose}>
+    <Pressable accessibilityLabel={translate('deep_space.tools.back')} accessibilityRole="button" onPress={() => setActiveTool('home')} style={featureSheetStyles.featureClose}>
       <Text style={styles.toolBack}>‹</Text>
     </Pressable>
   );
 
   if (activeTool === 'telescope') {
     return (
-      <FeatureSheet headerLeft={backButton} onClose={onClose} testID="deep-space-telescope-panel" title="望远镜控制">
+      <FeatureSheet headerLeft={backButton} onClose={onClose} testID="deep-space-telescope-panel" title={translate('deep_space.tools.telescope')}>
         <TelescopeControlPanel onGoto={onGoto} />
       </FeatureSheet>
     );
   }
   if (activeTool === 'fov') {
     return (
-      <FeatureSheet headerLeft={backButton} onClose={onClose} testID="deep-space-fov-panel" title="视场模拟">
+      <FeatureSheet headerLeft={backButton} onClose={onClose} testID="deep-space-fov-panel" title={translate('deep_space.tools.fov')}>
         <FieldOfViewPanel
           onApply={(input) => {
             onApplyFieldOfView(input);
@@ -2550,24 +2546,24 @@ function ToolsPanel({
     );
   }
   return (
-    <FeatureSheet onClose={onClose} testID="deep-space-tools-panel" title="观测工具">
-      <Pressable accessibilityLabel="望远镜控制" accessibilityRole="button" onPress={() => setActiveTool('telescope')} style={featureSheetStyles.featureRow} testID="deep-space-tools-telescope">
+    <FeatureSheet onClose={onClose} testID="deep-space-tools-panel" title={translate('deep_space.drawer.tools')}>
+      <Pressable accessibilityLabel={translate('deep_space.tools.telescope')} accessibilityRole="button" onPress={() => setActiveTool('telescope')} style={featureSheetStyles.featureRow} testID="deep-space-tools-telescope">
         <View style={featureSheetStyles.featureRowText}>
-          <Text style={featureSheetStyles.featureRowLabel}>望远镜控制</Text>
-          <Text style={featureSheetStyles.featureRowHint}>按赤经和赤纬控制星图指向</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.tools.telescope')}</Text>
+          <Text style={featureSheetStyles.featureRowHint}>{translate('deep_space.tools.telescope_hint')}</Text>
         </View>
         <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
-      <Pressable accessibilityLabel="视场模拟" accessibilityRole="button" onPress={() => setActiveTool('fov')} style={featureSheetStyles.featureRow} testID="deep-space-tools-fov">
+      <Pressable accessibilityLabel={translate('deep_space.tools.fov')} accessibilityRole="button" onPress={() => setActiveTool('fov')} style={featureSheetStyles.featureRow} testID="deep-space-tools-fov">
         <View style={featureSheetStyles.featureRowText}>
-          <Text style={featureSheetStyles.featureRowLabel}>视场模拟</Text>
-          <Text style={featureSheetStyles.featureRowHint}>按焦距和传感器尺寸生成取景框</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.tools.fov')}</Text>
+          <Text style={featureSheetStyles.featureRowHint}>{translate('deep_space.tools.fov_hint')}</Text>
         </View>
         <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
       {fieldOfViewActive && (
-        <Pressable accessibilityLabel="关闭视场模拟" accessibilityRole="button" onPress={onClearFieldOfView} style={featureSheetStyles.featureRow} testID="deep-space-tools-fov-clear">
-          <Text style={featureSheetStyles.featureRowLabel}>关闭视场模拟</Text>
+        <Pressable accessibilityLabel={translate('deep_space.tools.fov_clear')} accessibilityRole="button" onPress={onClearFieldOfView} style={featureSheetStyles.featureRow} testID="deep-space-tools-fov-clear">
+          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.tools.fov_clear')}</Text>
           <Text style={featureSheetStyles.featureSelected}>×</Text>
         </Pressable>
       )}
@@ -2591,49 +2587,49 @@ function LocationCoordinateRows({
   return (
     <>
       <Pressable
-        accessibilityLabel="纬度"
+        accessibilityLabel={translate('deep_space.settings.latitude')}
         accessibilityRole="button"
         disabled={disabled}
         onPress={onOpenLatitude}
         style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
         testID="deep-space-settings-latitude-btn"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>纬度</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.latitude')}</Text>
         <View style={styles.locationValueRow}>
           <Text style={featureSheetStyles.featureRowHint}>{formatLatitudeDMS(observer.latitudeDeg)}</Text>
           <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </Pressable>
       <Pressable
-        accessibilityLabel="经度"
+        accessibilityLabel={translate('deep_space.settings.longitude')}
         accessibilityRole="button"
         disabled={disabled}
         onPress={onOpenLongitude}
         style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
         testID="deep-space-settings-longitude-btn"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>经度</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.longitude')}</Text>
         <View style={styles.locationValueRow}>
           <Text style={featureSheetStyles.featureRowHint}>{formatLongitudeDMS(observer.longitudeDeg)}</Text>
           <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </Pressable>
       <Pressable
-        accessibilityLabel="地名/城市"
+        accessibilityLabel={translate('deep_space.settings.city')}
         accessibilityRole="button"
         disabled={disabled}
         onPress={onOpenCityPicker}
         style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
         testID="deep-space-settings-city-btn"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>地名/城市:</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.city_colon')}</Text>
         <View style={styles.locationValueRow}>
-          <Text style={featureSheetStyles.featureRowHint}>{observer.name}</Text>
+          <Text style={featureSheetStyles.featureRowHint}>{cityLabel(observer.name)}</Text>
           <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </Pressable>
       <View style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}>
-        <Text style={featureSheetStyles.featureRowLabel}>UTC偏移</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.utc_offset')}</Text>
         <View style={styles.locationValueRow}>
           <Text style={featureSheetStyles.featureRowHint}>{formatUtcOffsetHours(new Date().getTimezoneOffset())}</Text>
           <Text style={featureSheetStyles.featureSelected}>›</Text>
@@ -2670,7 +2666,7 @@ function SettingsLocationSheet({
     <>
       <FeatureSheet
         headerLeft={(
-          <Pressable accessibilityLabel="返回设置" accessibilityRole="button" onPress={onBack} style={featureSheetStyles.featureClose}>
+          <Pressable accessibilityLabel={translate('deep_space.settings.back')} accessibilityRole="button" onPress={onBack} style={featureSheetStyles.featureClose}>
             <BackIcon />
           </Pressable>
         )}
@@ -2679,17 +2675,17 @@ function SettingsLocationSheet({
         scrollable={false}
         showCloseButton={false}
         testID="deep-space-settings-panel"
-        title="所在位置"
+        title={translate('deep_space.settings.location')}
       >
         <Pressable
-          accessibilityLabel="使用自动定位"
+          accessibilityLabel={translate('deep_space.settings.auto_locate')}
           accessibilityRole="switch"
           accessibilityState={{ checked: automaticLocation }}
           onPress={handleToggle}
           style={featureSheetStyles.featureRow}
           testID="deep-space-settings-auto-location-toggle"
         >
-          <Text style={featureSheetStyles.featureRowLabel}>使用自动定位</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.auto_locate')}</Text>
           <View style={[styles.settingsSwitchTrack, automaticLocation && styles.settingsSwitchTrackOn]}>
             <View style={[styles.settingsSwitchThumb, automaticLocation && styles.settingsSwitchThumbOn]} />
           </View>
@@ -2706,13 +2702,13 @@ function SettingsLocationSheet({
           latitudeDeg={observer.latitudeDeg}
           longitudeDeg={observer.longitudeDeg}
           onSelectCoordinate={(lat, lon) => {
-            onManualCoordinateChange(lat, lon, '自定义位置');
+            onManualCoordinateChange(lat, lon, translate('deep_space.settings.custom_location'));
           }}
         />
         <View style={styles.hiddenPresetTriggers}>
           {OBSERVER_CITIES.map(city => (
             <Pressable
-              accessibilityLabel={city.name}
+              accessibilityLabel={cityLabel(city.name)}
               accessibilityRole="button"
               key={city.name}
               onPress={() => onSelect(city)}
@@ -2760,22 +2756,22 @@ function AdvancedStartTimeRow({
   return (
     <>
       <Pressable
-        accessibilityLabel="开始时间"
+        accessibilityLabel={translate('deep_space.settings.start_time')}
         accessibilityRole="button"
         onPress={() => setOpen(v => !v)}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-start-time"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>开始时间</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.start_time')}</Text>
         <View style={styles.advancedTimePicker}>
-          <Text style={styles.advancedTimePickerText}>{policy === 'now' ? '现在' : '沿用上次查看时间'}</Text>
+          <Text style={styles.advancedTimePickerText}>{policy === 'now' ? translate('deep_space.settings.start_now') : translate('deep_space.settings.start_last_view')}</Text>
           <Text style={styles.advancedTimePickerArrow}>{open ? '▲' : '▼'}</Text>
         </View>
       </Pressable>
       {open && (
         <View style={styles.advancedTimePickerDropdown}>
           <Pressable
-            accessibilityLabel="现在"
+            accessibilityLabel={translate('deep_space.settings.start_now')}
             accessibilityRole="button"
             onPress={() => {
               onSelectPolicy('now');
@@ -2784,13 +2780,11 @@ function AdvancedStartTimeRow({
             style={styles.advancedTimePickerOption}
             testID="deep-space-settings-start-time-now"
           >
-            <Text style={[styles.advancedTimePickerOptionText, policy === 'now' && styles.advancedTimePickerOptionSelected]}>
-              现在
-            </Text>
+            <Text style={[styles.advancedTimePickerOptionText, policy === 'now' && styles.advancedTimePickerOptionSelected]}>{translate('deep_space.settings.start_now')}</Text>
             {policy === 'now' && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
           </Pressable>
           <Pressable
-            accessibilityLabel="沿用上次查看时间"
+            accessibilityLabel={translate('deep_space.settings.start_last_view')}
             accessibilityRole="button"
             onPress={() => {
               onSelectPolicy('last_view');
@@ -2799,9 +2793,7 @@ function AdvancedStartTimeRow({
             style={styles.advancedTimePickerOption}
             testID="deep-space-settings-start-time-last"
           >
-            <Text style={[styles.advancedTimePickerOptionText, policy === 'last_view' && styles.advancedTimePickerOptionSelected]}>
-              沿用上次查看时间
-            </Text>
+            <Text style={[styles.advancedTimePickerOptionText, policy === 'last_view' && styles.advancedTimePickerOptionSelected]}>{translate('deep_space.settings.start_last_view')}</Text>
             {policy === 'last_view' && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
           </Pressable>
         </View>
@@ -2824,14 +2816,14 @@ function AdvancedLimitMagBlock({
   return (
     <View style={styles.advancedSliderBlock}>
       <Pressable
-        accessibilityLabel="限制星等"
+        accessibilityLabel={translate('deep_space.settings.limit_mag')}
         accessibilityRole="switch"
         accessibilityState={{ checked: enabled }}
         onPress={onToggle}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-limitmag-toggle"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>限制星等</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.limit_mag')}</Text>
         <View style={{ alignItems: 'center', flexDirection: 'row', gap: 12 }}>
           {enabled && <Text style={styles.advancedBrightnessValue}>{value.toFixed(1)}</Text>}
           <View style={[styles.settingsSwitchTrack, enabled && styles.settingsSwitchTrackOn]}>
@@ -2865,7 +2857,7 @@ function SettingsAdvancedSheet({
     <FeatureSheet
       headerLeft={(
         <Pressable
-          accessibilityLabel="返回设置"
+          accessibilityLabel={translate('deep_space.settings.back')}
           accessibilityRole="button"
           onPress={onBack}
           style={featureSheetStyles.featureClose}
@@ -2877,18 +2869,18 @@ function SettingsAdvancedSheet({
       onClose={onClose}
       placement="top"
       testID="deep-space-settings-advanced-panel"
-      title="高级的"
+      title={translate('deep_space.settings.advanced')}
     >
       <AdvancedStartTimeRow onSelectPolicy={settings.setStartTimePolicy} policy={settings.startTimePolicy} />
       <Pressable
-        accessibilityLabel="全屏"
+        accessibilityLabel={translate('deep_space.settings.fullscreen')}
         accessibilityRole="switch"
         accessibilityState={{ checked: settings.fullscreen }}
         onPress={() => settings.setFullscreen(v => !v)}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-fullscreen-toggle"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>全屏</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.fullscreen')}</Text>
         <View style={[styles.settingsSwitchTrack, settings.fullscreen && styles.settingsSwitchTrackOn]}>
           <View style={[styles.settingsSwitchThumb, settings.fullscreen && styles.settingsSwitchThumbOn]} />
         </View>
@@ -2901,7 +2893,7 @@ function SettingsAdvancedSheet({
       />
       <View style={styles.advancedSliderBlock}>
         <View style={featureSheetStyles.featureRow}>
-          <Text style={featureSheetStyles.featureRowLabel}>亮度</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.brightness')}</Text>
           <Text style={styles.advancedBrightnessValue}>{settings.brightness.toFixed(1)}</Text>
         </View>
         <AdvancedSlider
@@ -2930,14 +2922,14 @@ function SettingsResetDialog({
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
       <View style={styles.modalOverlay}>
         <View style={styles.dialogCard} testID="deep-space-settings-reset-dialog">
-          <Text style={styles.dialogTitle}>重置设置</Text>
-          <Text style={styles.dialogMessage}>这将重置全部设置。是否确认？</Text>
+          <Text style={styles.dialogTitle}>{translate('deep_space.settings.reset')}</Text>
+          <Text style={styles.dialogMessage}>{translate('deep_space.settings.reset_confirm')}</Text>
           <View style={styles.dialogButtons}>
-            <Pressable accessibilityLabel="取消" accessibilityRole="button" onPress={onCancel} style={styles.dialogButton}>
-              <Text style={styles.dialogButtonTextCancel}>取消</Text>
+            <Pressable accessibilityLabel={translate('deep_space.dialog.cancel')} accessibilityRole="button" onPress={onCancel} style={styles.dialogButton}>
+              <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.dialog.cancel')}</Text>
             </Pressable>
-            <Pressable accessibilityLabel="确定" accessibilityRole="button" onPress={onConfirm} style={[styles.dialogButton, styles.dialogButtonPrimary]}>
-              <Text style={styles.dialogButtonTextPrimary}>确定</Text>
+            <Pressable accessibilityLabel={translate('deep_space.dialog.confirm')} accessibilityRole="button" onPress={onConfirm} style={[styles.dialogButton, styles.dialogButtonPrimary]}>
+              <Text style={styles.dialogButtonTextPrimary}>{translate('deep_space.dialog.confirm')}</Text>
             </Pressable>
           </View>
         </View>
@@ -2962,9 +2954,9 @@ function SettingsRootSheet({
   onToggleCompassFollowing: () => void;
 }) {
   return (
-    <FeatureSheet onClose={onClose} placement="top" testID="deep-space-settings-panel" title="设置">
+    <FeatureSheet onClose={onClose} placement="top" testID="deep-space-settings-panel" title={translate('deep_space.drawer.settings')}>
       <Pressable
-        accessibilityLabel="传感器"
+        accessibilityLabel={translate('deep_space.settings.sensor')}
         accessibilityRole="switch"
         accessibilityState={{ checked: compassFollowing }}
         onPress={onToggleCompassFollowing}
@@ -2972,42 +2964,42 @@ function SettingsRootSheet({
         testID="deep-space-settings-sensor-toggle"
       >
         <View style={featureSheetStyles.featureRowText}>
-          <Text style={featureSheetStyles.featureRowLabel}>传感器</Text>
-          <Text style={featureSheetStyles.featureRowHint}>自动</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.sensor')}</Text>
+          <Text style={featureSheetStyles.featureRowHint}>{translate('deep_space.settings.auto')}</Text>
         </View>
         <View style={[styles.settingsSwitchTrack, compassFollowing && styles.settingsSwitchTrackOn]}>
           <View style={[styles.settingsSwitchThumb, compassFollowing && styles.settingsSwitchThumbOn]} />
         </View>
       </Pressable>
       <Pressable
-        accessibilityLabel="所在位置"
+        accessibilityLabel={translate('deep_space.settings.location')}
         accessibilityRole="button"
         onPress={onOpenLocation}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-location-entry"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>所在位置</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.location')}</Text>
         <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
       <Pressable
-        accessibilityLabel="高级的"
+        accessibilityLabel={translate('deep_space.settings.advanced')}
         accessibilityRole="button"
         onPress={onOpenAdvanced}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-advanced-entry"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>高级的</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.advanced')}</Text>
         <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
       <View style={styles.settingsSectionDivider} />
       <Pressable
-        accessibilityLabel="重置设置"
+        accessibilityLabel={translate('deep_space.settings.reset')}
         accessibilityRole="button"
         onPress={onRequestReset}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-reset-entry"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>重置设置</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.reset')}</Text>
       </Pressable>
     </FeatureSheet>
   );
@@ -3082,7 +3074,7 @@ function SettingsPanel({
           setResetDialogOpen(false);
           onResetAll?.();
           settings.resetSettings();
-          showDeepSpaceFeedback({ message: '已恢复默认设置', tone: 'success' });
+          showDeepSpaceFeedback({ message: translate('deep_space.settings.reset_done'), tone: 'success' });
         }}
         visible={resetDialogOpen}
       />
@@ -3258,13 +3250,13 @@ function AzimuthDialogCard({
 
       <View style={styles.dialogButtons}>
         <Pressable
-          accessibilityLabel="取消"
+          accessibilityLabel={translate('deep_space.dialog.cancel')}
           accessibilityRole="button"
           onPress={onClose}
           style={styles.dialogButton}
           testID="deep-space-azimuth-cancel"
         >
-          <Text style={styles.dialogButtonTextCancel}>取消</Text>
+          <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.dialog.cancel')}</Text>
         </Pressable>
         <Pressable
           accessibilityLabel={translate('deep_space.compass_azimuth_apply')}
@@ -3375,10 +3367,10 @@ function Compass({
           ))}
           <Line opacity={0.16} stroke="#FFFFFF" strokeWidth={1} x1={60} x2={60} y1={24} y2={96} />
           <Line opacity={0.16} stroke="#FFFFFF" strokeWidth={1} x1={24} x2={96} y1={60} y2={60} />
-          <SvgText fill="#FFFFFF" fontSize={12} fontWeight="700" textAnchor="middle" x={60} y={29}>北</SvgText>
-          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={94} y={64}>东</SvgText>
-          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={60} y={103}>南</SvgText>
-          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={26} y={64}>西</SvgText>
+          <SvgText fill="#FFFFFF" fontSize={12} fontWeight="700" textAnchor="middle" x={60} y={29}>{translate('deep_space.compass_dir.n')}</SvgText>
+          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={94} y={64}>{translate('deep_space.compass_dir.e')}</SvgText>
+          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={60} y={103}>{translate('deep_space.compass_dir.s')}</SvgText>
+          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={26} y={64}>{translate('deep_space.compass_dir.w')}</SvgText>
           <Polygon fill="url(#compassNorthNeedle)" points="60,18 66,60 60,70 54,60" stroke="rgba(255,255,255,0.38)" strokeWidth={0.8} />
           <Polygon fill="url(#compassSouthNeedle)" points="60,102 66,60 60,50 54,60" stroke="rgba(5,10,16,0.42)" strokeWidth={0.8} />
           <Circle cx={60} cy={60} fill="rgba(10, 17, 24, 0.65)" r={8.5} stroke="rgba(255,255,255,0.72)" strokeWidth={1.4} />
@@ -3391,8 +3383,8 @@ function Compass({
         <Path d="M28 38 C40 22, 67 17, 89 30" fill="none" stroke="rgba(255,255,255,0.24)" strokeLinecap="round" strokeWidth={3} />
       </Svg>
       <Pressable
-        accessibilityHint="点击自定义输入方位角"
-        accessibilityLabel={`当前方位角 ${normalizedAzimuth}度`}
+        accessibilityHint={translate('deep_space.time_panel.custom_azimuth_hint')}
+        accessibilityLabel={translate('deep_space.time_panel.current_azimuth', { azimuth: normalizedAzimuth })}
         accessibilityRole="button"
         hitSlop={8}
         onPress={onOpenInput}
@@ -3435,8 +3427,8 @@ function TimeControl({
         <HistoryIcon active={isCustomTime} />
       </Pressable>
       <Pressable
-        accessibilityHint="点击打开时间调节滑块"
-        accessibilityLabel={`当前时间 ${formattedTime}`}
+        accessibilityHint={translate('deep_space.time_panel.open_slider_hint')}
+        accessibilityLabel={translate('deep_space.time_panel.current_time', { time: formattedTime })}
         accessibilityRole="button"
         hitSlop={6}
         onPress={onPress}
@@ -3516,7 +3508,7 @@ function TimeSliderHeader({
     <View style={styles.timeSliderHeader}>
       <View style={styles.timeDateStepper}>
         <Pressable
-          accessibilityLabel="前一天"
+          accessibilityLabel={translate('deep_space.time_panel.prev_day')}
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => onStepDate(-1)}
@@ -3526,10 +3518,10 @@ function TimeSliderHeader({
           <Text style={styles.timeStepBtnText}>‹</Text>
         </Pressable>
         <Text style={styles.timeDateValue} testID="deep-space-time-date-value">
-          {`${year}年${month}月${date}日`}
+          {translate('deep_space.time_panel.date', { date, month, year })}
         </Text>
         <Pressable
-          accessibilityLabel="后一天"
+          accessibilityLabel={translate('deep_space.time_panel.next_day')}
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => onStepDate(1)}
@@ -3556,12 +3548,12 @@ function TimeSliderHeader({
           testID="deep-space-time-now-button"
         >
           <Text style={[styles.timeNowButtonText, isCustomTime && styles.timeNowButtonTextActive]}>
-            {isCustomTime ? '回到实时' : '实时'}
+            {isCustomTime ? translate('deep_space.time_panel.return_to_now') : translate('deep_space.time_panel.live')}
           </Text>
         </Pressable>
 
         <Pressable
-          accessibilityLabel="关闭时间调节"
+          accessibilityLabel={translate('deep_space.time_panel.close_slider')}
           accessibilityRole="button"
           hitSlop={8}
           onPress={onClose}
@@ -3592,7 +3584,7 @@ function TimePlaybackControls({
   return (
     <View style={styles.timePlaybackRow}>
       <Pressable
-        accessibilityLabel={isPlaying ? '暂停时间预览' : '播放时间预览'}
+        accessibilityLabel={isPlaying ? translate('deep_space.time_panel.pause') : translate('deep_space.time_panel.play')}
         accessibilityRole="button"
         accessibilityState={{ selected: isPlaying }}
         onPress={onTogglePlayback}
@@ -3600,12 +3592,12 @@ function TimePlaybackControls({
         testID="deep-space-time-playback-toggle"
       >
         <Text style={[styles.timePlaybackButtonText, isPlaying && styles.timePlaybackButtonTextActive]}>
-          {isPlaying ? 'Ⅱ 暂停' : '▶ 播放'}
+          {isPlaying ? translate('deep_space.time_panel.pause_short') : translate('deep_space.time_panel.play_short')}
         </Text>
       </Pressable>
       {TIME_PLAYBACK_SPEEDS.map(speed => (
         <Pressable
-          accessibilityLabel={`${speed} 倍时间速度`}
+          accessibilityLabel={translate('deep_space.time_panel.speed', { speed })}
           accessibilityRole="button"
           accessibilityState={{ selected: speed === playbackSpeed }}
           key={speed}
@@ -3624,25 +3616,25 @@ function TimeHourControls({ onStepHour }: { onStepHour: (deltaHours: number) => 
   return (
     <View style={styles.timeHourRow}>
       <Pressable
-        accessibilityLabel="快退1小时"
+        accessibilityLabel={translate('deep_space.time_panel.rewind')}
         accessibilityRole="button"
         hitSlop={6}
         onPress={() => onStepHour(-1)}
         style={styles.timeHourBtn}
         testID="deep-space-time-hour-prev"
       >
-        <Text style={styles.timeHourBtnText}>‹ -1小时</Text>
+        <Text style={styles.timeHourBtnText}>{translate('deep_space.time_panel.rewind_short')}</Text>
       </Pressable>
-      <Text style={styles.timeSliderHint}>左右拖动滑块模拟星空运转</Text>
+      <Text style={styles.timeSliderHint}>{translate('deep_space.time_panel.drag_hint')}</Text>
       <Pressable
-        accessibilityLabel="快进1小时"
+        accessibilityLabel={translate('deep_space.time_panel.forward')}
         accessibilityRole="button"
         hitSlop={6}
         onPress={() => onStepHour(1)}
         style={styles.timeHourBtn}
         testID="deep-space-time-hour-next"
       >
-        <Text style={styles.timeHourBtnText}>+1小时 ›</Text>
+        <Text style={styles.timeHourBtnText}>{translate('deep_space.time_panel.forward_short')}</Text>
       </Pressable>
     </View>
   );
@@ -3706,7 +3698,7 @@ function TimeSliderSheet({
 
   return (
     <View pointerEvents="box-none" style={[styles.timeSliderOverlay, { paddingBottom: insetsBottom + 20 }]}>
-      <Pressable accessibilityLabel="关闭时间设置" accessibilityRole="button" onPress={onClose} style={styles.timeSliderScrim} />
+      <Pressable accessibilityLabel={translate('deep_space.time_panel.close_settings')} accessibilityRole="button" onPress={onClose} style={styles.timeSliderScrim} />
       <View style={styles.timeSliderCard} testID="deep-space-time-slider-sheet">
         <TimeSliderHeader
           clock={clock}

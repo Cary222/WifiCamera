@@ -1,8 +1,10 @@
 import * as React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui';
+import { translate } from '@/lib/i18n';
 import { OVERLAY } from './deep-space-theme';
 import { featureSheetStyles } from './feature-sheet-styles';
+import { cityLabel } from './location-format';
 
 const EXPANDED_OBSERVER_CITIES = [
   { latitudeDeg: 39.9, longitudeDeg: 116.41, name: '北京' },
@@ -44,7 +46,7 @@ function CoordinateDialogContent({
     onCancel();
   };
 
-  const title = kind === 'latitude' ? '输入纬度 (-90° ~ 90°)' : '输入经度 (-180° ~ 180°)';
+  const title = kind === 'latitude' ? translate('deep_space.location.latitude_placeholder') : translate('deep_space.location.longitude_placeholder');
 
   return (
     <View style={styles.dialogCard} testID={`deep-space-settings-${kind}-modal`}>
@@ -63,17 +65,17 @@ function CoordinateDialogContent({
         value={text}
       />
       <View style={styles.dialogButtons}>
-        <Pressable accessibilityLabel="取消" accessibilityRole="button" onPress={onCancel} style={styles.dialogButton}>
-          <Text style={styles.dialogButtonTextCancel}>取消</Text>
+        <Pressable accessibilityLabel={translate('deep_space.dialog.cancel')} accessibilityRole="button" onPress={onCancel} style={styles.dialogButton}>
+          <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.dialog.cancel')}</Text>
         </Pressable>
         <Pressable
-          accessibilityLabel="确定"
+          accessibilityLabel={translate('deep_space.dialog.confirm')}
           accessibilityRole="button"
           onPress={handleConfirm}
           style={[styles.dialogButton, styles.dialogButtonPrimary]}
           testID={`deep-space-settings-${kind}-confirm`}
         >
-          <Text style={styles.dialogButtonTextPrimary}>确定</Text>
+          <Text style={styles.dialogButtonTextPrimary}>{translate('deep_space.dialog.confirm')}</Text>
         </Pressable>
       </View>
     </View>
@@ -127,19 +129,19 @@ export function CityPickerModal({
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
       <View style={styles.modalOverlay}>
         <View style={styles.cityCard} testID="deep-space-settings-city-modal">
-          <Text style={styles.dialogTitle}>选择或输入城市</Text>
+          <Text style={styles.dialogTitle}>{translate('deep_space.location.pick_city')}</Text>
           <View style={styles.customCityRow}>
             <TextInput
-              accessibilityLabel="自定义地名"
+              accessibilityLabel={translate('deep_space.location.custom_name')}
               onChangeText={setCustomName}
-              placeholder="自定义地名"
+              placeholder={translate('deep_space.location.custom_name')}
               placeholderTextColor={OVERLAY.muted}
               style={styles.customCityInput}
               testID="deep-space-settings-custom-city-input"
               value={customName}
             />
             <Pressable
-              accessibilityLabel="应用自定义地名"
+              accessibilityLabel={translate('deep_space.location.apply_custom_name')}
               accessibilityRole="button"
               disabled={!customName.trim()}
               onPress={() => {
@@ -150,13 +152,13 @@ export function CityPickerModal({
               style={[styles.customCityBtn, !customName.trim() && { opacity: 0.5 }]}
               testID="deep-space-settings-custom-city-confirm"
             >
-              <Text style={styles.customCityBtnText}>应用</Text>
+              <Text style={styles.customCityBtnText}>{translate('deep_space.location.apply')}</Text>
             </Pressable>
           </View>
           <ScrollView style={styles.cityList}>
             {EXPANDED_OBSERVER_CITIES.map(city => (
               <Pressable
-                accessibilityLabel={city.name}
+                accessibilityLabel={cityLabel(city.name)}
                 accessibilityRole="button"
                 accessibilityState={{ selected: city.name === currentCity }}
                 key={city.name}
@@ -165,15 +167,15 @@ export function CityPickerModal({
                 testID={`deep-space-settings-city-${city.name}`}
               >
                 <View style={featureSheetStyles.featureRowText}>
-                  <Text style={featureSheetStyles.featureRowLabel}>{city.name}</Text>
+                  <Text style={featureSheetStyles.featureRowLabel}>{cityLabel(city.name)}</Text>
                   <Text style={featureSheetStyles.featureRowHint}>{`${city.latitudeDeg.toFixed(2)}°, ${city.longitudeDeg.toFixed(2)}°`}</Text>
                 </View>
                 {city.name === currentCity && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
               </Pressable>
             ))}
           </ScrollView>
-          <Pressable accessibilityLabel="关闭" accessibilityRole="button" onPress={onCancel} style={styles.cityCloseBtn}>
-            <Text style={styles.dialogButtonTextCancel}>关闭</Text>
+          <Pressable accessibilityLabel={translate('deep_space.location.close')} accessibilityRole="button" onPress={onCancel} style={styles.cityCloseBtn}>
+            <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.location.close')}</Text>
           </Pressable>
         </View>
       </View>

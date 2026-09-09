@@ -2,13 +2,14 @@ import type { FieldOfViewInput } from './field-of-view';
 import * as React from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui';
+import { translate } from '@/lib/i18n';
 import { calculateFieldOfView, formatAngularSize } from './field-of-view';
 
 const SENSOR_PRESETS = [
-  { heightMm: 24, id: 'full-frame', label: '全画幅', widthMm: 36 },
+  { heightMm: 24, id: 'full-frame', label: translate('deep_space.fov_panel.full_frame'), widthMm: 36 },
   { heightMm: 15.6, id: 'aps-c', label: 'APS-C', widthMm: 23.5 },
   { heightMm: 13, id: 'micro-four-thirds', label: 'M4/3', widthMm: 17.3 },
-  { heightMm: 24, id: 'custom', label: '自定义', widthMm: 36 },
+  { heightMm: 24, id: 'custom', label: translate('deep_space.fov_panel.custom'), widthMm: 36 },
 ] as const;
 
 type FieldOfViewPanelProps = {
@@ -47,8 +48,8 @@ export function FieldOfViewPanel({ onApply }: FieldOfViewPanelProps): React.Reac
   return (
     <View style={styles.content}>
       <View style={styles.row}>
-        <NumberInput label="焦距（mm）" onChangeText={setFocalLength} testID="deep-space-fov-focal-length" value={focalLength} />
-        <NumberInput label="倍率" onChangeText={setMultiplier} testID="deep-space-fov-multiplier" value={multiplier} />
+        <NumberInput label={translate('deep_space.fov_panel.focal_length')} onChangeText={setFocalLength} testID="deep-space-fov-focal-length" value={focalLength} />
+        <NumberInput label={translate('deep_space.fov_panel.magnification')} onChangeText={setMultiplier} testID="deep-space-fov-multiplier" value={multiplier} />
       </View>
       <View style={styles.presetRow}>
         {SENSOR_PRESETS.map(item => (
@@ -58,26 +59,26 @@ export function FieldOfViewPanel({ onApply }: FieldOfViewPanelProps): React.Reac
         ))}
       </View>
       <View style={styles.row}>
-        <NumberInput editable={isCustom} label="传感器宽（mm）" onChangeText={setSensorWidth} testID="deep-space-fov-sensor-width" value={sensorWidth} />
-        <NumberInput editable={isCustom} label="传感器高（mm）" onChangeText={setSensorHeight} testID="deep-space-fov-sensor-height" value={sensorHeight} />
+        <NumberInput editable={isCustom} label={translate('deep_space.fov_panel.sensor_width')} onChangeText={setSensorWidth} testID="deep-space-fov-sensor-width" value={sensorWidth} />
+        <NumberInput editable={isCustom} label={translate('deep_space.fov_panel.sensor_height')} onChangeText={setSensorHeight} testID="deep-space-fov-sensor-height" value={sensorHeight} />
       </View>
       {field
         ? (
             <View style={styles.summary}>
-              <Result label="水平视场" value={formatAngularSize(field.horizontalDeg)} />
-              <Result label="垂直视场" value={formatAngularSize(field.verticalDeg)} />
-              <Result label="对角视场" value={formatAngularSize(field.diagonalDeg)} />
+              <Result label={translate('deep_space.fov_panel.horizontal')} value={formatAngularSize(field.horizontalDeg)} />
+              <Result label={translate('deep_space.fov_panel.vertical')} value={formatAngularSize(field.verticalDeg)} />
+              <Result label={translate('deep_space.fov_panel.diagonal')} value={formatAngularSize(field.diagonalDeg)} />
               <Text style={styles.effectiveFocal}>
-                有效焦距
+                {translate('deep_space.fov_panel.effective_focal')}
                 {' '}
                 {field.effectiveFocalLengthMm.toFixed(1)}
                 {' mm'}
               </Text>
             </View>
           )
-        : <Text style={styles.error}>请输入大于 0 的焦距、倍率和传感器尺寸。</Text>}
-      <Pressable accessibilityLabel="应用视场模拟" accessibilityRole="button" disabled={!field} onPress={() => field && onApply(input)} style={[styles.apply, !field && styles.applyDisabled]} testID="deep-space-fov-apply">
-        <Text style={styles.applyText}>应用到星图</Text>
+        : <Text style={styles.error}>{translate('deep_space.fov_panel.invalid')}</Text>}
+      <Pressable accessibilityLabel={translate('deep_space.fov_panel.apply')} accessibilityRole="button" disabled={!field} onPress={() => field && onApply(input)} style={[styles.apply, !field && styles.applyDisabled]} testID="deep-space-fov-apply">
+        <Text style={styles.applyText}>{translate('deep_space.fov_panel.apply_to_map')}</Text>
       </Pressable>
     </View>
   );
