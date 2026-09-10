@@ -1,7 +1,7 @@
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import { act, renderHook } from '@testing-library/react-native';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
-import { useStellariumSettings } from './use-stellarium-settings';
+import { restoreStellariumContext, useStellariumSettings } from './use-stellarium-settings';
 
 function createTestStorage() {
   const map = new Map<string, string | number | boolean>();
@@ -13,6 +13,51 @@ function createTestStorage() {
     set: jest.fn((key: string, val: string | number | boolean) => map.set(key, val)),
   };
 }
+
+describe('restoreStellariumContext', () => {
+  it.each([false, true])('replays all values, including disabled layers and magnitude state %s', (limitMagEnabled) => {
+    const calls: [string, unknown[]][] = [];
+    const command = (name: string) => jest.fn((...args: unknown[]) => {
+      calls.push([name, args]);
+    });
+    const engine = {
+      focusTarget: command('focus'),
+      setBrightness: command('brightness'),
+      setEnvironment: command('environment'),
+      setGridLines: command('grids'),
+      setLandscape: command('landscape'),
+      setLocation: command('location'),
+      setMagnitudeLimit: command('magnitude'),
+      setSkyCulture: command('culture'),
+      setSkyLayers: command('layers'),
+      setTime: command('time'),
+    } as unknown as StellariumViewHandle;
+    const context = {
+      brightness: 2.3,
+      clock: new Date('2025-01-01T00:00:00.000Z'),
+      currentCulture: 'chinese',
+      environment: { bortleIndex: 7, cardinals: false, fog: false, turbidity: 0.96 },
+      gridLines: { azimuthal: true, ecliptic: true, equator: false, equatorial_j2000: true, equatorial_jnow: false, meridian: true },
+      landscapeId: 'zero_horizon',
+      limitMagEnabled,
+      limitMagValue: 4.5,
+      observer: { latitudeDeg: 0, longitudeDeg: 0 },
+      skyLayers: { atmosphere: false, constellationArt: false, constellationBoundaries: true, constellationLabels: false, constellationLines: true, constellationOnlyPointed: true, dsoHintsOffset: 0, dsoLabels: false, landscape: false, planetHintsOffset: 1, planetLabels: true, satelliteHintsOffset: 2, satelliteLabels: false, starHintsOffset: 3, starLabels: true },
+    };
+    restoreStellariumContext(engine, context);
+    expect(calls).toEqual([
+      ['time', [context.clock]],
+      ['location', [0, 0]],
+      ['culture', ['chinese']],
+      ['landscape', ['zero_horizon']],
+      ['layers', [context.skyLayers]],
+      ['environment', [context.environment]],
+      ['grids', [context.gridLines]],
+      ['brightness', [2.3]],
+      ['magnitude', [limitMagEnabled ? 4.5 : 99]],
+    ]);
+  });
+});
 
 describe('useStellariumSettings', () => {
   let mockSetMagnitudeLimit: jest.Mock;

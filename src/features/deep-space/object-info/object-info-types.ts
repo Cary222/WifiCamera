@@ -1,90 +1,104 @@
 import type { SelectedCelestialObject } from '@/features/stellarium/stellarium-service';
 import { translate } from '@/lib/i18n';
 
-export function formatRa(hours: number): string {
-  const normalized = ((hours % 24) + 24) % 24;
-  const h = Math.floor(normalized);
-  const m = Math.floor((normalized - h) * 60);
-  const s = Math.round(((normalized - h) * 60 - m) * 60);
-  return `${h}h ${m}m ${s}s`;
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
-export function formatRaPrecision(hours: number): string {
-  const normalized = ((hours % 24) + 24) % 24;
-  const h = String(Math.floor(normalized)).padStart(2, '0');
-  const totalM = (normalized - Math.floor(normalized)) * 60;
-  const m = String(Math.floor(totalM)).padStart(2, '0');
-  const s = ((totalM - Math.floor(totalM)) * 60).toFixed(1).padStart(4, '0');
+function isLatitude(deg?: number | null): deg is number {
+  return isFiniteNumber(deg) && Math.abs(deg) <= 90;
+}
+
+function normalizePeriod(value: number, period: number): number {
+  return ((value % period) + period) % period;
+}
+
+function coordinateSign(value: number): string {
+  return value < 0 || Object.is(value, -0) ? '-' : '+';
+}
+
+function splitSexagesimal(value: number, precision: number, period?: number) {
+  const scale = 10 ** precision;
+  const normalized = period ? normalizePeriod(value, period) : Math.abs(value);
+  // Round once before splitting so seconds and minutes carry together.
+  const rounded = Math.round(normalized * 3600 * scale);
+  const ticks = period ? rounded % (period * 3600 * scale) : rounded;
+  return {
+    major: Math.floor(ticks / (3600 * scale)),
+    minutes: Math.floor(ticks / (60 * scale)) % 60,
+    seconds: (ticks % (60 * scale)) / scale,
+  };
+}
+
+export function formatRa(hours?: number | null): string {
+  if (!isFiniteNumber(hours)) {
+    return '--';
+  }
+  const { major, minutes, seconds } = splitSexagesimal(hours, 0, 24);
+  return `${major}h ${minutes}m ${seconds}s`;
+}
+
+export function formatRaPrecision(hours?: number | null): string {
+  if (!isFiniteNumber(hours)) {
+    return '--';
+  }
+  const { major, minutes, seconds } = splitSexagesimal(hours, 1, 24);
+  const h = String(major).padStart(2, '0');
+  const m = String(minutes).padStart(2, '0');
+  const s = seconds.toFixed(1).padStart(4, '0');
   return `${h}h  ${m}m  ${s}s`;
 }
 
-export function formatDec(deg: number): string {
-  const sign = deg >= 0 ? '+' : '-';
-  const abs = Math.abs(deg);
-  const d = Math.floor(abs);
-  const m = Math.floor((abs - d) * 60);
-  const s = Math.round(((abs - d) * 60 - m) * 60);
-  return `${sign}${d}° ${m}' ${s}"`;
+export function formatDec(deg?: number | null): string {
+  if (!isLatitude(deg)) {
+    return '--';
+  }
+  const { major, minutes, seconds } = splitSexagesimal(deg, 0);
+  return `${coordinateSign(deg)}${major}° ${minutes}' ${seconds}"`;
 }
 
-export function formatDecPrecision(deg: number): string {
-  const sign = deg >= 0 ? '+' : '-';
-  const abs = Math.abs(deg);
-  const d = String(Math.floor(abs)).padStart(2, '0');
-  const totalM = (abs - Math.floor(abs)) * 60;
-  const m = String(Math.floor(totalM)).padStart(2, '0');
-  const s = ((totalM - Math.floor(totalM)) * 60).toFixed(1).padStart(4, '0');
-  return `${sign}${d}°  ${m}'  ${s}"`;
+export function formatDecPrecision(deg?: number | null): string {
+  if (!isLatitude(deg)) {
+    return '--';
+  }
+  const { major, minutes, seconds } = splitSexagesimal(deg, 1);
+  const d = String(major).padStart(2, '0');
+  const m = String(minutes).padStart(2, '0');
+  const s = seconds.toFixed(1).padStart(4, '0');
+  return `${coordinateSign(deg)}${d}°  ${m}'  ${s}"`;
 }
 
 export function formatHourAngle(hours?: number | null): string {
-  if (typeof hours !== 'number') {
-    return '--';
-  }
-  const normalized = ((hours % 24) + 24) % 24;
-  const h = String(Math.floor(normalized)).padStart(2, '0');
-  const totalM = (normalized - Math.floor(normalized)) * 60;
-  const m = String(Math.floor(totalM)).padStart(2, '0');
-  const s = ((totalM - Math.floor(totalM)) * 60).toFixed(1).padStart(4, '0');
-  return `${h}h  ${m}m  ${s}s`;
+  return formatRaPrecision(hours);
 }
 
 export function formatAzPrecision(azDeg?: number | null): string {
-  if (typeof azDeg !== 'number') {
+  if (!isFiniteNumber(azDeg)) {
     return '--';
   }
-  const az = ((azDeg % 360) + 360) % 360;
-  const d = String(Math.floor(az)).padStart(3, '0');
-  const totalM = (az - Math.floor(az)) * 60;
-  const m = String(Math.floor(totalM)).padStart(2, '0');
-  const s = ((totalM - Math.floor(totalM)) * 60).toFixed(1).padStart(4, '0');
+  const { major, minutes, seconds } = splitSexagesimal(azDeg, 1, 360);
+  const d = String(major).padStart(3, '0');
+  const m = String(minutes).padStart(2, '0');
+  const s = seconds.toFixed(1).padStart(4, '0');
   return `${d}°  ${m}'  ${s}"`;
 }
 
 export function formatAltPrecision(altDeg?: number | null): string {
-  if (typeof altDeg !== 'number') {
-    return '--';
-  }
-  const sign = altDeg >= 0 ? '+' : '-';
-  const abs = Math.abs(altDeg);
-  const d = String(Math.floor(abs)).padStart(2, '0');
-  const totalM = (abs - Math.floor(abs)) * 60;
-  const m = String(Math.floor(totalM)).padStart(2, '0');
-  const s = ((totalM - Math.floor(totalM)) * 60).toFixed(1).padStart(4, '0');
-  return `${sign}${d}°  ${m}'  ${s}"`;
+  return formatDecPrecision(altDeg);
 }
 
 export function formatAzAlt(azDeg?: number | null, altDeg?: number | null): string {
-  if (typeof azDeg !== 'number' || typeof altDeg !== 'number') {
-    return translate('deep_space.object.below_horizon');
+  if (!isFiniteNumber(azDeg) || !isLatitude(altDeg)) {
+    return '--';
   }
-  const az = ((azDeg % 360) + 360) % 360;
-  return translate('deep_space.object.az_alt', { alt: altDeg.toFixed(1), az: az.toFixed(1) });
+  const az = (Math.round(normalizePeriod(azDeg, 360) * 10) % 3600) / 10;
+  const alt = Object.is(altDeg, -0) ? '-0.0' : altDeg.toFixed(1);
+  return translate('deep_space.object.az_alt', { alt, az: az.toFixed(1) });
 }
 
-export function formatDistance(distanceAu?: number | null): string | null {
-  if (typeof distanceAu !== 'number' || distanceAu <= 0) {
-    return null;
+export function formatDistance(distanceAu?: number | null): string {
+  if (!isFiniteNumber(distanceAu) || distanceAu <= 0) {
+    return '--';
   }
   if (distanceAu < 0.01) {
     const km = Math.round(distanceAu * 149597870.7);
@@ -98,7 +112,7 @@ export function formatDistance(distanceAu?: number | null): string | null {
 }
 
 export function formatDistanceStellarium(distanceAu?: number | null): string {
-  if (typeof distanceAu !== 'number' || distanceAu <= 0) {
+  if (!isFiniteNumber(distanceAu) || distanceAu <= 0) {
     return '--';
   }
   if (distanceAu < 0.01) {
@@ -112,20 +126,23 @@ export function formatDistanceStellarium(distanceAu?: number | null): string {
   return `${distanceAu.toFixed(2)} AU`;
 }
 
+export function isValidPhase(phase?: number | null): phase is number {
+  return isFiniteNumber(phase) && phase >= 0 && phase <= 1;
+}
+
 export function formatPhase(phase?: number | null): string {
-  if (typeof phase !== 'number') {
-    return '--';
-  }
-  return phase.toFixed(2);
+  return isValidPhase(phase) ? phase.toFixed(2) : '--';
 }
 
 export function formatSize(sizeArcsec?: number | null): string {
-  if (typeof sizeArcsec !== 'number' || sizeArcsec <= 0) {
+  if (!isFiniteNumber(sizeArcsec) || sizeArcsec <= 0) {
     return '--';
   }
-  if (sizeArcsec >= 60) {
-    const m = Math.floor(sizeArcsec / 60);
-    const s = (sizeArcsec % 60).toFixed(1);
+  if (Number(sizeArcsec.toFixed(2)) >= 60) {
+    const minutes = Math.floor(sizeArcsec / 60);
+    const tenths = Math.round((sizeArcsec % 60) * 10);
+    const m = minutes + Math.floor(tenths / 600);
+    const s = ((tenths % 600) / 10).toFixed(1);
     return `${m}' ${s}"`;
   }
   return `${sizeArcsec.toFixed(2)}"`;

@@ -280,6 +280,11 @@ let lastProbeAt = 0;
  */
 function maybeFallbackTransport(): void {
   const state = _useCameraStore.getState();
+  // A manual preference is a statement about the user's physical setup. Moving
+  // them to the other link would hide the very failure they are debugging, so
+  // only `auto` may switch; manual links surface the error instead.
+  if (state.transportPreference !== 'auto')
+    return;
   if (state.transportProbing)
     return;
   if (disconnectedSince === null || Date.now() - disconnectedSince < TRANSPORT_FALLBACK_GRACE_MS)

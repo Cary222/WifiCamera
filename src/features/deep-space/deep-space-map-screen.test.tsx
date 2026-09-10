@@ -1,8 +1,10 @@
-import type { TonightReport } from '@/features/stellarium/stellarium-service';
+import type { SelectedCelestialObject, TargetQueryResult, TonightReport } from '@/features/stellarium/stellarium-service';
 import * as React from 'react';
 
 import { translate } from '@/lib/i18n';
-import { act, cleanup, fireEvent, screen, setup } from '@/lib/test-utils';
+import { storage } from '@/lib/storage';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
+import { act, cleanup, fireEvent, screen, setup, waitFor } from '@/lib/test-utils';
 
 import { DeepSpaceMapScreen } from './deep-space-map-screen';
 
@@ -25,17 +27,40 @@ const mockComputeEvents = jest.fn(async () => EVENTS_FIXTURE);
 const mockComputeTonight = jest.fn(async () => TONIGHT_FIXTURE);
 const mockGetCurrentPosition = jest.fn(async (_options?: unknown) => ({ coords: { latitude: 39.9, longitude: 116.41 } }));
 const mockRequestLocationPermission = jest.fn(async () => ({ status: 'granted' }));
-const mockWatchHeading = jest.fn(async (_callback?: unknown) => ({ remove: jest.fn() }));
+const mockHeadingSubscription = { remove: jest.fn() };
+let mockHeadingCallback: ((heading: { trueHeading: number }) => void) | undefined;
+const mockWatchHeading = jest.fn(async (callback?: unknown) => {
+  mockHeadingCallback = callback as (heading: { trueHeading: number }) => void;
+  return mockHeadingSubscription;
+});
 const mockWatchPosition = jest.fn(async (_options?: unknown, _callback?: unknown) => ({ remove: jest.fn() }));
 const mockClearSelection = jest.fn();
+const mockGetObjectInfo = jest.fn();
 const mockGotoRaDec = jest.fn();
 const mockPointAndLock = jest.fn();
 const mockReload = jest.fn();
+const mockRestoreView = jest.fn();
 const mockSearchTarget = jest.fn();
+const mockCancelSearch = jest.fn();
+const mockFocusTarget = jest.fn(async (name: string): Promise<SelectedCelestialObject | null> => ({
+  altDeg: 35.8,
+  azDeg: 120.4,
+  decDeg: -5.38,
+  designations: [name],
+  englishName: name.replace(/^NAME\s+/, ''),
+  id: name,
+  name: name.replace(/^NAME\s+/, ''),
+  raHours: 5.58,
+  vmag: 4.0,
+}));
+const mockQueryTargets = jest.fn(async (names: string[]): Promise<TargetQueryResult[]> => names.map(name => ({ altDeg: 42.5, available: true, azDeg: 123.4, id: name, vmag: 1.2 })));
+const mockSetBrightness = jest.fn();
 const mockSetEnvironment = jest.fn();
+let mockOnReady: (() => void) | undefined;
 const mockSetGridLines = jest.fn();
 const mockSetLandscape = jest.fn();
 const mockSetLocation = jest.fn();
+const mockSetSearchCatalog = jest.fn();
 const mockSetSkyCulture = jest.fn();
 const mockSetSkyLayers = jest.fn();
 const mockSetMagnitudeLimit = jest.fn();
@@ -48,9 +73,84 @@ const mockShowDeepSpaceFeedback = jest.fn();
 let mockOnCommandError: (() => void) | undefined;
 let mockOnObjectSelected: ((object: unknown) => void) | undefined;
 let mockOnSelectionCleared: (() => void) | undefined;
-let mockOnTargetFound: (() => void) | undefined;
-let mockOnTargetNotFound: (() => void) | undefined;
+let _mockOnTargetFound: (() => void) | undefined;
+let _mockOnTargetNotFound: (() => void) | undefined;
 let mockOnBearingChange: ((azimuthDeg: number) => void) | undefined;
+let mockOnViewStateChange: ((state: { altitudeDeg: number; azimuthDeg: number; fovDeg: number }) => void) | undefined;
+
+const CENTER_TARGET: SelectedCelestialObject = {
+  altDeg: 35.8,
+  azDeg: 120.4,
+  decDeg: -5.38,
+  designations: ['M 42'],
+  englishName: 'Orion Nebula',
+  id: 'NAME Great Orion Nebula',
+  name: '猎户座大星云',
+  raHours: 5.58,
+  vmag: 4.0,
+};
+
+const ARCHIVED_SKY_LAYERS = {
+  atmosphere: true,
+  constellationArt: true,
+  constellationBoundaries: false,
+  constellationLabels: true,
+  constellationLines: true,
+  constellationOnlyPointed: false,
+  dsoHintsOffset: 0,
+  dsoLabels: true,
+  landscape: false,
+  planetHintsOffset: 0,
+  planetLabels: true,
+  satelliteHintsOffset: 0,
+  satelliteLabels: true,
+  starHintsOffset: 2.5,
+  starLabels: false,
+};
+
+function archivedPreferencesJson(): string {
+  return JSON.stringify({
+    version: 1,
+    currentCulture: 'chinese',
+    environment: { bortleIndex: 5, cardinals: false, fog: false, turbidity: 3 },
+    gridLines: { azimuthal: false, ecliptic: false, equator: false, equatorial_j2000: false, equatorial_jnow: false, meridian: true },
+    landscapeId: 'ocean',
+    nightMode: true,
+    skyLayers: ARCHIVED_SKY_LAYERS,
+  });
+}
+
+function archivedViewStateJson(): string {
+  return JSON.stringify({ version: 1, state: { altitudeDeg: 12.5, azimuthDeg: 271.2, fovDeg: 30.5 } });
+}
+
+/** Typed view of the MMKV stub so the tests can back it with real storage. */
+type MockedStorage = {
+  delete?: jest.Mock;
+  getString: jest.Mock;
+  remove?: jest.Mock;
+  set: jest.Mock;
+};
+
+function mockedStorage(): MockedStorage {
+  return storage as unknown as MockedStorage;
+}
+
+/** Backs the MMKV stub with a real map so reopening the screen reads what the last visit wrote. */
+function installArchivedStorage() {
+  const map = new Map<string, string | number | boolean>();
+  const store = mockedStorage();
+  store.getString.mockImplementation((key: string) => (typeof map.get(key) === 'string' ? (map.get(key) as string) : undefined));
+  store.set.mockImplementation((key: string, value: string | number | boolean) => map.set(key, value));
+  store.remove?.mockImplementation((key: string) => map.delete(key));
+  store.delete?.mockImplementation((key: string) => map.delete(key));
+  return map;
+}
+
+function storedJson(map: Map<string, string | number | boolean>, key: string) {
+  const raw = map.get(key);
+  return typeof raw === 'string' ? JSON.parse(raw) : null;
+}
 
 jest.mock('uniwind', () => ({
   withUniwind: (component: unknown) => component,
@@ -115,28 +215,37 @@ jest.mock('@/features/stellarium/stellarium-view', () => {
   const { View: MockView } = require('react-native');
 
   return {
-    StellariumView: ({ onBearingChange, onCommandError, onObjectSelected, onReady, onSelectionCleared, onTargetFound, onTargetNotFound, ref }: { onBearingChange?: (azimuthDeg: number) => void; onCommandError?: () => void; onObjectSelected?: (object: unknown) => void; onReady?: () => void; onSelectionCleared?: () => void; onTargetFound?: () => void; onTargetNotFound?: () => void; ref?: unknown }) => {
+    StellariumView: ({ onBearingChange, onCommandError, onObjectSelected, onReady, onSelectionCleared, onTargetFound, onTargetNotFound, onViewStateChange, ref }: { onBearingChange?: (azimuthDeg: number) => void; onCommandError?: () => void; onObjectSelected?: (object: unknown) => void; onReady?: () => void; onSelectionCleared?: () => void; onTargetFound?: () => void; onTargetNotFound?: () => void; onViewStateChange?: (state: { altitudeDeg: number; azimuthDeg: number; fovDeg: number }) => void; ref?: unknown }) => {
+      mockOnReady = onReady;
       mockOnBearingChange = onBearingChange;
       mockOnCommandError = onCommandError;
       mockOnObjectSelected = onObjectSelected;
       mockOnSelectionCleared = onSelectionCleared;
-      mockOnTargetFound = onTargetFound;
-      mockOnTargetNotFound = onTargetNotFound;
+      mockOnViewStateChange = onViewStateChange;
+      _mockOnTargetFound = onTargetFound;
+      _mockOnTargetNotFound = onTargetNotFound;
       const readyRef = mockReact.useRef(false);
       mockReact.useImperativeHandle(ref, () => ({
+        cancelSearch: mockCancelSearch,
         clearSelection: mockClearSelection,
         computeEvents: mockComputeEvents,
         computeTonight: mockComputeTonight,
+        focusTarget: mockFocusTarget,
+        getObjectInfo: mockGetObjectInfo,
         gotoRaDec: mockGotoRaDec,
         pointAndLock: mockPointAndLock,
+        queryTargets: mockQueryTargets,
         reload: mockReload,
+        restoreView: mockRestoreView,
         searchTarget: mockSearchTarget,
+        setBrightness: mockSetBrightness,
         setEnvironment: mockSetEnvironment,
         setFovFrame: mockSetFovFrame,
         setGridLines: mockSetGridLines,
         setLandscape: mockSetLandscape,
         setLocation: mockSetLocation,
         setMagnitudeLimit: mockSetMagnitudeLimit,
+        setSearchCatalog: mockSetSearchCatalog,
         setSkyCulture: mockSetSkyCulture,
         setSkyLayers: mockSetSkyLayers,
         setTime: mockSetTime,
@@ -157,12 +266,20 @@ jest.mock('@/features/stellarium/stellarium-view', () => {
 
 afterEach(() => {
   cleanup();
+  mockClearSelection.mockClear();
   mockComputeEvents.mockClear();
   mockComputeTonight.mockClear();
+  mockPointAndLock.mockClear();
   mockRequestLocationPermission.mockClear();
   mockWatchHeading.mockClear();
+  mockHeadingSubscription.remove.mockClear();
+  mockHeadingCallback = undefined;
   mockReload.mockClear();
+  mockRestoreView.mockClear();
   mockSearchTarget.mockClear();
+  mockCancelSearch.mockClear();
+  mockFocusTarget.mockClear();
+  mockQueryTargets.mockClear();
   mockSetEnvironment.mockClear();
   mockSetGridLines.mockClear();
   mockSetLocation.mockClear();
@@ -171,14 +288,20 @@ afterEach(() => {
   mockSetTime.mockClear();
   mockSetViewBearing.mockClear();
   mockSetFovFrame.mockClear();
+  mockGetObjectInfo.mockReset();
   mockGotoRaDec.mockClear();
   mockToggleConstellations.mockClear();
   mockZoomTo.mockClear();
   mockShowDeepSpaceFeedback.mockClear();
+  (storage.getString as jest.Mock).mockReset();
+  (storage.set as jest.Mock).mockReset();
+  mockedStorage().remove?.mockReset();
+  mockedStorage().delete?.mockReset();
   mockOnBearingChange = undefined;
   mockOnCommandError = undefined;
-  mockOnTargetFound = undefined;
-  mockOnTargetNotFound = undefined;
+  mockOnViewStateChange = undefined;
+  _mockOnTargetFound = undefined;
+  _mockOnTargetNotFound = undefined;
 });
 
 describe('deep space map screen', () => {
@@ -836,7 +959,106 @@ describe('deep space interactive time control', () => {
   });
 });
 
-describe('deep space observation tools and search', () => {
+describe('deep space time state ownership', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-09T12:00:00.000Z'));
+  });
+  afterEach(() => {
+    cleanup();
+    jest.useRealTimers();
+  });
+
+  it('keeps playback and speed after closing and reopening the existing panel', () => {
+    setup(<DeepSpaceMapScreen />);
+    fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+    fireEvent.press(screen.getByTestId('deep-space-time-speed-60'));
+    fireEvent.press(screen.getByTestId('deep-space-time-playback-toggle'));
+    const start = Date.now();
+    fireEvent.press(screen.getByTestId('deep-space-time-close-button'));
+    act(() => jest.advanceTimersByTime(3000));
+    expect(mockSetTime).toHaveBeenLastCalledWith(new Date(start + 180_000));
+    fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+    expect(screen.getByTestId('deep-space-time-playback-toggle').props.accessibilityState.selected).toBe(true);
+    expect(screen.getByTestId('deep-space-time-speed-60').props.accessibilityState.selected).toBe(true);
+  });
+
+  it('offers reverse speeds and explicit zero pause without replacing the panel', () => {
+    setup(<DeepSpaceMapScreen />);
+    fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+    for (const speed of [-60, -1, 0, 1, 10, 60, 600])
+      expect(screen.getByTestId(`deep-space-time-speed-${speed}`)).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-time-playback-controls')).toHaveStyle({ flexWrap: 'wrap' });
+    fireEvent.press(screen.getByTestId('deep-space-time-speed--60'));
+    fireEvent.press(screen.getByTestId('deep-space-time-playback-toggle'));
+    act(() => jest.advanceTimersByTime(1000));
+    expect(mockSetTime).toHaveBeenLastCalledWith(new Date('2026-09-09T11:59:00.000Z'));
+    fireEvent.press(screen.getByTestId('deep-space-time-speed-0'));
+    const calls = mockSetTime.mock.calls.length;
+    act(() => jest.advanceTimersByTime(5000));
+    expect(mockSetTime).toHaveBeenCalledTimes(calls);
+    fireEvent.press(screen.getByTestId('deep-space-time-now-button'));
+    act(() => jest.advanceTimersByTime(1000));
+    expect(mockSetTime).toHaveBeenLastCalledWith(new Date(Date.now()));
+  });
+});
+
+function expectRestoreOrder() {
+  const commands = [mockSetSearchCatalog, mockSetTime, mockSetLocation, mockSetSkyCulture, mockSetLandscape, mockSetSkyLayers, mockSetEnvironment, mockSetGridLines, mockSetBrightness, mockSetMagnitudeLimit, mockRestoreView];
+  const order = commands.map(command => command.mock.invocationCallOrder.at(-1));
+  expect(order.every(value => typeof value === 'number')).toBe(true);
+  expect(order).toEqual([...order].sort((a, b) => a! - b!));
+}
+
+describe('deep space observer context restoration', () => {
+  it('replays every current setting in order on ready without permission or old focus', () => {
+    setup(<DeepSpaceMapScreen />);
+    expectRestoreOrder();
+    fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+    fireEvent.press(screen.getByTestId('deep-space-time-date-prev'));
+    const selectedTime = mockSetTime.mock.calls.at(-1)?.[0];
+    fireEvent.press(screen.getByTestId('deep-space-reference-menu'));
+    fireEvent.press(screen.getByText('星空述语'));
+    fireEvent.press(screen.getByTestId('deep-space-glossary-item-chinese'));
+    fireEvent.press(screen.getByTestId('deep-space-glossary-use-button'));
+    fireEvent.press(screen.getByTestId('deep-space-reference-menu'));
+    fireEvent.press(screen.getByText('设置'));
+    fireEvent.press(screen.getByTestId('deep-space-settings-location-entry'));
+    fireEvent.press(screen.getByTestId('deep-space-settings-location-上海'));
+    const focusCalls = mockFocusTarget.mock.calls.length;
+    act(() => mockOnReady?.());
+    expect(mockSetTime).toHaveBeenLastCalledWith(selectedTime);
+    expect(mockSetLocation).toHaveBeenLastCalledWith(31.23, 121.47);
+    expect(mockSetSkyCulture).toHaveBeenLastCalledWith('chinese');
+    expect(mockSetBrightness).toHaveBeenLastCalledWith(1);
+    expect(mockSetMagnitudeLimit).toHaveBeenLastCalledWith(99);
+    expect(mockFocusTarget).toHaveBeenCalledTimes(focusCalls);
+    expect(mockRequestLocationPermission).not.toHaveBeenCalled();
+    expectRestoreOrder();
+  });
+
+  it('restores the selected last-view date on the initial engine ready', () => {
+    const selectedTime = '2025-03-04T05:06:07.000Z';
+    (storage.getString as jest.Mock).mockImplementation((key: string) => {
+      if (key === STORAGE_KEYS.DEEP_SPACE_SETTINGS_START_TIME_POLICY)
+        return 'last_view';
+      if (key === STORAGE_KEYS.DEEP_SPACE_SETTINGS_LAST_VIEW_TIME)
+        return selectedTime;
+      return undefined;
+    });
+    try {
+      setup(<DeepSpaceMapScreen />);
+      expect(mockSetTime).toHaveBeenLastCalledWith(new Date(selectedTime));
+      fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+      expect(screen.getByTestId('deep-space-time-date-value')).toHaveTextContent('2025年3月4日');
+    }
+    finally {
+      (storage.getString as jest.Mock).mockReset();
+    }
+  });
+});
+
+describe('deep space observation tools', () => {
   it('keeps telescope and field-of-view tools separate from the left-bottom grid controls', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-menu'));
@@ -890,16 +1112,47 @@ describe('deep space observation tools and search', () => {
     await user.press(screen.getByTestId('deep-space-settings-location-上海'));
     expect(mockSetLocation).toHaveBeenLastCalledWith(31.23, 121.47);
   });
+});
 
-  it('searches for a typed celestial target through the existing bridge', async () => {
+describe('deep space celestial search', () => {
+  it('focuses a typed celestial target through the real engine bridge', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-search'));
     expect(screen.getByTestId('deep-space-reference-search-sheet')).toBeOnTheScreen();
     await user.type(screen.getByTestId('deep-space-map-search-input'), 'M 42');
     await user.press(screen.getByTestId('deep-space-map-search-submit'));
-    expect(mockSearchTarget).toHaveBeenLastCalledWith('M 42');
-    act(() => mockOnTargetFound?.());
-    expect(screen.queryByTestId('deep-space-reference-search-sheet')).not.toBeOnTheScreen();
+    await waitFor(() => expect(mockFocusTarget).toHaveBeenLastCalledWith('M 42'));
+    await waitFor(() => expect(screen.queryByTestId('deep-space-reference-search-sheet')).not.toBeOnTheScreen());
+  });
+
+  it('shows real-time suggestions and navigates to target when tapped', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    expect(screen.getByTestId('deep-space-reference-search-sheet')).toBeOnTheScreen();
+
+    // Type Chinese keyword
+    await user.type(screen.getByTestId('deep-space-map-search-input'), '织女');
+    const vegaItem = await screen.findByTestId('deep-space-search-item-Vega');
+    expect(vegaItem).toBeOnTheScreen();
+
+    // Tap clear button
+    await user.press(screen.getByTestId('deep-space-map-search-clear'));
+    expect(screen.getByTestId('deep-space-map-search-input')).toHaveProp('value', '');
+
+    // Type again and tap item
+    await user.type(screen.getByTestId('deep-space-map-search-input'), '织女');
+    await user.press(await screen.findByTestId('deep-space-search-item-Vega'));
+    await waitFor(() => expect(mockFocusTarget).toHaveBeenLastCalledWith('Vega'));
+  });
+
+  it('filters celestial suggestions by category tabs', async () => {
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    await user.press(screen.getByText(translate('deep_space.search_browse')));
+    await user.press(screen.getByTestId('deep-space-search-category-solar_system'));
+
+    expect(screen.getByTestId('deep-space-search-item-NAME Mars')).toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-search-item-Vega')).not.toBeOnTheScreen();
   });
 
   it('moves to a Stellarium-style RA/Dec coordinate query without name lookup', async () => {
@@ -909,26 +1162,324 @@ describe('deep space observation tools and search', () => {
     await user.press(screen.getByTestId('deep-space-map-search-submit'));
 
     expect(mockGotoRaDec).toHaveBeenLastCalledWith(101.27916666666667, 16.72472222222222);
-    expect(mockSearchTarget).not.toHaveBeenCalled();
+    expect(mockFocusTarget).not.toHaveBeenCalled();
     expect(screen.queryByTestId('deep-space-reference-search-sheet')).not.toBeOnTheScreen();
   });
 
   it('keeps the star map available when the engine cannot find a target', async () => {
+    mockFocusTarget.mockResolvedValueOnce(null);
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-search'));
     await user.type(screen.getByTestId('deep-space-map-search-input'), 'M42');
     await user.press(screen.getByTestId('deep-space-map-search-submit'));
-    act(() => mockOnTargetNotFound?.());
+    await waitFor(() => expect(screen.getByTestId('deep-space-map-search-error')).toHaveTextContent('未找到该天体，请改用标准名称或编号'));
     expect(screen.getByTestId('deep-space-map-shell')).toBeOnTheScreen();
-    expect(screen.getByTestId('deep-space-map-search-error')).toHaveTextContent('未找到该天体，请改用标准名称或编号');
   });
 
-  it('keeps the star map available when a ready engine reports a command error', async () => {
+  it('does not misreport an unrelated engine command error as a missing target', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-reference-search'));
     act(() => mockOnCommandError?.());
     expect(screen.getByTestId('deep-space-map-shell')).toBeOnTheScreen();
-    expect(screen.getByTestId('deep-space-map-search-error')).toHaveTextContent('未找到该天体，请改用标准名称或编号');
+    expect(screen.queryByTestId('deep-space-map-search-error')).not.toBeOnTheScreen();
+    expect(mockShowDeepSpaceFeedback).toHaveBeenCalledWith(expect.objectContaining({ tone: 'danger' }));
+  });
+});
+
+describe('search selection lifecycle integration', () => {
+  const bootes: SelectedCelestialObject = {
+    id: 'CON western Boo',
+    name: '牧夫座',
+    englishName: 'Boötes',
+    designations: ['CON western Boo'],
+    raHours: 14.7,
+    decDeg: 30,
+    type: 'constellation',
+    typeZh: '星座',
+    altDeg: 35,
+    azDeg: 120,
+  };
+
+  it('shows the resolved target details and records the canonical ID in history', async () => {
+    mockFocusTarget.mockResolvedValueOnce(bootes);
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), 'mufu');
+    await user.press(screen.getByTestId('deep-space-search-item-CON western Boo'));
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toHaveTextContent(/牧夫座/);
+    await user.press(screen.getByTestId('deep-space-object-close-btn'));
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    await user.press(screen.getByText(translate('deep_space.search_recent')));
+    expect(screen.getByTestId('deep-space-search-recent-CON western Boo')).toBeOnTheScreen();
+  });
+
+  it('ignores a cancelled result that arrives after the search sheet has reopened', async () => {
+    let finish!: (object: SelectedCelestialObject | null) => void;
+    mockFocusTarget.mockImplementationOnce(() => new Promise((resolve) => {
+      finish = resolve;
+    }));
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), 'mufu');
+    fireEvent.press(screen.getByTestId('deep-space-search-item-CON western Boo'));
+    await user.press(screen.getByTestId('deep-space-search-backdrop'));
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    await act(async () => finish(null));
+    expect(screen.getByTestId('deep-space-reference-search-sheet')).toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-map-search-error')).not.toBeOnTheScreen();
+  });
+
+  it('does not let an earlier success overwrite the most recently selected object', async () => {
+    let finish!: (object: SelectedCelestialObject | null) => void;
+    mockFocusTarget.mockImplementationOnce(() => new Promise((resolve) => {
+      finish = resolve;
+    }));
+    mockFocusTarget.mockResolvedValueOnce({ ...bootes, id: 'CON western Leo', name: '狮子座', englishName: 'Leo' });
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-search'));
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), 'mufu');
+    fireEvent.press(screen.getByTestId('deep-space-search-item-CON western Boo'));
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), 'shizi');
+    await user.press(screen.getByTestId('deep-space-search-item-CON western Leo'));
+    await act(async () => finish(bootes));
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toHaveTextContent(/狮子座/);
+    expect(screen.queryByText('牧夫座')).not.toBeOnTheScreen();
+  });
+});
+
+describe('search reason propagation', () => {
+  it.each(['loading', 'culture_mismatch', 'missing_data'] as const)('keeps focus %s distinct and retries only when requested', async (reason) => {
+    mockFocusTarget.mockRejectedValueOnce(new Error(`FOCUS_UNAVAILABLE:${reason}`));
+    setup(<DeepSpaceMapScreen />);
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), 'Jupiter');
+    fireEvent.press(screen.getByTestId('deep-space-search-item-NAME Jupiter'));
+    expect(await screen.findByTestId('deep-space-map-search-error')).toHaveTextContent(translate(`deep_space.search_${reason}`));
+    expect(mockSetSkyCulture).toHaveBeenLastCalledWith('western');
+    fireEvent.press(screen.getByTestId('deep-space-search-retry'));
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+    expect(mockFocusTarget).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['timeout', 'Stellarium bridge reloaded.', 'loading'])('does not present %s as a missing object', async (message) => {
+    mockFocusTarget.mockRejectedValueOnce(new Error(message));
+    setup(<DeepSpaceMapScreen />);
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), 'Jupiter');
+    fireEvent.press(screen.getByTestId('deep-space-search-item-NAME Jupiter'));
+    expect(await screen.findByTestId('deep-space-map-search-error')).toHaveTextContent(translate('deep_space.search_failed'));
+  });
+});
+
+async function flushSearchRequests() {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
+describe('bounded loading metrics refresh', () => {
+  const loading = (ids: string[]): Promise<TargetQueryResult[]> => Promise.resolve(ids.map(id => ({ id, available: false, reason: 'loading' })));
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    cleanup();
+    mockQueryTargets.mockImplementation(async names => names.map(id => ({ id, available: true, altDeg: 42.5, vmag: 1.2 })));
+    jest.useRealTimers();
+  });
+
+  it('polls a loading visible group within ten seconds then exposes an explicit retry and stops on close', async () => {
+    mockQueryTargets.mockImplementation(loading);
+    setup(<DeepSpaceMapScreen />);
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    await flushSearchRequests();
+    const firstCount = mockQueryTargets.mock.calls.length;
+    await act(async () => jest.advanceTimersByTime(500));
+    expect(mockQueryTargets).toHaveBeenCalledTimes(firstCount + 1);
+    for (let tick = 0; tick < 21; tick++)
+      await act(async () => jest.advanceTimersByTime(500));
+    const afterDeadline = mockQueryTargets.mock.calls.length;
+    expect(afterDeadline).toBeGreaterThan(firstCount);
+    expect(afterDeadline - firstCount).toBeLessThanOrEqual(30);
+    expect(screen.getByTestId('deep-space-search-retry')).toBeOnTheScreen();
+    await act(async () => jest.advanceTimersByTime(30_000));
+    expect(mockQueryTargets).toHaveBeenCalledTimes(afterDeadline);
+    fireEvent.press(screen.getByTestId('deep-space-search-retry'));
+    await flushSearchRequests();
+    expect(mockQueryTargets).toHaveBeenCalledTimes(afterDeadline + 1);
+    fireEvent.press(screen.getByTestId('deep-space-search-backdrop'));
+    await act(async () => jest.advanceTimersByTime(2000));
+    expect(mockQueryTargets).toHaveBeenCalledTimes(afterDeadline + 1);
+  });
+
+  it('queries a new visible group while the old request is pending and ignores the old response', async () => {
+    let finishOld: (results: TargetQueryResult[]) => void = () => {};
+    mockQueryTargets.mockImplementationOnce(() => new Promise((resolve) => {
+      finishOld = resolve;
+    }));
+    setup(<DeepSpaceMapScreen />);
+    fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+    fireEvent.press(screen.getByTestId('deep-space-time-speed-0'));
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), 'Jupiter');
+    await flushSearchRequests();
+    expect(mockQueryTargets).toHaveBeenCalledTimes(2);
+    expect(mockQueryTargets).toHaveBeenLastCalledWith(['NAME Jupiter', 'NAME Io', 'NAME Europa', 'NAME Ganymede', 'NAME Callisto']);
+    await act(async () => finishOld([{ id: 'NAME Jupiter', available: false, reason: 'loading' }]));
+    await act(async () => jest.advanceTimersByTime(3000));
+    expect(mockQueryTargets).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('deep-space-search-retry')).not.toBeOnTheScreen();
+  });
+});
+
+describe('manual search metrics refresh', () => {
+  it('keeps the visible snapshot unchanged when the observation clock advances', async () => {
+    jest.useFakeTimers();
+    try {
+      setup(<DeepSpaceMapScreen />);
+      fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+      await flushSearchRequests();
+      const calls = mockQueryTargets.mock.calls.length;
+      await act(async () => jest.advanceTimersByTime(30_000));
+      expect(mockQueryTargets).toHaveBeenCalledTimes(calls);
+    }
+    finally {
+      cleanup();
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps the visible snapshot until manual refresh when automatic observer coordinates change', async () => {
+    let moveObserver: (value: unknown) => void = () => {};
+    mockWatchPosition.mockImplementationOnce(async (_options, callback) => {
+      moveObserver = callback as typeof moveObserver;
+      return { remove: jest.fn() };
+    });
+    const { user } = setup(<DeepSpaceMapScreen />);
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-location-entry'));
+    await user.press(screen.getByTestId('deep-space-settings-auto-location-toggle'));
+    await user.press(screen.getByLabelText('返回设置'));
+    await user.press(screen.getByLabelText(translate('deep_space.back')));
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    await flushSearchRequests();
+    const calls = mockQueryTargets.mock.calls.length;
+    await act(async () => moveObserver({ coords: { latitude: 5, longitude: 10 } }));
+    expect(mockSetLocation).toHaveBeenLastCalledWith(5, 10);
+    expect(mockQueryTargets).toHaveBeenCalledTimes(calls);
+  });
+});
+
+describe('manual visible snapshot lifecycle', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    cleanup();
+    mockQueryTargets.mockReset().mockImplementation(async names => names.map(id => ({ id, available: true, altDeg: 42.5, vmag: 1.2 })));
+    jest.useRealTimers();
+  });
+
+  async function openVisibleTargets() {
+    mockQueryTargets.mockResolvedValueOnce([
+      { id: 'NAME Sun', available: true, altDeg: 60 },
+      { id: 'NAME Moon', available: true, altDeg: 30 },
+    ]);
+    setup(<DeepSpaceMapScreen />);
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    await flushSearchRequests();
+    fireEvent.press(screen.getByTestId('deep-space-search-tab-visible'));
+  }
+
+  it('reuses the visible snapshot after visiting a search result instead of querying it again', async () => {
+    await openVisibleTargets();
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), 'Jupiter');
+    await flushSearchRequests();
+    expect(mockQueryTargets).toHaveBeenCalledTimes(2);
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), '');
+    await flushSearchRequests();
+    expect(mockQueryTargets).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByTestId(/^deep-space-popular-/).map(row => row.props.testID)).toEqual(['deep-space-popular-NAME Sun', 'deep-space-popular-NAME Moon']);
+  });
+
+  it('keeps the old list during a manual refresh, rejects duplicate taps and replaces it only on completion', async () => {
+    await openVisibleTargets();
+    let finish: (results: TargetQueryResult[]) => void = () => {};
+    mockQueryTargets.mockImplementationOnce(() => new Promise((resolve) => {
+      finish = resolve;
+    }));
+    fireEvent.press(screen.getByTestId('deep-space-visible-refresh'));
+    expect(screen.getByTestId('deep-space-visible-refresh')).toBeDisabled();
+    expect(screen.getByTestId('deep-space-popular-NAME Sun')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-popular-NAME Moon')).toBeOnTheScreen();
+    fireEvent.press(screen.getByTestId('deep-space-visible-refresh'));
+    expect(mockQueryTargets).toHaveBeenCalledTimes(2);
+    await act(async () => finish([
+      { id: 'NAME Sun', available: true, altDeg: -5 },
+      { id: 'NAME Moon', available: true, altDeg: 70 },
+    ]));
+    expect(screen.queryByTestId('deep-space-popular-NAME Sun')).not.toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-popular-NAME Moon')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-visible-refresh')).not.toBeDisabled();
+  });
+
+  it('preserves the previous snapshot and allows retry when a manual refresh fails', async () => {
+    await openVisibleTargets();
+    mockQueryTargets.mockRejectedValueOnce(new Error('metrics failed'));
+    fireEvent.press(screen.getByTestId('deep-space-visible-refresh'));
+    await flushSearchRequests();
+    expect(screen.getByTestId('deep-space-popular-NAME Sun')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-popular-NAME Moon')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-visible-refresh')).not.toBeDisabled();
+    expect(screen.getByTestId('deep-space-search-retry')).toBeOnTheScreen();
+    await act(async () => jest.advanceTimersByTime(30_000));
+    expect(mockQueryTargets).toHaveBeenCalledTimes(2);
+    fireEvent.press(screen.getByTestId('deep-space-search-retry'));
+    await flushSearchRequests();
+    expect(mockQueryTargets).toHaveBeenCalledTimes(3);
+  });
+
+  it('ignores a manual refresh that resolves after closing and reopening search', async () => {
+    await openVisibleTargets();
+    let finishOld: (results: TargetQueryResult[]) => void = () => {};
+    mockQueryTargets.mockImplementationOnce(() => new Promise((resolve) => {
+      finishOld = resolve;
+    }));
+    fireEvent.press(screen.getByTestId('deep-space-visible-refresh'));
+    fireEvent.press(screen.getByTestId('deep-space-search-backdrop'));
+    mockQueryTargets.mockResolvedValueOnce([{ id: 'NAME Jupiter', available: true, altDeg: 75 }]);
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    await flushSearchRequests();
+    fireEvent.press(screen.getByTestId('deep-space-search-tab-visible'));
+    expect(mockQueryTargets).toHaveBeenCalledTimes(3);
+    await act(async () => finishOld([{ id: 'NAME Sun', available: true, altDeg: 80 }]));
+    expect(screen.getByTestId('deep-space-popular-NAME Jupiter')).toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-popular-NAME Sun')).not.toBeOnTheScreen();
+  });
+});
+
+describe('detail observing-context integration', () => {
+  const object: SelectedCelestialObject = { id: 'HIP 32349', catalogId: 'Sirius', name: '天狼星', englishName: 'Sirius', designations: ['HIP 32349'], raHours: 6.75, decDeg: -16.7, altDeg: 10, azDeg: 20 };
+  it('refreshes paused details after ready without focus or duplicate history and stops after close', async () => {
+    setup(<DeepSpaceMapScreen />);
+    fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+    fireEvent.press(screen.getByTestId('deep-space-time-speed-0'));
+    fireEvent.press(screen.getByTestId('deep-space-time-close-button'));
+    mockGetObjectInfo.mockResolvedValueOnce(object);
+    await act(async () => mockOnObjectSelected?.(object));
+    expect(mockGetObjectInfo).toHaveBeenLastCalledWith('HIP 32349');
+    const historyWrites = (storage.set as jest.Mock).mock.calls.filter(([key]) => key === STORAGE_KEYS.DEEP_SPACE_RECENT_OBJECTS).length;
+    const focusCalls = mockFocusTarget.mock.calls.length;
+    mockGetObjectInfo.mockResolvedValueOnce({ ...object, altDeg: 40 });
+    const reads = mockGetObjectInfo.mock.calls.length;
+    await act(async () => mockOnReady?.());
+    expect(mockGetObjectInfo).toHaveBeenCalledTimes(reads + 1);
+    expect(mockFocusTarget).toHaveBeenCalledTimes(focusCalls);
+    expect((storage.set as jest.Mock).mock.calls.filter(([key]) => key === STORAGE_KEYS.DEEP_SPACE_RECENT_OBJECTS)).toHaveLength(historyWrites);
+    fireEvent.press(screen.getByTestId('deep-space-object-close-btn'));
+    await act(async () => mockOnReady?.());
+    expect(mockGetObjectInfo).toHaveBeenCalledTimes(reads + 1);
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    await flushSearchRequests();
+    fireEvent.press(screen.getByText(translate('deep_space.search_recent')));
+    expect(screen.getByTestId('deep-space-search-recent-Sirius')).toBeOnTheScreen();
   });
 });
 
@@ -1045,9 +1596,10 @@ describe('deep space celestial object info integration', () => {
     act(() => mockOnObjectSelected?.(MOCK_TARGET));
     await user.press(await screen.findByTestId('deep-space-object-close-btn'));
     await user.press(screen.getByTestId('deep-space-reference-search'));
+    await user.press(screen.getByText(translate('deep_space.search_recent')));
     await user.press(screen.getByTestId('deep-space-search-recent-NAME Great Orion Nebula'));
 
-    expect(mockSearchTarget).toHaveBeenLastCalledWith('Great Orion Nebula');
+    await waitFor(() => expect(mockFocusTarget).toHaveBeenLastCalledWith('NAME Great Orion Nebula'));
   });
 
   it('locks onto target when center button in info sheet is tapped', async () => {
@@ -1134,5 +1686,222 @@ describe('deep space compass and azimuth controls', () => {
     expect(mockSetViewBearing).toHaveBeenCalledWith(90);
     expect(screen.queryByTestId('deep-space-azimuth-input-dialog')).not.toBeOnTheScreen();
     expect(screen.getByTestId('deep-space-reference-compass-azimuth')).toHaveTextContent('90°');
+  });
+});
+
+describe('deep space view preference archive', () => {
+  it('restores the archived switches and camera view when the map is reopened', () => {
+    const map = installArchivedStorage();
+    const archived = archivedPreferencesJson();
+    map.set(STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES, archived);
+    map.set(STORAGE_KEYS.DEEP_SPACE_VIEW_STATE, archivedViewStateJson());
+
+    setup(<DeepSpaceMapScreen />);
+
+    expect(mockSetSkyCulture).toHaveBeenLastCalledWith('chinese');
+    expect(mockSetLandscape).toHaveBeenLastCalledWith('ocean');
+    expect(mockSetGridLines).toHaveBeenLastCalledWith(expect.objectContaining({ meridian: true }));
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({ bortleIndex: 5, cardinals: false, fog: false, turbidity: 3 }));
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith(expect.objectContaining({ landscape: false, starHintsOffset: 2.5, starLabels: false }));
+    // The archived camera angle is replayed last, after the observation context.
+    expect(mockRestoreView).toHaveBeenLastCalledWith({ altitudeDeg: 12.5, azimuthDeg: 271.2, fovDeg: 30.5 });
+    expectRestoreOrder();
+
+    expect(screen.getByTestId('deep-space-night-mode-overlay')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-restore-culture-fab')).toBeOnTheScreen();
+    // Opening the page must not overwrite the archive it just read.
+    expect(map.get(STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES)).toBe(archived);
+  });
+
+  it('keeps the changed switches and the camera angle across a close and reopen', async () => {
+    const map = installArchivedStorage();
+    const { unmount, user } = setup(<DeepSpaceMapScreen />);
+
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.press(screen.getByTestId('deep-space-grid-quick-grid-lines'));
+    await user.press(screen.getByTestId('deep-space-grid-quick-labels'));
+    await user.press(screen.getByTestId('deep-space-grid-quick-night-mode'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-landscape'));
+    await user.press(screen.getByTestId('deep-space-quick-detail-stepper-landscape-library-next'));
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-landscape'));
+    act(() => mockOnViewStateChange?.({ altitudeDeg: -12.5, azimuthDeg: 271.25, fovDeg: 182.28 }));
+
+    expect(storedJson(map, STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES)).toMatchObject({
+      landscapeId: 'winterfield',
+      nightMode: true,
+    });
+    expect(storedJson(map, STORAGE_KEYS.DEEP_SPACE_VIEW_STATE)).toEqual({
+      state: { altitudeDeg: -12.5, azimuthDeg: 271.25, fovDeg: 182.28 },
+      version: 1,
+    });
+
+    unmount();
+    setup(<DeepSpaceMapScreen />);
+
+    expect(screen.getByTestId('deep-space-night-mode-overlay')).toBeOnTheScreen();
+    expect(mockSetLandscape).toHaveBeenLastCalledWith('winterfield');
+    expect(mockSetGridLines).toHaveBeenLastCalledWith(expect.objectContaining({ azimuthal: true, equatorial_jnow: true }));
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith(expect.objectContaining({
+      dsoLabels: false,
+      landscape: false,
+      planetLabels: false,
+      satelliteLabels: false,
+      starLabels: false,
+    }));
+    expect(mockRestoreView).toHaveBeenLastCalledWith({ altitudeDeg: -12.5, azimuthDeg: 271.25, fovDeg: 182.28 });
+  });
+});
+
+describe('deep space camera view archive', () => {
+  it('archives a reported camera view without restoring it again in the same visit', () => {
+    const map = installArchivedStorage();
+    const { unmount } = setup(<DeepSpaceMapScreen />);
+    // With no archive the scene only gets the null view that opens the channel.
+    expect(mockRestoreView).toHaveBeenLastCalledWith(null);
+
+    const restores = mockRestoreView.mock.calls.length;
+    act(() => mockOnViewStateChange?.({ altitudeDeg: 0, azimuthDeg: 180, fovDeg: 182.28 }));
+
+    expect(mockRestoreView).toHaveBeenCalledTimes(restores);
+    expect(storedJson(map, STORAGE_KEYS.DEEP_SPACE_VIEW_STATE)).toEqual({
+      state: { altitudeDeg: 0, azimuthDeg: 180, fovDeg: 182.28 },
+      version: 1,
+    });
+
+    unmount();
+    setup(<DeepSpaceMapScreen />);
+
+    expect(mockRestoreView).toHaveBeenLastCalledWith({ altitudeDeg: 0, azimuthDeg: 180, fovDeg: 182.28 });
+  });
+
+  it('never archives a camera view outside the engine range', () => {
+    const map = installArchivedStorage();
+    const { unmount } = setup(<DeepSpaceMapScreen />);
+
+    act(() => mockOnViewStateChange?.({ altitudeDeg: 10, azimuthDeg: 400, fovDeg: 40 }));
+
+    expect(map.has(STORAGE_KEYS.DEEP_SPACE_VIEW_STATE)).toBe(false);
+
+    unmount();
+    setup(<DeepSpaceMapScreen />);
+
+    expect(mockRestoreView).toHaveBeenLastCalledWith(null);
+  });
+
+  it('drops the archive on reset and reopens the map on its defaults', async () => {
+    const map = installArchivedStorage();
+    map.set(STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES, archivedPreferencesJson());
+    map.set(STORAGE_KEYS.DEEP_SPACE_VIEW_STATE, archivedViewStateJson());
+    const { unmount, user } = setup(<DeepSpaceMapScreen />);
+    expect(screen.getByTestId('deep-space-night-mode-overlay')).toBeOnTheScreen();
+
+    await user.press(screen.getByTestId('deep-space-reference-menu'));
+    await user.press(screen.getByText('设置'));
+    await user.press(screen.getByTestId('deep-space-settings-reset-entry'));
+    await user.press(screen.getByText('确定'));
+
+    expect(map.has(STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES)).toBe(false);
+    expect(map.has(STORAGE_KEYS.DEEP_SPACE_VIEW_STATE)).toBe(false);
+    expect(screen.queryByTestId('deep-space-night-mode-overlay')).not.toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-restore-culture-fab')).not.toBeOnTheScreen();
+    expect(mockSetSkyCulture).toHaveBeenLastCalledWith('western');
+    expect(mockSetLandscape).toHaveBeenLastCalledWith('guereins');
+    expect(mockSetGridLines).toHaveBeenLastCalledWith(expect.objectContaining({ meridian: false }));
+
+    unmount();
+    setup(<DeepSpaceMapScreen />);
+
+    expect(screen.queryByTestId('deep-space-night-mode-overlay')).not.toBeOnTheScreen();
+    expect(mockRestoreView).toHaveBeenLastCalledWith(null);
+    expect(mockSetSkyCulture).toHaveBeenLastCalledWith('western');
+    expect(mockSetLandscape).toHaveBeenLastCalledWith('guereins');
+  });
+});
+
+describe('deep space centering releases the sensor', () => {
+  beforeEach(() => {
+    // The sky clock pushes a real one-second tick through the bridge. Freeze it
+    // so "centering changed nothing" cannot race with an unrelated tick.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-10T12:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  async function enableCompassFollowing() {
+    fireEvent.press(screen.getByTestId('deep-space-reference-menu'));
+    fireEvent.press(screen.getByText('设置'));
+    fireEvent.press(screen.getByTestId('deep-space-settings-sensor-toggle'));
+    await waitFor(() => expect(mockWatchHeading).toHaveBeenCalledTimes(1));
+    fireEvent.press(screen.getByLabelText(translate('deep_space.back')));
+  }
+
+  it('stops the sensor before locking the selected object and ignores what arrives late', async () => {
+    setup(<DeepSpaceMapScreen />);
+    await enableCompassFollowing();
+
+    act(() => mockOnObjectSelected?.(CENTER_TARGET));
+    expect(screen.getByTestId('deep-space-object-center-btn')).toBeOnTheScreen();
+
+    const baselines = {
+      goto: mockGotoRaDec.mock.calls.length,
+      location: mockSetLocation.mock.calls.length,
+      removals: mockHeadingSubscription.remove.mock.calls.length,
+      time: mockSetTime.mock.calls.length,
+      zoom: mockZoomTo.mock.calls.length,
+    };
+
+    fireEvent.press(screen.getByTestId('deep-space-object-center-btn'));
+
+    expect(mockPointAndLock).toHaveBeenLastCalledWith('NAME Great Orion Nebula');
+    expect(mockHeadingSubscription.remove).toHaveBeenCalledTimes(baselines.removals + 1);
+    // The details sheet stays open and nothing else moves the camera.
+    expect(screen.getByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+    expect(mockGotoRaDec).toHaveBeenCalledTimes(baselines.goto);
+    expect(mockSetLocation).toHaveBeenCalledTimes(baselines.location);
+    expect(mockSetTime).toHaveBeenCalledTimes(baselines.time);
+    expect(mockZoomTo).toHaveBeenCalledTimes(baselines.zoom);
+    expect(screen.queryByTestId('deep-space-tools-panel')).not.toBeOnTheScreen();
+
+    // A heading that still arrives late must not steer the view back.
+    act(() => mockHeadingCallback?.({ trueHeading: 90 }));
+    expect(mockSetViewBearing).not.toHaveBeenCalled();
+
+    // An explicit time refresh still works and must not hand the view back to
+    // the sensor either.
+    fireEvent.press(screen.getByTestId('deep-space-reference-time'));
+    fireEvent.press(screen.getByTestId('deep-space-time-now-button'));
+    act(() => jest.advanceTimersByTime(1000));
+    expect(mockSetTime.mock.calls.length).toBeGreaterThan(baselines.time);
+    act(() => mockOnReady?.());
+    expect(mockSetViewBearing).not.toHaveBeenCalled();
+    expect(mockPointAndLock).toHaveBeenCalledTimes(1);
+    expect(mockWatchHeading).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByTestId('deep-space-reference-menu'));
+    fireEvent.press(screen.getByText('设置'));
+    expect(screen.getByTestId('deep-space-settings-sensor-toggle').props.accessibilityState.checked).toBe(false);
+  });
+
+  it('stops the sensor before a search result is focused', async () => {
+    setup(<DeepSpaceMapScreen />);
+    await enableCompassFollowing();
+
+    fireEvent.press(screen.getByTestId('deep-space-reference-search'));
+    fireEvent.changeText(screen.getByTestId('deep-space-map-search-input'), '织女');
+    const item = await screen.findByTestId('deep-space-search-item-Vega');
+    const removals = mockHeadingSubscription.remove.mock.calls.length;
+
+    fireEvent.press(item);
+
+    await waitFor(() => expect(mockFocusTarget).toHaveBeenLastCalledWith('Vega'));
+    expect(mockHeadingSubscription.remove).toHaveBeenCalledTimes(removals + 1);
+    expect(mockPointAndLock).not.toHaveBeenCalled();
+    expect(mockZoomTo).not.toHaveBeenCalled();
+
+    act(() => mockHeadingCallback?.({ trueHeading: 45 }));
+    expect(mockSetViewBearing).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 import type {
   SelectedCelestialObject,
   StellariumBridge,
+  StellariumViewState,
 } from './stellarium-service';
 import * as React from 'react';
 import {
@@ -14,7 +15,7 @@ import {
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { Text } from '@/components/ui';
 import { getLanguage, translate } from '@/lib/i18n';
-import { createStellariumBridge } from './stellarium-service';
+import { createStellariumBridge, parseStellariumViewState } from './stellarium-service';
 
 const READY_TIMEOUT_MS = 15_000;
 
@@ -28,6 +29,8 @@ export type StellariumViewProps = {
   onSelectionCleared?: () => void;
   onTargetFound?: () => void;
   onTargetNotFound?: () => void;
+  /** Reports the live camera angle so the map can archive it for the next visit. */
+  onViewStateChange?: (state: StellariumViewState) => void;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -39,6 +42,7 @@ type SceneHandlers = {
   onSelectionCleared?: () => void;
   onTargetFound?: () => void;
   onTargetNotFound?: () => void;
+  onViewStateChange?: (state: StellariumViewState) => void;
   reportError: (message: string) => void;
   resolveRequest: (requestId: number, payload: unknown) => void;
   wasReady: () => boolean;
@@ -54,6 +58,15 @@ function dispatchSceneMessage(
       return handlers.markReady();
     case 'view_bearing':
       return handlers.onBearingChange?.(message.azimuthDeg as number);
+    case 'view_state': {
+      // Illegal reports are dropped here so the archive can never hold a
+      // view the scene would refuse to restore.
+      const state = parseStellariumViewState(message.state);
+      if (state) {
+        handlers.onViewStateChange?.(state);
+      }
+      return;
+    }
     case 'object_selected':
       return handlers.onObjectSelected?.(
         message.object as SelectedCelestialObject,
@@ -70,6 +83,13 @@ function dispatchSceneMessage(
         message.requestId as number,
         message.payload,
       );
+    case 'query_targets_result':
+      return handlers.resolveRequest(message.requestId as number, message.targets ?? message.payload);
+    case 'object_info_result':
+      return handlers.resolveRequest(message.requestId as number, message.object ?? null);
+    case 'focus_target_result':
+      return handlers.resolveRequest(message.requestId as number, message.object ?? message.payload
+        ?? (typeof message.reason === 'string' ? { unavailableReason: message.reason } : null));
     case 'error': {
       const err = (message.message as string) || 'Stellarium failed to start.';
       if (handlers.wasReady()) {
@@ -229,6 +249,7 @@ export function StellariumView(
           onSelectionCleared: () => handlersRef.current?.onSelectionCleared?.(),
           onTargetFound: () => handlersRef.current?.onTargetFound?.(),
           onTargetNotFound: () => handlersRef.current?.onTargetNotFound?.(),
+          onViewStateChange: state => handlersRef.current?.onViewStateChange?.(state),
           reportError,
           resolveRequest: (requestId, payload) =>
             bridge.current.resolveRequest(requestId, payload),

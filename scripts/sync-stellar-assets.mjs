@@ -1,137 +1,159 @@
 #!/usr/bin/env node
-/**
- * Syncs src/assets/stellar/** into android/app/src/main/assets/stellar/**.
- *
- * The Stellarium scene (index.html + engine + data) ships as native Android
- * assets, so JavaScript hot-reload never updates it. This script mirrors the
- * canonical copy so a Gradle build always packages the current source.
- *
- * A target file is considered identical when its bytes match the source, or
- * when its bytes match after CRLF/LF normalization (git autocrlf routinely
- * rewrites line endings). Anything else is a real content drift and blocks
- * the sync; resolve it by editing the canonical src/assets/stellar copy, then
- * re-run.
- */
-import { createHash } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+/** Exact-byte, three-way sync. The baseline lives outside packaged assets. */
+import { createHash, randomUUID } from 'node:crypto';
+import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const source = path.join(root, 'src', 'assets', 'stellar');
-const target = path.join(root, 'android', 'app', 'src', 'main', 'assets', 'stellar');
+export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const sha256 = value => createHash('sha256').update(value).digest('hex');
 
-if (!existsSync(source)) {
-  console.error(`[sync-stellar] Source directory not found: ${source}`);
-  process.exit(1);
+export function stellarPaths(root) {
+  return {
+    source: path.join(root, 'src/assets/stellar'),
+    target: path.join(root, 'android/app/src/main/assets/stellar'),
+    manifest: path.join(root, 'android/.stellar-sync-manifest.json'),
+  };
 }
-if (!existsSync(path.join(root, 'android'))) {
-  console.log('[sync-stellar] No android/ directory, skipping.');
-  process.exit(0);
-}
 
-function walk(dir) {
-  const entries = readdirSync(dir, { withFileTypes: true });
-  const files = [];
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory())
-      files.push(...walk(full));
-    else if (entry.isFile())
-      files.push(full);
+export function snapshotTree(directory, relative = '') {
+  const files = Object.create(null);
+  const current = path.join(directory, relative);
+  if (lstatSync(current).isSymbolicLink())
+    throw new Error(`Symbolic links are not supported: ${current}`);
+  for (const entry of readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
+    const name = relative ? `${relative}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      Object.assign(files, snapshotTree(directory, name));
+    }
+    else if (entry.isFile()) {
+      const bytes = readFileSync(path.join(directory, name));
+      files[name] = { sha256: sha256(bytes), size: bytes.length };
+    }
+    else {
+      throw new Error(`Unsupported asset entry: ${name}`);
+    }
   }
   return files;
 }
 
-const sha256 = buffer => createHash('sha256').update(buffer).digest('hex');
-
-function normalizeText(buffer) {
-  return Buffer.from(buffer.toString('latin1').replace(/\r\n/g, '\n'), 'latin1');
+export function treeDigest(files) {
+  return sha256(JSON.stringify(Object.keys(files).sort().map(name => [name, files[name].sha256, files[name].size])));
 }
 
-/**
- * Two files are equivalent when their bytes match, or when their bytes match
- * after CRLF/LF normalization (git autocrlf routinely rewrites line endings).
- */
-function isEquivalent(from, to) {
-  const a = readFileSync(from);
-  const b = readFileSync(to);
-  if (sha256(a) === sha256(b))
-    return true;
-  if (a.includes(10) && !a.includes(0)) // looks like text
-    return sha256(normalizeText(a)) === sha256(normalizeText(b));
-  return false;
+export function differingFiles(a, b) {
+  return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().filter(name => a[name]?.sha256 !== b[name]?.sha256 || a[name]?.size !== b[name]?.size);
 }
 
-/**
- * JSON files whose parsed values are equal differ only in formatting (git
- * autocrlf churns line endings and trailing newlines). Treat them as
- * equivalent but report them so formatting drift is visible instead of
- * silently ignored.
- */
-function isJsonFormatDrift(from, to) {
-  if (!from.endsWith('.json'))
-    return false;
+function readManifest(file) {
+  if (!existsSync(file))
+    return Object.create(null);
   try {
-    return JSON.stringify(JSON.parse(normalizeText(readFileSync(from)).toString('utf8')))
-      === JSON.stringify(JSON.parse(normalizeText(readFileSync(to)).toString('utf8')));
-  }
-  catch {
-    return false;
-  }
-}
-
-const force = process.argv.includes('--force');
-
-const sources = walk(source);
-const conflicts = [];
-const formatDrift = [];
-for (const from of sources) {
-  const to = path.join(target, path.relative(source, from));
-  if (!existsSync(to))
-    continue;
-  if (isEquivalent(from, to))
-    continue;
-  if (isJsonFormatDrift(from, to))
-    formatDrift.push(path.relative(root, to));
-  else
-    conflicts.push(path.relative(root, to));
-}
-
-if (conflicts.length > 0 && force) {
-  console.warn('[sync-stellar] --force: overwriting files whose content differs from the source:');
-  for (const file of conflicts)
-    console.warn(`  ${file}`);
-  conflicts.length = 0;
-}
-
-if (conflicts.length > 0) {
-  console.error('[sync-stellar] Refusing to overwrite files whose content differs from the source:');
-  for (const file of conflicts)
-    console.error(`  ${file}`);
-  console.error('[sync-stellar] The android copy has drifted from src/assets/stellar.');
-  console.error('[sync-stellar] Make the canonical edit in src/assets/stellar, then re-run.');
-  process.exit(1);
-}
-
-if (formatDrift.length > 0) {
-  console.warn('[sync-stellar] JSON formatting drift (parsed values equal, will be overwritten):');
-  for (const file of formatDrift)
-    console.warn(`  ${file}`);
-}
-
-// Remove entries that no longer exist in the canonical copy.
-if (existsSync(target)) {
-  for (const stale of walk(target)) {
-    const canonical = path.join(source, path.relative(target, stale));
-    if (!existsSync(canonical)) {
-      rmSync(stale);
-      console.log(`[sync-stellar] Removed stale file: ${path.relative(root, stale)}`);
+    const value = JSON.parse(readFileSync(file, 'utf8'));
+    if (value.version !== 1 || !value.files || Array.isArray(value.files))
+      throw new Error('Unsupported schema');
+    for (const [name, info] of Object.entries(value.files)) {
+      if (!name || /[\\:]/.test(name) || name.split('/').some(part => !part || part === '.' || part === '..')
+        || !/^[a-f0-9]{64}$/.test(info?.sha256) || !Number.isSafeInteger(info?.size) || info.size < 0) {
+        throw new Error(`Invalid entry: ${name}`);
+      }
     }
+    if (value.treeSha256 !== treeDigest(value.files))
+      throw new Error('Invalid tree digest');
+    return value.files;
+  }
+  catch (error) {
+    throw new Error(`Invalid sync manifest ${file}: ${error.message}`);
   }
 }
 
-mkdirSync(target, { recursive: true });
-cpSync(source, target, { recursive: true });
-console.log(`[sync-stellar] Synced ${sources.length} files from src/assets/stellar to android/app/src/main/assets/stellar.`);
+export function inspectSync(root) {
+  const paths = stellarPaths(root);
+  const sources = snapshotTree(paths.source);
+  if (Object.keys(sources).length === 0)
+    throw new Error(`Empty stellar source: ${paths.source}`);
+  const targets = existsSync(paths.target) ? snapshotTree(paths.target) : Object.create(null);
+  const previous = readManifest(paths.manifest);
+  const conflicts = differingFiles(sources, targets).filter((name) => {
+    if (!targets[name] && !previous[name])
+      return false;
+    return !targets[name] || !previous[name] || targets[name].sha256 !== previous[name].sha256;
+  });
+  return { paths, sources, targets, conflicts };
+}
+
+export function writeJsonAtomic(file, value) {
+  mkdirSync(path.dirname(file), { recursive: true });
+  const temporary = `${file}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx' });
+    renameSync(temporary, file);
+  }
+  finally {
+    rmSync(temporary, { force: true });
+  }
+}
+
+function pruneEmptyDirectories(directory) {
+  if (!existsSync(directory))
+    return;
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isDirectory())
+      continue;
+    const child = path.join(directory, entry.name);
+    pruneEmptyDirectories(child);
+    if (!readdirSync(child).length)
+      rmdirSync(child);
+  }
+}
+
+export function syncStellar(root, { force = false, check = false } = {}) {
+  const state = inspectSync(root);
+  if (!existsSync(path.join(root, 'android')))
+    return { ...state, skipped: true };
+  const { paths, sources, targets, conflicts } = state;
+  if (conflicts.length > 0) {
+    const message = `Independent target changes / no matching sync baseline:\n${conflicts.map(name => `  ${name}`).join('\n')}`;
+    if (!force || check)
+      throw new Error(`${message}\nResolve the conflict explicitly; --force overwrites target changes.`);
+    console.warn(`[sync-stellar] --force: ${message}`);
+  }
+  if (check)
+    return state;
+  for (const name of Object.keys(targets)) {
+    if (!sources[name])
+      rmSync(path.join(paths.target, name));
+  }
+  pruneEmptyDirectories(paths.target);
+  for (const name of differingFiles(sources, targets)) {
+    if (!sources[name])
+      continue;
+    const destination = path.join(paths.target, name);
+    mkdirSync(path.dirname(destination), { recursive: true });
+    copyFileSync(path.join(paths.source, name), destination);
+  }
+  // Never advance the baseline after a partial copy or concurrent source edit.
+  if (differingFiles(sources, snapshotTree(paths.source)).length
+    || differingFiles(sources, snapshotTree(paths.target)).length) {
+    throw new Error('Assets changed during sync; baseline was not advanced.');
+  }
+  writeJsonAtomic(paths.manifest, { version: 1, treeSha256: treeDigest(sources), files: sources });
+  return state;
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try {
+    const { values } = parseArgs({ options: { root: { type: 'string' }, force: { type: 'boolean' }, check: { type: 'boolean' } } });
+    const result = syncStellar(path.resolve(values.root ?? projectRoot), values);
+    if (result.skipped)
+      console.log('[sync-stellar] No android/ directory, skipping until native generation.');
+    else
+      console.log(`[sync-stellar] ${values.check ? 'Safe to sync' : 'Synced'}: ${Object.keys(result.sources).length} files.`);
+  }
+  catch (error) {
+    console.error(`[sync-stellar] ${error.message}`);
+    process.exitCode = 1;
+  }
+}

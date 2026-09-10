@@ -13,6 +13,10 @@ function sfntTableTags(font: Buffer): string[] {
 const skyCultures = JSON.parse(readFileSync(resolve(__dirname, '../../assets/stellar/skycultures-full.json'), 'utf8')) as { cultures: { id: string; highlight?: string }[] };
 
 describe('stellarium default scene', () => {
+  it('registers orbital files with the format keys required by the native modules', () => {
+    expect(sceneHtml).toContain('assetUrl(\'data/tle_satellite.jsonl.gz\'), key: \'jsonl/sat\'');
+    expect(sceneHtml).toContain('assetUrl(\'data/CometEls.txt\'), key: \'mpc_comets\'');
+  });
   it('loads the bundled Guéreins landscape before signaling ready', () => {
     const landscapeSource = sceneHtml.indexOf('core.landscapes.addDataSource({ url: assetUrl(\'data/landscapes/guereins\'), key: \'guereins\' })');
     const readySignal = sceneHtml.indexOf('send({ type: \'ready\' })');
@@ -68,7 +72,8 @@ describe('stellarium advanced settings', () => {
 
   it('publishes the live view bearing so the compass can follow the engine', () => {
     expect(sceneHtml).toContain('const forward = stel.convertFrame(stel.core.observer, \'VIEW\', \'OBSERVED\', [0, 0, -1, 0]);');
-    expect(sceneHtml).toContain('const azimuthDeg = (stel.c2s(forward)[0] * stel.R2D % 360 + 360) % 360;');
+    expect(sceneHtml).toContain('const spherical = stel.c2s(forward);');
+    expect(sceneHtml).toContain('const azimuthDeg = (spherical[0] * stel.R2D % 360 + 360) % 360;');
     expect(sceneHtml).toContain('send({ type: \'view_bearing\', azimuthDeg });');
     expect(sceneHtml).toContain('setInterval(publishBearing, 250)');
   });
@@ -93,8 +98,8 @@ describe('stellarium advanced settings', () => {
     expect(sceneHtml).toContain('const uiFont = window.__STEL_LANG === \'zh\' ? \'fonts/NotoSansSC-Subset.ttf\' : \'fonts/Roboto-Regular.ttf\';');
     expect(sfntTableTags(cjkFont)).toContain('glyf');
     expect(sfntTableTags(cjkFont)).not.toContain('CFF ');
-    expect(sceneHtml).toContain('void stel.setFont(\'regular\', assetUrl(uiFont)).catch(reportError);');
-    expect(sceneHtml).toContain('void stel.setFont(\'bold\', assetUrl(uiFontBold)).catch(reportError);');
+    expect(sceneHtml).toContain('stel.setFont(\'regular\', assetUrl(uiFont))');
+    expect(sceneHtml).toContain('stel.setFont(\'bold\', assetUrl(uiFontBold))');
   });
 
   it('computes the calendar in the scene because the bundled wasm drops calendar_*', () => {
@@ -132,7 +137,7 @@ describe('stellarium advanced settings', () => {
   it('waits for an asynchronously loaded sky culture before focusing its featured constellation', () => {
     expect(sceneHtml).toContain('function focusSkyCultureTarget(target, retries = 80)');
     expect(sceneHtml).toContain('setTimeout(() => focusSkyCultureTarget(target, retries - 1), 50)');
-    expect(sceneHtml).toContain('stel.pointAndLock(object, 0.5);');
+    expect(sceneHtml).toContain('centerOnObject(object, 0.5);');
     expect(sceneHtml).toContain('if (message.target) focusSkyCultureTarget(message.target);');
   });
 });
@@ -174,7 +179,7 @@ describe('stellarium scene commands and overlays', () => {
 
   it('supports the drawer feature commands against real engine state', () => {
     expect(sceneHtml).toContain('case \'set_time\':');
-    expect(sceneHtml).toContain('stel.core.observer.tt = stel.date2MJD(date);');
+    expect(sceneHtml.includes('stel.core.observer.utc = stel.date2MJD(date);')).toBe(true);
     expect(sceneHtml).toContain('case \'set_grid_lines\':');
     expect(sceneHtml).toContain('stel.getModule(`core.lines.$' + '{line}`)');
     expect(sceneHtml).toContain('case \'set_location\':');
@@ -192,6 +197,62 @@ describe('stellarium scene commands and overlays', () => {
     expect(sceneHtml).toContain('case \'clear_selection\':');
     expect(sceneHtml).toContain('stel.core.selection = null;');
     expect(sceneHtml).toContain('case \'point_and_lock\':');
-    expect(sceneHtml).toContain('stel.pointAndLock(targetObj, 0.5);');
+    expect(sceneHtml).toContain('centerOnObject(targetObj, 0.5);');
+  });
+
+  it('supports searching celestial targets with bilingual lookup and selection notification', () => {
+    expect(sceneHtml).toContain('case \'search_target\':');
+    expect(sceneHtml).toContain('const object = findCelestialObject(message.name);');
+    expect(sceneHtml).toContain('const payload = formatSelectedObject(object);');
+    expect(sceneHtml).toContain('if (payload) send({ type: \'object_selected\', object: payload });');
+    expect(sceneHtml).toContain('send({ type: \'target_found\' });');
+  });
+
+  it('supports querying targets without mutating selection, time, location or fov', () => {
+    expect(sceneHtml).toContain('case \'query_targets\':');
+    expect(sceneHtml).toContain('send({ type: \'query_targets_result\', requestId: message.requestId, targets });');
+  });
+
+  it('supports correlated focus_target with 0.6s lock and adaptive fov without cancelling animation', () => {
+    expect(sceneHtml).toContain('case \'focus_target\':');
+    expect(sceneHtml).toContain('centerOnObject(object, 0.6);');
+    expect(sceneHtml).toContain('send({ type: \'focus_target_result\', requestId: message.requestId, object: payload });');
+    // Ensure focus_target does NOT dispatch legacy object_selected or target_found to avoid crosstalk
+    const focusTargetBlock = sceneHtml.slice(sceneHtml.indexOf('case \'focus_target\':'), sceneHtml.indexOf('case \'cancel_search\':'));
+    expect(focusTargetBlock).not.toContain('send({ type: \'target_found\' })');
+    expect(focusTargetBlock).not.toContain('send({ type: \'object_selected\'');
+    // Ensure it does not forceRender after pointAndLock which would cancel animation
+    expect(focusTargetBlock).not.toContain('forceRender()');
+  });
+
+  it('supports cancel_search command and does not switch sky cultures automatically', () => {
+    expect(sceneHtml).toContain('case \'cancel_search\':');
+    // cancel_search must reuse the RN-issued token; Date.now() would exceed every
+    // future focus token and permanently break focus_target after the first cancel.
+    const cancelBlock = sceneHtml.slice(sceneHtml.indexOf('case \'cancel_search\':'));
+    expect(cancelBlock).not.toContain('Date.now()');
+    expect(cancelBlock).toContain('message.token');
+  });
+
+  it('loads bundled satellites and comets via real addDataSource API', () => {
+    expect(sceneHtml.includes('core.satellites.addDataSource({ url: assetUrl(\'data/tle_satellite.jsonl.gz\'), key: \'jsonl/sat\' })')).toBe(true);
+    expect(sceneHtml.includes('core.comets.addDataSource({ url: assetUrl(\'data/CometEls.txt\'), key: \'mpc_comets\' })')).toBe(true);
+  });
+});
+
+describe('stellarium camera target and saved-view contract', () => {
+  it('keeps the camera target out of refreshes and restores archived views strictly', () => {
+    // The bundled core memsets core->target inside core_lookat(pos, 0), so a
+    // refresh that ran while the user was centering an object cancelled both the
+    // animation and the lock. Refreshes must stay away from the camera; the
+    // engine's own render loop repaints the changed layers.
+    expect(sceneHtml).toContain('const cameraState = { lockedToTarget: false };');
+    expect(sceneHtml).toContain('if (!stel || cameraState.lockedToTarget) return;');
+    expect(sceneHtml).toContain('case \'restore_view\':');
+    expect(sceneHtml).toContain('return reportError(\'Invalid view state.\');');
+    expect(sceneHtml).toContain('stel.lookAt(stel.s2c(azimuthDeg * stel.D2R, altitudeDeg * stel.D2R), 0);');
+    expect(sceneHtml).toContain('stel.zoomTo(fovDeg * stel.D2R, 0);');
+    expect(sceneHtml).toContain('send({ type: \'view_state\', state: { azimuthDeg, altitudeDeg, fovDeg } });');
+    expect(sceneHtml).toContain('if (!viewState.gateOpen || !stel) return;');
   });
 });

@@ -8,7 +8,6 @@ import { translate } from '@/lib/i18n';
 import { storage } from '@/lib/storage';
 import { showDeepSpaceFeedback } from '../ui/deep-space-feedback';
 import {
-  estimateConstellation,
   formatAltPrecision,
   formatAzPrecision,
   formatDecPrecision,
@@ -17,10 +16,10 @@ import {
   formatPhase,
   formatRaPrecision,
   formatSize,
+  isValidPhase,
 } from './object-info-types';
 
-function PlanetMoonAvatar({ phase }: { phase?: number | null }) {
-  const phaseVal = typeof phase === 'number' ? Math.max(0, Math.min(1, phase)) : 0.5;
+function PlanetMoonAvatar({ phase: phaseVal }: { phase: number }) {
   return (
     <View style={styles.avatarWrapper}>
       <Svg height={48} viewBox="0 0 48 48" width={48}>
@@ -69,7 +68,7 @@ function ObjectAvatar({
   // The engine returns names in the app language, so match both scripts.
   const isMoonOrPlanet = type === 'planet' || type === 'moon' || ['金星', 'Venus', '水星', 'Mercury', '月球', 'Moon', '火星', 'Mars'].includes(name);
 
-  if (isMoonOrPlanet && typeof phase === 'number') {
+  if (isMoonOrPlanet && isValidPhase(phase)) {
     return <PlanetMoonAvatar phase={phase} />;
   }
 
@@ -135,13 +134,13 @@ function CoordinatePage({
   const azStr = formatAzPrecision(object.azDeg);
   const altStr = formatAltPrecision(object.altDeg);
   const haStr = formatHourAngle(object.hourAngleHours);
-  const raJ2000Str = formatRaPrecision(object.raJ2000Hours ?? object.raHours);
-  const decJ2000Str = formatDecPrecision(object.decJ2000Deg ?? object.decDeg);
+  const raJ2000Str = formatRaPrecision(object.raJ2000Hours);
+  const decJ2000Str = formatDecPrecision(object.decJ2000Deg);
 
   return (
     <View style={styles.dataPage} testID="deep-space-object-coords-page">
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>RA/Dec</Text>
+        <Text style={styles.dataLabel}>{object.coordinateFrame === 'CIRS' ? 'RA/Dec (CIRS)' : 'RA/Dec'}</Text>
         <View style={styles.dataValueWithStepper}>
           <Text style={styles.dataValue}>{`${raStr}   ${decStr}`}</Text>
           <PageStepper onNext={onNextPage} onPrev={onPrevPage} />
@@ -175,8 +174,8 @@ function PhysicalPage({
   onNextPage: () => void;
   onPrevPage: () => void;
 }) {
-  const constellation = object.constellationZh || estimateConstellation(object.raHours, object.decDeg);
-  const vmagStr = typeof object.vmag === 'number' ? (object.vmag > 0 ? `${object.vmag.toFixed(2)}` : object.vmag.toFixed(2)) : '--';
+  const constellation = object.constellationZh?.trim() || '--';
+  const vmagStr = typeof object.vmag === 'number' && Number.isFinite(object.vmag) ? object.vmag.toFixed(2) : '--';
   const distStr = formatDistanceStellarium(object.distanceAu);
   const phaseStr = formatPhase(object.phase);
   const sizeStr = formatSize(object.sizeArcsec);
@@ -289,7 +288,6 @@ function ObjectActionPills({
   onClose,
   onGoto,
   onToggleLike,
-  onZoomIn,
 }: {
   liked: boolean;
   object: ObjectInfoSheetProps['object'];
@@ -297,12 +295,20 @@ function ObjectActionPills({
   onClose: () => void;
   onGoto?: (raHours: number, decDeg: number) => void;
   onToggleLike: () => void;
-  onZoomIn: (object: ObjectInfoSheetProps['object']) => void;
 }) {
+  const useJ2000 = object.coordinateFrame === 'CIRS';
+  const raHours = useJ2000 ? object.raJ2000Hours : object.raHours;
+  const decDeg = useJ2000 ? object.decJ2000Deg : object.decDeg;
+  const handleGoto = onGoto
+    && typeof raHours === 'number' && Number.isFinite(raHours)
+    && typeof decDeg === 'number' && Number.isFinite(decDeg) && Math.abs(decDeg) <= 90
+    ? () => onGoto(raHours, decDeg)
+    : undefined;
+
   return (
     <View style={styles.actionPillsRow}>
       <Pressable
-        accessibilityLabel={translate('deep_space.object.visibility')}
+        accessibilityLabel={translate('deep_space.object_center')}
         accessibilityRole="button"
         onPress={() => onCenter(object)}
         style={styles.pillButton}
@@ -312,21 +318,22 @@ function ObjectActionPills({
           <Circle cx={8} cy={8} fill="none" r={6.5} stroke="#7BA7F7" strokeWidth={1.8} />
           <Circle cx={8} cy={8} fill="#7BA7F7" r={2.5} />
         </Svg>
-        <Text style={styles.pillButtonText}>{translate('deep_space.object.visibility')}</Text>
+        <Text style={styles.pillButtonText}>{translate('deep_space.object_center')}</Text>
       </Pressable>
 
       <Pressable
-        accessibilityLabel={translate('deep_space.object.view_3d')}
+        accessibilityLabel={translate('deep_space.object_3d_unavailable')}
         accessibilityRole="button"
-        onPress={() => onZoomIn(object)}
-        style={styles.pillButton}
+        accessibilityState={{ disabled: true }}
+        disabled
+        style={[styles.pillButton, styles.unavailablePillButton]}
         testID="deep-space-object-3d-btn"
       >
         <Svg height={16} viewBox="0 0 16 16" width={16}>
           <Circle cx={8} cy={8} fill="none" r={6.5} stroke="#7BA7F7" strokeWidth={1.6} />
           <Path d="M 2 8 C 4 4, 12 4, 14 8 C 12 12, 4 12, 2 8 Z" fill="none" stroke="#7BA7F7" strokeWidth={1.2} />
         </Svg>
-        <Text style={styles.pillButtonText}>3D</Text>
+        <Text style={styles.pillButtonText}>{translate('deep_space.object_3d_unavailable')}</Text>
       </Pressable>
 
       <Pressable
@@ -346,11 +353,11 @@ function ObjectActionPills({
         </Svg>
       </Pressable>
 
-      {onGoto && (
+      {handleGoto && (
         <Pressable
           accessibilityLabel={translate('deep_space.object.telescope')}
           accessibilityRole="button"
-          onPress={() => onGoto(object.raHours, object.decDeg)}
+          onPress={handleGoto}
           style={styles.gotoPillButton}
           testID="deep-space-object-goto-btn"
         >
@@ -381,7 +388,7 @@ export function ObjectInfoSheet({
   onZoomOut,
 }: ObjectInfoSheetProps): React.ReactElement {
   const [page, setPage] = React.useState(0);
-  const [liked, setLiked] = React.useState(() => isFavoriteSkyObject(storage, object.id));
+  const [liked, setLiked] = React.useState(() => isFavoriteSkyObject(storage, object.catalogId ?? object.id));
 
   const handleNextPage = () => setPage(p => (p + 1) % 2);
   const handlePrevPage = () => setPage(p => (p - 1 + 2) % 2);
@@ -400,17 +407,9 @@ export function ObjectInfoSheet({
     }),
   ).current;
 
-  const handleCenter = () => {
-    onCenter(object);
-    showDeepSpaceFeedback({
-      message: translate('deep_space.feedback_object_centered', { name: object.name }),
-      tone: 'success',
-    });
-  };
-
   const handleToggleLike = () => {
     const isFavorite = !liked;
-    toggleFavoriteSkyObject(storage, object.id);
+    toggleFavoriteSkyObject(storage, object.catalogId ?? object.id);
     setLiked(isFavorite);
     showDeepSpaceFeedback({
       message: translate(isFavorite ? 'deep_space.object.favorited' : 'deep_space.object.unfavorited', { name: object.name }),
@@ -426,11 +425,10 @@ export function ObjectInfoSheet({
         <ObjectActionPills
           liked={liked}
           object={object}
-          onCenter={handleCenter}
+          onCenter={onCenter}
           onClose={onClose}
           onGoto={onGoto}
           onToggleLike={handleToggleLike}
-          onZoomIn={onZoomIn}
         />
         <View style={styles.divider} />
         <View style={styles.dataPagesContainer} {...panResponder.panHandlers}>
@@ -628,6 +626,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 12,
+  },
+  unavailablePillButton: {
+    opacity: 0.45,
   },
   zoomButtonsRow: {
     alignItems: 'center',

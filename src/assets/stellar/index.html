@@ -83,7 +83,237 @@
       const isFiniteNumber = value => typeof value === 'number' && Number.isFinite(value);
 
       let NAMES_ZH = {};
+      let REVERSE_NAMES_ZH = {};
+      const COMMON_SYNONYMS = {
+        '织女星': 'Vega',
+        '织女一': 'Vega',
+        '牛郎星': 'Altair',
+        '河鼓二': 'Altair',
+        '北极星': 'Polaris',
+        '勾陈一': 'Polaris',
+        '天狼星': 'Sirius',
+        '老人星': 'Canopus',
+        '大角星': 'Arcturus',
+        '五车二': 'Capella',
+        '参宿四': 'Betelgeuse',
+        '参宿七': 'Rigel',
+        '南河三': 'Procyon',
+        '角宿一': 'Spica',
+        '心宿二': 'Antares',
+        '毕宿五': 'Aldebaran',
+        '北河三': 'Pollux',
+        '北河二': 'Castor',
+        '天津四': 'Deneb',
+        '轩辕十四': 'Regulus',
+        '北落师门': 'Fomalhaut',
+        '天枢': 'Dubhe',
+        '天璇': 'Merak',
+        '天玑': 'Phecda',
+        '天权': 'Megrez',
+        '玉衡': 'Alioth',
+        '开阳': 'Mizar',
+        '摇光': 'Alkaid',
+        '大陵五': 'Algol',
+        '太阳': 'NAME Sun',
+        '日': 'NAME Sun',
+        '月亮': 'NAME Moon',
+        '月球': 'NAME Moon',
+        '月': 'NAME Moon',
+        '水星': 'NAME Mercury',
+        '金星': 'NAME Venus',
+        '火星': 'NAME Mars',
+        '木星': 'NAME Jupiter',
+        '土星': 'NAME Saturn',
+        '天王星': 'NAME Uranus',
+        '海王星': 'NAME Neptune',
+        '冥王星': 'NAME Pluto',
+        '仙女座大星系': 'M 31',
+        '仙女座星系': 'M 31',
+        '三角座星系': 'M 33',
+        '猎户座大星云': 'M 42',
+        '猎户大星云': 'M 42',
+        '昴星团': 'M 45',
+        '七姐妹星团': 'M 45',
+        '蜂巢星团': 'M 44',
+        '鬼星团': 'M 44',
+        '武仙座球状星团': 'M 13',
+        '蟹状星云': 'M 1',
+        '环状星云': 'M 57',
+        '哑铃星云': 'M 27',
+        '礁湖星云': 'M 8',
+        '三叶星云': 'M 20',
+        '三裂星云': 'M 20',
+        '鹰状星云': 'M 16',
+        '创生之柱': 'M 16',
+        '欧米伽星云': 'M 17',
+        '天鹅星云': 'M 17',
+        '波德星系': 'M 81',
+        '雪茄星系': 'M 82',
+        '涡状星系': 'M 51',
+        '风车星系': 'M 101',
+        '草帽星系': 'M 104',
+        '北美洲星云': 'NGC 7000',
+        '玫瑰星云': 'NGC 2244',
+        '马头星云': 'IC 434',
+        '螺旋星云': 'NGC 7293',
+        '上帝之眼': 'NGC 7293',
+        '大麦哲伦星系': 'LMC',
+        '小麦哲伦星系': 'SMC',
+        'Andromeda Galaxy': 'M 31',
+        'Triangulum Galaxy': 'M 33',
+        'Whirlpool Galaxy': 'M 51',
+        'Pinwheel Galaxy': 'M 101',
+        'Sombrero Galaxy': 'M 104',
+        'Bode\'s Galaxy': 'M 81',
+        'Bodes Galaxy': 'M 81',
+        'Cigar Galaxy': 'M 82',
+        'Sunflower Galaxy': 'M 63',
+        'Black Eye Galaxy': 'M 64',
+        'Southern Pinwheel Galaxy': 'M 83',
+        'Orion Nebula': 'M 42',
+        'Crab Nebula': 'M 1',
+        'Ring Nebula': 'M 57',
+        'Dumbbell Nebula': 'M 27',
+        'Lagoon Nebula': 'M 8',
+        'Trifid Nebula': 'M 20',
+        'Eagle Nebula': 'M 16',
+        'Omega Nebula': 'M 17',
+        'Swan Nebula': 'M 17',
+        'Hercules Cluster': 'M 13',
+        'Pleiades': 'M 45',
+        'Seven Sisters': 'M 45',
+        'Beehive Cluster': 'M 44',
+        'North America Nebula': 'NGC 7000',
+        'Rosette Nebula': 'NGC 2244',
+        'Horsehead Nebula': 'IC 434',
+        'Helix Nebula': 'NGC 7293',
+        'Eye of God': 'NGC 7293',
+        'Large Magellanic Cloud': 'LMC',
+        'Small Magellanic Cloud': 'SMC',
+      };
+      // RN supplies the same catalog used by search/history/favorites. Only
+      // native engine objects are resolved; metadata never creates fake targets.
+      const searchCatalogByAlias = new Map();
+      const catalogLookupStarted = new Map();
+      function catalogKey(value) {
+        return typeof value === 'string'
+          ? value.normalize('NFKD').replace(/[\u0300-\u036f\s]/g, '').toLowerCase()
+          : '';
+      }
+      function registerSearchCatalog(items) {
+        searchCatalogByAlias.clear();
+        catalogLookupStarted.clear();
+        for (const item of Array.isArray(items) ? items.slice(0, 1000) : []) {
+          if (!item || typeof item.id !== 'string' || !item.id.trim()) continue;
+          const engineIds = Array.isArray(item.engineIds) ? item.engineIds : [];
+          const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+          const entry = { ...item, engineIds, aliases };
+          for (const value of [item.id, item.nameEn, item.nameZh, ...engineIds, ...aliases]) {
+            const key = catalogKey(value);
+            if (key && !searchCatalogByAlias.has(key)) searchCatalogByAlias.set(key, entry);
+          }
+        }
+      }
       let lastAzimuthDeg = null;
+      let activeFocusToken = 0;
+      let currentCancelToken = 0;
+
+      const WESTERN_CONSTELLATIONS_MAP = {
+        'And': ['Andromeda', 'Chained Maiden', '仙女座'],
+        'Ant': ['Antlia', 'Air Pump', '唧筒座'],
+        'Aps': ['Apus', 'Bird of Paradise', '天燕座'],
+        'Aql': ['Aquila', 'Eagle', '天鹰座'],
+        'Aqr': ['Aquarius', 'Water Bearer', '宝瓶座'],
+        'Ara': ['Ara', 'Altar', '天坛座'],
+        'Ari': ['Aries', 'Ram', '白羊座'],
+        'Aur': ['Auriga', 'Charioteer', '御夫座'],
+        'Boo': ['Bootes', 'Herdsman', '牧夫座'],
+        'Cae': ['Caelum', 'Chisel', '雕具座'],
+        'Cam': ['Camelopardalis', 'Giraffe', '鹿豹座'],
+        'Cap': ['Capricornus', 'Sea Goat', '摩羯座'],
+        'Cas': ['Cassiopeia', 'Queen', '仙后座'],
+        'Cen': ['Centaurus', 'Centaur', '半人马座'],
+        'Cep': ['Cepheus', 'King', '仙王座'],
+        'Cet': ['Cetus', 'Whale', '鲸鱼座'],
+        'Cha': ['Chamaeleon', 'Chameleon', '蝘蜓座'],
+        'Cir': ['Circinus', 'Compasses', '圆规座'],
+        'CMa': ['Canis Major', 'Great Dog', '大犬座'],
+        'CMi': ['Canis Minor', 'Lesser Dog', '小犬座'],
+        'Cnc': ['Cancer', 'Crab', '巨蟹座'],
+        'Col': ['Columba', 'Dove', '天鸽座'],
+        'Com': ['Coma Berenices', "Berenice's Hair", '后发座'],
+        'CrA': ['Corona Australis', 'Southern Crown', '南冕座'],
+        'CrB': ['Corona Borealis', 'Northern Crown', '北冕座'],
+        'Crt': ['Crater', 'Cup', '巨爵座'],
+        'Crv': ['Corvus', 'Crow', '乌鸦座'],
+        'Cru': ['Crux', 'Southern Cross', '南十字座'],
+        'Cyg': ['Cygnus', 'Swan', '天鹅座'],
+        'Del': ['Delphinus', 'Dolphin', '海豚座'],
+        'Dor': ['Dorado', 'Swordfish', '剑鱼座'],
+        'Dra': ['Draco', 'Dragon', '天龙座'],
+        'Equ': ['Equuleus', 'Little Horse', '小马座'],
+        'Eri': ['Eridanus', 'River', '波江座'],
+        'For': ['Fornax', 'Furnace', '天炉座'],
+        'Gem': ['Gemini', 'Twins', '双子座'],
+        'Gru': ['Grus', 'Crane', '天鹤座'],
+        'Her': ['Hercules', 'Hercules', '武仙座'],
+        'Hor': ['Horologium', 'Clock', '时钟座'],
+        'Hya': ['Hydra', 'Water Snake', '长蛇座'],
+        'Hyi': ['Hydrus', 'Water Snake', '水蛇座'],
+        'Ind': ['Indus', 'Indian', '印第安座'],
+        'Lac': ['Lacerta', 'Lizard', '蝎虎座'],
+        'Leo': ['Leo', 'Lion', '狮子座'],
+        'Lep': ['Lepus', 'Hare', '天兔座'],
+        'Lib': ['Libra', 'Scales', '天秤座'],
+        'LMi': ['Leo Minor', 'Lesser Lion', '小狮座'],
+        'Lup': ['Lupus', 'Wolf', '豺狼座'],
+        'Lyn': ['Lynx', 'Lynx', '天猫座'],
+        'Lyr': ['Lyra', 'Lyre', '天琴座'],
+        'Men': ['Mensa', 'Table Mountain', '山案座'],
+        'Mic': ['Microscopium', 'Microscope', '显微镜座'],
+        'Mon': ['Monoceros', 'Unicorn', '麒麟座'],
+        'Mus': ['Musca', 'Fly', '苍蝇座'],
+        'Nor': ['Norma', "Carpenter's Square", '矩尺座'],
+        'Oct': ['Octans', 'Octant', '南极座'],
+        'Oph': ['Ophiuchus', 'Serpent Bearer', '蛇夫座'],
+        'Ori': ['Orion', 'Hunter', '猎户座'],
+        'Pav': ['Pavo', 'Peacock', '孔雀座'],
+        'Peg': ['Pegasus', 'Winged Horse', '飞马座'],
+        'Per': ['Perseus', 'Hero', '英仙座'],
+        'Phe': ['Phoenix', 'Phoenix', '凤凰座'],
+        'Pic': ['Pictor', "Painter's Easel", '绘架座'],
+        'PsA': ['Piscis Austrinus', 'Southern Fish', '南鱼座'],
+        'Psc': ['Pisces', 'Fishes', '双鱼座'],
+        'Pup': ['Puppis', 'Poop Deck', '船尾座'],
+        'Pyx': ['Pyxis', "Mariner's Compass", '罗盘座'],
+        'Ret': ['Reticulum', 'Reticle', '网罟座'],
+        'Scl': ['Sculptor', "Sculptor's Apparatus", '玉夫座'],
+        'Sco': ['Scorpius', 'Scorpion', '天蝎座'],
+        'Sct': ['Scutum', "Sobieski's Shield", '盾牌座'],
+        'Ser': ['Serpens', 'Serpent', '巨蛇座'],
+        'Sex': ['Sextans', 'Sextant', '六分仪座'],
+        'Sge': ['Sagitta', 'Arrow', '天箭座'],
+        'Sgr': ['Sagittarius', 'Archer', '人马座'],
+        'Tau': ['Taurus', 'Bull', '金牛座'],
+        'Tel': ['Telescopium', 'Telescope', '望远镜座'],
+        'TrA': ['Triangulum Australe', 'Southern Triangle', '南三角座'],
+        'Tri': ['Triangulum', 'Triangle', '三角座'],
+        'Tuc': ['Tucana', 'Toucan', '杜鹃座'],
+        'UMa': ['Ursa Major', 'Great Bear', '大熊座'],
+        'UMi': ['Ursa Minor', 'Lesser Bear', '小熊座'],
+        'Vel': ['Vela', 'Sails', '船帆座'],
+        'Vir': ['Virgo', 'Virgin', '室女座'],
+        'Vol': ['Volans', 'Flying Fish', '飞鱼座'],
+        'Vul': ['Vulpecula', 'Fox', '狐狸座'],
+      };
+
+      const WESTERN_LOOKUP = {};
+      for (const [code, names] of Object.entries(WESTERN_CONSTELLATIONS_MAP)) {
+        WESTERN_LOOKUP[code.toLowerCase()] = code;
+        for (const n of names) {
+          WESTERN_LOOKUP[n.toLowerCase()] = code;
+        }
+      }
 
       const overlayCanvas = document.getElementById('overlay');
       const overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
@@ -297,7 +527,7 @@
 
       function altitudeAt(object, mjd) {
         const observer = stel.core.observer;
-        observer.tt = mjd;
+        observer.utc = mjd;
         const equatorial = object.getInfo('radec');
         const horizontal = stel.convertFrame(observer, 'ICRF', 'OBSERVED', equatorial);
         return stel.c2s(horizontal)[1] * stel.R2D;
@@ -343,7 +573,7 @@
 
       function moonIllumination(mjd) {
         const observer = stel.core.observer;
-        observer.tt = mjd;
+        observer.utc = mjd;
         return stel.getObj('NAME Moon').getInfo('phase');
       }
 
@@ -439,7 +669,7 @@
        */
       function elongationAt(object, sun, mjd) {
         const observer = stel.core.observer;
-        observer.tt = mjd;
+        observer.utc = mjd;
         const planetRa = stel.c2s(object.getInfo('radec'))[0];
         const sunRa = stel.c2s(sun.getInfo('radec'))[0];
         return stel.anpm(planetRa - sunRa) * stel.R2D;
@@ -518,10 +748,57 @@
         });
       }
 
+      /**
+       * A refresh must never touch the camera target. The bundled core implements
+       * core_lookat(pos, 0) by memset-ing core->target, which drops both the
+       * in-flight pointAndLock animation and the lock that keeps following the
+       * centered object. The periodic set_time tick and layer toggles used to run
+       * exactly that refresh, so they cancelled a center the user was watching.
+       * Every programmatic center goes through this scene, so one flag keeps the
+       * refreshes away from the camera.
+       */
+      const cameraState = { lockedToTarget: false };
+      /**
+       * view_state stays gated until the app delivers its restore decision:
+       * publishing the default horizon view before restore_view would overwrite
+       * the view the app archived. restore_view with a null state means "nothing
+       * archived" and only opens the channel. Azimuth/altitude are read from the
+       * same real VIEW->OBSERVED direction the compass uses and fov from core.fov,
+       * so the app never persists a guessed camera pose.
+       */
+      const viewState = { gateOpen: false, lastAzimuthDeg: null, lastAltitudeDeg: null, lastFovDeg: null };
+      function openViewStateChannel() { viewState.gateOpen = true; }
+      function publishViewState(azimuthDeg, altitudeDeg) {
+        if (!viewState.gateOpen || !stel) return;
+        const fovDeg = stel.core.fov * stel.R2D;
+        if (!isFiniteNumber(azimuthDeg) || !isFiniteNumber(altitudeDeg) || !isFiniteNumber(fovDeg)) return;
+        // Only meaningful movement is reported: this runs every 250 ms and every
+        // report is persisted by the app.
+        if (viewState.lastAzimuthDeg !== null
+            && Math.abs(azimuthDeg - viewState.lastAzimuthDeg) < 0.05
+            && Math.abs(altitudeDeg - viewState.lastAltitudeDeg) < 0.05
+            && Math.abs(fovDeg - viewState.lastFovDeg) < 0.01) return;
+        viewState.lastAzimuthDeg = azimuthDeg;
+        viewState.lastAltitudeDeg = altitudeDeg;
+        viewState.lastFovDeg = fovDeg;
+        send({ type: 'view_state', state: { azimuthDeg, altitudeDeg, fovDeg } });
+      }
+      /** Single place that starts a camera center, so refreshes know a lock is live. */
+      function centerOnObject(object, duration) {
+        stel.core.selection = object;
+        stel.pointAndLock(object, duration);
+        cameraState.lockedToTarget = true;
+        openViewStateChannel();
+      }
       function publishBearing() {
         if (!stel) return;
+        updateSatelliteVisibility();
         const forward = stel.convertFrame(stel.core.observer, 'VIEW', 'OBSERVED', [0, 0, -1, 0]);
-        const azimuthDeg = (stel.c2s(forward)[0] * stel.R2D % 360 + 360) % 360;
+        const spherical = stel.c2s(forward);
+        const azimuthDeg = (spherical[0] * stel.R2D % 360 + 360) % 360;
+        // Publish the persisted view before the bearing's own early return;
+        // otherwise a stationary view would never report altitude or fov.
+        publishViewState(azimuthDeg, spherical[1] * stel.R2D);
         if (lastAzimuthDeg !== null && Math.abs(azimuthDeg - lastAzimuthDeg) < 0.5) return;
         lastAzimuthDeg = azimuthDeg;
         send({ type: 'view_bearing', azimuthDeg });
@@ -532,42 +809,64 @@
         const raDeg = message.raDeg ?? message.ra;
         const decDeg = message.decDeg ?? message.dec;
         if (!isFiniteNumber(raDeg) || raDeg < 0 || raDeg > 360 || !isFiniteNumber(decDeg) || decDeg < -90 || decDeg > 90) return reportError('Invalid RA/Dec command.');
+        openViewStateChannel();
         const icrf = stel.s2c(raDeg * Math.PI / 180, decDeg * Math.PI / 180);
         stel.lookAt(stel.convertFrame(stel.core.observer, 'ICRF', 'OBSERVED', icrf), message.duration ?? 0.5);
       }
       function zoomTo(message) {
         const fovDeg = message.fovDeg ?? message.fov;
         if (!isFiniteNumber(fovDeg) || fovDeg <= 0 || fovDeg > 360) return reportError('Invalid FOV command.');
+        openViewStateChannel();
         stel.zoomTo(fovDeg * Math.PI / 180, message.duration ?? 0.3);
       }
       function setViewBearing(message) {
         const azimuthDeg = message.azimuthDeg;
         if (!isFiniteNumber(azimuthDeg) || azimuthDeg < 0 || azimuthDeg > 360) return reportError('Invalid view bearing command.');
+        openViewStateChannel();
         const forward = stel.convertFrame(stel.core.observer, 'VIEW', 'OBSERVED', [0, 0, -1, 0]);
         const altitudeRad = stel.c2s(forward)[1];
         stel.lookAt(stel.s2c(azimuthDeg * stel.D2R, altitudeRad), 0.1);
       }
       function determineObjectType(cleanName, id, obj) {
+        const data = obj?.jsonData;
+        if (data?.model === 'dso') return { type: 'dso', typeZh: '深空天体' };
+        if (data?.model === 'tle_satellite') return { type: 'satellite', typeZh: '人造卫星' };
+        if (data?.model === 'mpc_comet') return { type: 'comet', typeZh: '彗星' };
+        if (data?.types?.includes('Moo')) return { type: 'moon', typeZh: '卫星' };
+        if (/^CON\s+/i.test(id) || (obj && obj.type === 'constellation') || cleanName.endsWith('座')) {
+          return { type: 'constellation', typeZh: '星座' };
+        }
         const planets = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'];
         if (cleanName === 'Sun') return { type: 'star', typeZh: '恒星' };
         if (cleanName === 'Moon') return { type: 'moon', typeZh: '卫星' };
         if (planets.includes(cleanName)) return { type: 'planet', typeZh: '行星' };
         if (/^(ISS|CSS|Satellite|TIANGONG|NOAA|STARLINK)/i.test(id) || (obj && obj.type === 'satellite')) return { type: 'satellite', typeZh: '人造卫星' };
         if (/^(M |NGC |IC |C |Ced |Sh2 |vdB |LDN |LBN )/i.test(cleanName) || (obj && /^(dso|galaxy|nebula|cluster)/i.test(obj.type || ''))) return { type: 'dso', typeZh: '深空天体' };
+        if (/^COMET\s+/i.test(id) || (obj && obj.type === 'comet')) return { type: 'comet', typeZh: '彗星' };
         return { type: 'star', typeZh: '恒星' };
       }
 
       function computeHourAngle(raHours) {
+        if (!isFiniteNumber(raHours)) return null;
         try {
+          // The zenith is on the local meridian. Use the engine's CIRS frame
+          // rather than subtracting J2000 RA from a sidereal-time approximation.
           const obs = stel.core.observer;
-          const mjd = obs.tt;
-          const gmst = (18.697374558 + 24.06570982441908 * (mjd - 51544.5)) % 24;
-          const lonDeg = obs.longitude * stel.R2D;
-          const lst = ((gmst + lonDeg / 15) % 24 + 24) % 24;
-          return ((lst - raHours) % 24 + 24) % 24;
+          if (Math.abs(obs.latitude) >= Math.PI / 2 - 1e-8) return null;
+          const meridian = stel.c2s(stel.convertFrame(obs, 'OBSERVED', 'CIRS', [0, 0, 1, 0]));
+          const meridianHours = meridian[0] * stel.R2D / 15;
+          return isFiniteNumber(meridianHours) ? ((meridianHours - raHours) % 24 + 24) % 24 : null;
         } catch {
           return null;
         }
+      }
+
+      function nativeAngularSize(obj, cleanName, distanceAu) {
+        const dimx = obj.jsonData?.model_data?.dimx;
+        if (isFiniteNumber(dimx) && dimx > 0) return dimx * 60; // DSO major axis: arcminutes.
+        const radius = obj.getInfo?.('radius'); // Apparent angular radius: radians.
+        if (isFiniteNumber(radius) && radius > 0) return 2 * radius * stel.R2D * 3600;
+        return computePlanetSize(cleanName, distanceAu);
       }
 
       function computePlanetSize(cleanName, distanceAu) {
@@ -591,42 +890,181 @@
         return null;
       }
 
+      function isOrbitDataUsable(obj) {
+        const data = obj?.jsonData;
+        if (data?.model !== 'tle_satellite') return true;
+        const epoch = data.model_data?.tle?.[0]?.slice(18, 32);
+        if (typeof epoch !== 'string' || !/^\d{5}\.\d{8}$/.test(epoch)) return false;
+        const yy = Number(epoch.slice(0, 2));
+        const day = Number(epoch.slice(2));
+        const year = yy < 57 ? 2000 + yy : 1900 + yy;
+        if (day < 1 || day >= 367) return false;
+        const epochMjd = Date.UTC(year, 0, 1) / 86400000 + 40587 + day - 1;
+        // Conservative application policy: do not advertise stale TLE predictions
+        // as current observations. A newer orbital data package is then required.
+        return Math.abs(stel.core.observer.utc - epochMjd) <= 2;
+      }
+
+      let satelliteEpochReference = null;
+      function updateSatelliteVisibility() {
+        if (!stel?.core?.satellites) return;
+        satelliteEpochReference ||= stel.getObj('NORAD 25544');
+        stel.core.satellites.visible = Boolean(satelliteEpochReference && isOrbitDataUsable(satelliteEpochReference));
+      }
+
+      function findCelestialObject(target, skipCatalog = false) {
+        if (!target || typeof target !== 'string') return null;
+        const trimmed = target.trim();
+        if (!trimmed) return null;
+
+        const entry = !skipCatalog && searchCatalogByAlias.get(catalogKey(trimmed));
+        if (entry) {
+          if (entry.category === 'constellation' && stel.core.skycultures.current_id !== 'western') return null;
+          for (const candidate of [...entry.engineIds, entry.id, entry.nameEn, ...entry.aliases]) {
+            const object = findCelestialObject(candidate, true);
+            if (object) {
+              if (object.id) searchCatalogByAlias.set(catalogKey(object.id), entry);
+              catalogLookupStarted.delete(entry.id);
+              return object;
+            }
+          }
+          return null;
+        }
+
+        const currentCulture = (stel && stel.core && stel.core.skycultures && stel.core.skycultures.current_id) || 'western';
+
+        // Check if target refers to a western constellation
+        const lower = trimmed.toLowerCase();
+        const westernCode = WESTERN_LOOKUP[lower];
+        if (westernCode || lower.startsWith('con western ')) {
+          // Rule: Non-western sky culture must not switch automatically; return null
+          if (currentCulture !== 'western') {
+            return null;
+          }
+          const iauCode = westernCode || trimmed.slice(12).trim();
+          const conObj = stel.getObj('CON western ' + iauCode) || stel.getObj(trimmed);
+          if (conObj) return conObj;
+        }
+
+        // 1. Direct match with stel.getObj
+        let obj = stel.getObj(trimmed);
+        if (obj) return obj;
+
+        // 2. Common synonyms (e.g. 织女星 -> Vega, 太阳 -> NAME Sun, Andromeda Galaxy -> M 31)
+        if (COMMON_SYNONYMS[trimmed]) {
+          obj = stel.getObj(COMMON_SYNONYMS[trimmed]);
+          if (obj) return obj;
+        }
+
+        // 3. Try with 'NAME ' prefix
+        if (!trimmed.startsWith('NAME ')) {
+          obj = stel.getObj('NAME ' + trimmed);
+          if (obj) return obj;
+        }
+
+        // 4. Reverse lookup from names-zh.json
+        if (REVERSE_NAMES_ZH[trimmed]) {
+          obj = stel.getObj(REVERSE_NAMES_ZH[trimmed]);
+          if (obj) return obj;
+          obj = stel.getObj('NAME ' + REVERSE_NAMES_ZH[trimmed]);
+          if (obj) return obj;
+        }
+
+        // 5. Normalization for Messier / NGC / IC / Caldwell / HIP identifiers
+        const mMatch = trimmed.match(/^m\s*(\d+)$/i);
+        if (mMatch) {
+          obj = stel.getObj('M ' + mMatch[1]);
+          if (obj) return obj;
+        }
+        const ngcMatch = trimmed.match(/^ngc\s*(\d+)$/i);
+        if (ngcMatch) {
+          obj = stel.getObj('NGC ' + ngcMatch[1]);
+          if (obj) return obj;
+        }
+        const icMatch = trimmed.match(/^ic\s*(\d+)$/i);
+        if (icMatch) {
+          obj = stel.getObj('IC ' + icMatch[1]);
+          if (obj) return obj;
+        }
+        const cMatch = trimmed.match(/^c\s*(\d+)$/i);
+        if (cMatch) {
+          obj = stel.getObj('C ' + cMatch[1]);
+          if (obj) return obj;
+        }
+        const hipMatch = trimmed.match(/^(?:hip|hp)\s*(\d+)$/i);
+        if (hipMatch) {
+          obj = stel.getObj('HP ' + hipMatch[1]);
+          if (obj) return obj;
+        }
+
+        // 6. Handle English "Galaxy" suffix
+        if (/galaxy$/i.test(trimmed)) {
+          const stripped = trimmed.replace(/\s+galaxy$/i, '').trim();
+          if (stripped && stripped !== trimmed) {
+            if (COMMON_SYNONYMS[stripped]) {
+              obj = stel.getObj(COMMON_SYNONYMS[stripped]);
+              if (obj) return obj;
+            }
+            obj = stel.getObj(stripped) || stel.getObj('NAME ' + stripped);
+            if (obj) return obj;
+          }
+        }
+
+        return null;
+      }
+
+      function getTargetUnavailableReason(target) {
+        const entry = searchCatalogByAlias.get(catalogKey(target));
+        const western = entry?.category === 'constellation' || /^CON western /i.test(target)
+          || WESTERN_LOOKUP[String(target).toLowerCase()];
+        if (western && stel.core.skycultures.current_id !== 'western') return 'culture_mismatch';
+        if (!entry) return 'not_found';
+        if (!catalogLookupStarted.has(entry.id)) catalogLookupStarted.set(entry.id, Date.now());
+        return Date.now() - catalogLookupStarted.get(entry.id) < 8000 ? 'loading' : 'missing_data';
+      }
+
       // Sky-culture data sources load asynchronously. Wait until the featured
       // constellation enters the search index before moving the view to it.
       function formatSelectedObject(obj) {
-        if (!obj) return null;
-        const radec = obj.getInfo('radec');
-        const azalt = radec ? stel.c2s(stel.convertFrame(stel.core.observer, 'ICRF', 'OBSERVED', radec)) : null;
-        const raRad = radec ? stel.c2s(radec)[0] : 0;
-        const decRad = radec ? stel.c2s(radec)[1] : 0;
+        if (!obj || !isOrbitDataUsable(obj)) return null;
+        const vector = obj.getInfo('radec');
+        const radec = Array.isArray(vector) && vector.length >= 3
+          && vector.slice(0, 3).every(isFiniteNumber) && vector.slice(0, 3).some(v => v !== 0) ? vector : null;
+        const obs = stel.core.observer;
+        const j2000 = radec ? stel.c2s(radec) : null;
+        const cirs = radec ? stel.c2s(stel.convertFrame(obs, 'ICRF', 'CIRS', radec)) : null;
+        const azalt = radec ? stel.c2s(stel.convertFrame(obs, 'ICRF', 'OBSERVED', radec)) : null;
         const id = obj.id || '';
-        const cleanName = id.replace(/^NAME\s+/, '');
-        const zhName = NAMES_ZH[cleanName] || cleanName;
-        const raHours = (raRad * stel.R2D / 15 + 24) % 24;
-        const decDeg = decRad * stel.R2D;
-        const distanceAu = obj.getInfo('distance');
+        const cleanName = id.replace(/^NAME\s+/, '').replace(/^CON\s+[^\s]+\s+/, '');
+        const designations = obj.designations ? obj.designations() : [id];
+        const entry = [id, ...designations].map(value => searchCatalogByAlias.get(catalogKey(value))).find(Boolean);
+        const zhName = entry?.nameZh || NAMES_ZH[cleanName] || WESTERN_CONSTELLATIONS_MAP[cleanName]?.[2] || cleanName;
+        const hours = angle => isFiniteNumber(angle) ? (angle * stel.R2D / 15 + 24) % 24 : null;
+        const degrees = angle => isFiniteNumber(angle) ? angle * stel.R2D : null;
+        const finite = value => isFiniteNumber(value) ? value : null;
+        const raHours = hours(cirs?.[0]);
+        const distanceAu = finite(obj.getInfo('distance'));
         const { type, typeZh } = determineObjectType(cleanName, id, obj);
-        const hourAngleHours = computeHourAngle(raHours);
-        const sizeArcsec = obj.getInfo('size') || obj.getInfo('apparent_size') || computePlanetSize(cleanName, distanceAu);
-
         return {
           id,
+          ...(entry ? { catalogId: entry.id, constellationZh: entry.constellationZh ?? null } : {}),
           name: zhName,
-          englishName: cleanName,
-          designations: obj.designations ? obj.designations() : [id],
+          englishName: entry?.nameEn || cleanName,
+          designations,
           type,
           typeZh,
-          vmag: obj.getInfo('vmag'),
+          vmag: finite(obj.getInfo('vmag')),
           distanceAu,
-          phase: obj.getInfo('phase'),
-          sizeArcsec,
+          phase: finite(obj.getInfo('phase')),
+          sizeArcsec: nativeAngularSize(obj, cleanName, distanceAu),
+          coordinateFrame: 'CIRS',
           raHours,
-          decDeg,
-          raJ2000Hours: raHours,
-          decJ2000Deg: decDeg,
-          hourAngleHours,
-          azDeg: azalt ? ((azalt[0] * stel.R2D % 360 + 360) % 360) : null,
-          altDeg: azalt ? (azalt[1] * stel.R2D) : null,
+          decDeg: degrees(cirs?.[1]),
+          raJ2000Hours: hours(j2000?.[0]),
+          decJ2000Deg: degrees(j2000?.[1]),
+          hourAngleHours: computeHourAngle(raHours),
+          azDeg: isFiniteNumber(azalt?.[0]) ? ((azalt[0] * stel.R2D % 360 + 360) % 360) : null,
+          altDeg: degrees(azalt?.[1]),
         };
       }
 
@@ -647,15 +1085,18 @@
       function focusSkyCultureTarget(target, retries = 80) {
         const object = stel.getObj(target);
         if (object) {
-          stel.core.selection = object;
-          stel.pointAndLock(object, 0.5);
+          centerOnObject(object, 0.5);
           return send({ type: 'target_found' });
         }
         if (retries <= 0) return send({ type: 'target_not_found' });
         return setTimeout(() => focusSkyCultureTarget(target, retries - 1), 50);
       }
       function forceRender() {
-        if (!stel) return;
+        // core_lookat(pos, 0) memsets core->target, so a refresh would drop an
+        // in-flight center animation and its lock. The engine already renders
+        // continuously (requestAnimationFrame -> core_update + core_render), so
+        // property changes land on the next frame without touching the camera.
+        if (!stel || cameraState.lockedToTarget) return;
         try {
           const forward = stel.convertFrame(stel.core.observer, 'VIEW', 'OBSERVED', [0, 0, -1, 0]);
           stel.lookAt(forward, 0);
@@ -693,33 +1134,178 @@
           case 'zoom_to': return zoomTo(message);
           case 'clear_selection': {
             stel.core.selection = null;
+            cameraState.lockedToTarget = false;
             send({ type: 'selection_cleared' });
             forceRender();
             return;
           }
+          case 'restore_view': {
+            const state = message.state;
+            if (state === null || state === undefined) {
+              // The app has nothing archived: open the report channel without
+              // moving the camera.
+              openViewStateChannel();
+              return;
+            }
+            const azimuthDeg = state.azimuthDeg;
+            const altitudeDeg = state.altitudeDeg;
+            const fovDeg = state.fovDeg;
+            if (!isFiniteNumber(azimuthDeg) || !isFiniteNumber(altitudeDeg) || !isFiniteNumber(fovDeg)
+                || azimuthDeg < 0 || azimuthDeg >= 360 || altitudeDeg < -90 || altitudeDeg > 90
+                || fovDeg <= 0 || fovDeg > 360) {
+              // Strict contract: a rejected state is reported, never applied and
+              // never silently mistaken for a restored view. The fov ceiling is the
+              // same 360 degree limit zoom_to accepts; the live core reports wide
+              // values like 182.28 and they must round-trip unchanged.
+              return reportError('Invalid view state.');
+            }
+            try {
+              // lookAt with duration 0 also memsets core->target, which is what
+              // drops a stale lock so the restored view cannot snap back to the
+              // object centered earlier.
+              cameraState.lockedToTarget = false;
+              stel.lookAt(stel.s2c(azimuthDeg * stel.D2R, altitudeDeg * stel.D2R), 0);
+              stel.zoomTo(fovDeg * stel.D2R, 0);
+            } catch (e) {
+              return reportError('Failed to restore view: ' + e);
+            }
+            openViewStateChannel();
+            return;
+          }
           case 'point_and_lock': {
             try {
-              const targetObj = typeof message.name === 'string' ? stel.getObj(message.name) : stel.core.selection;
-              if (targetObj) {
-                stel.core.selection = targetObj;
-                stel.pointAndLock(targetObj, 0.5);
-                const payload = formatSelectedObject(targetObj);
-                if (payload) send({ type: 'object_selected', object: payload });
-              }
-            } catch {}
-            forceRender();
-            return;
+              // The app centers the object it just received from object_selected,
+              // so the engine selection already is that target. Re-resolving the
+              // designation would be slower and can resolve to a different object
+              // (or fail) for aliases and catalog names.
+              const requestedId = typeof message.name === 'string' ? message.name : null;
+              const selected = stel.core.selection;
+              const targetObj = requestedId && selected && selected.id === requestedId
+                  ? selected
+                : requestedId ? findCelestialObject(requestedId)
+                : selected;
+              if (!targetObj) return reportError('Target not found: ' + (requestedId || 'no selection'));
+              if (!isOrbitDataUsable(targetObj)) return reportError('Target data unavailable: ' + (targetObj.id || requestedId));
+              centerOnObject(targetObj, 0.5);
+              const payload = formatSelectedObject(targetObj);
+              if (payload) send({ type: 'object_selected', object: payload });
+              return;
+            } catch (e) {
+              return reportError('Failed to center target: ' + e);
+            }
           }
           case 'search_target': {
             try {
-              const object = stel.getObj(message.name);
-              if (!object) return send({ type: 'target_not_found' });
-              stel.core.selection = object;
-              stel.pointAndLock(object, 0.5);
-              return send({ type: 'target_found' });
+              const object = findCelestialObject(message.name);
+              if (!object || !isOrbitDataUsable(object)) return send({ type: 'target_not_found' });
+              centerOnObject(object, 0.5);
+              const payload = formatSelectedObject(object);
+              if (payload) send({ type: 'object_selected', object: payload });
+              send({ type: 'target_found' });
+              return;
             } catch {
               return send({ type: 'target_not_found' });
             }
+          }
+          case 'get_object_info': {
+            const object = findCelestialObject(message.name);
+            return send({ type: 'object_info_result', requestId: message.requestId, object: formatSelectedObject(object) });
+          }
+          case 'set_search_catalog': return registerSearchCatalog(message.items);
+          case 'query_targets': {
+            const names = Array.isArray(message.names) ? message.names : [];
+            const targets = names.map(rawName => {
+              const trimmed = typeof rawName === 'string' ? rawName.trim() : '';
+              if (!trimmed) {
+                return { id: rawName, available: false, reason: getTargetUnavailableReason(trimmed) };
+              }
+              const object = findCelestialObject(trimmed);
+              if (!object) {
+                return { id: rawName, available: false, reason: getTargetUnavailableReason(trimmed) };
+              }
+              if (!isOrbitDataUsable(object)) return { id: rawName, available: false, reason: 'missing_data' };
+              let altDeg = null;
+              let azDeg = null;
+              if (object.getInfo) {
+                try {
+                  const radec = object.getInfo('radec');
+                  if (radec) {
+                    const azalt = stel.c2s(stel.convertFrame(stel.core.observer, 'ICRF', 'OBSERVED', radec));
+                    if (azalt && isFiniteNumber(azalt[0]) && isFiniteNumber(azalt[1])) {
+                      azDeg = ((azalt[0] * stel.R2D % 360 + 360) % 360);
+                      altDeg = azalt[1] * stel.R2D;
+                    }
+                  }
+                } catch {}
+              }
+              let vmag = object.getInfo ? object.getInfo('vmag') : null;
+              return {
+                id: rawName,
+                available: true,
+                canonicalId: object.id,
+                reason: 'available',
+                altDeg: isFiniteNumber(altDeg) ? altDeg : null,
+                azDeg: isFiniteNumber(azDeg) ? azDeg : null,
+                vmag: isFiniteNumber(vmag) ? vmag : null,
+              };
+            });
+            return send({ type: 'query_targets_result', requestId: message.requestId, targets });
+          }
+          case 'focus_target': {
+            const token = typeof message.token === 'number' ? message.token : activeFocusToken + 1;
+            if (currentCancelToken >= token || activeFocusToken > token) {
+              return send({ type: 'focus_target_result', requestId: message.requestId, object: null });
+            }
+            activeFocusToken = Math.max(activeFocusToken, token);
+            const object = findCelestialObject(message.name);
+            if (!object) {
+              const reason = getTargetUnavailableReason(message.name);
+              if (reason === 'loading') {
+                // Preserve the original token; cancellation/newer selections are
+                // rechecked before each retry. The lookup budget is eight seconds.
+                return setTimeout(() => execute({ ...message, token }), 150);
+              }
+              return send({ type: 'focus_target_result', requestId: message.requestId, object: null, reason });
+            }
+            if (currentCancelToken >= token || activeFocusToken > token) {
+              return send({ type: 'focus_target_result', requestId: message.requestId, object: null });
+            }
+
+            if (!isOrbitDataUsable(object)) {
+              return send({ type: 'focus_target_result', requestId: message.requestId, object: null, reason: 'missing_data' });
+            }
+            centerOnObject(object, 0.6);
+
+            const cleanName = (object.id || '').replace(/^NAME\s+/, '').replace(/^CON\s+[^\s]+\s+/, '');
+            const { type } = determineObjectType(cleanName, object.id || '', object);
+            let fovDeg = 10;
+            if (isFiniteNumber(message.fovDeg) && message.fovDeg > 0 && message.fovDeg <= 360) {
+              fovDeg = message.fovDeg;
+            } else if (type === 'planet' || type === 'moon') {
+              fovDeg = 2;
+            } else if (type === 'constellation') {
+              fovDeg = 40;
+            } else if (type === 'dso') {
+              const sizeArcsec = nativeAngularSize(object, cleanName, null);
+              const computedFov = isFiniteNumber(sizeArcsec) && sizeArcsec > 0 ? (sizeArcsec / 3600) * 3 : 5;
+              fovDeg = Math.min(90, Math.max(0.3, computedFov));
+            } else {
+              fovDeg = 10;
+            }
+            stel.zoomTo(fovDeg * Math.PI / 180, 0.6);
+
+            const payload = formatSelectedObject(object);
+            return send({ type: 'focus_target_result', requestId: message.requestId, object: payload });
+          }
+          case 'cancel_search': {
+            // Token space is shared with focus_target (issued by the RN bridge as a
+            // small incrementing counter). A wall-clock timestamp here would
+            // permanently exceed every future focus token and break later searches,
+            // so reuse the RN-issued token.
+            const token = typeof message.token === 'number' ? message.token : activeFocusToken + 1;
+            currentCancelToken = Math.max(currentCancelToken, token);
+            activeFocusToken = Math.max(activeFocusToken, token);
+            return;
           }
           case 'toggle_constellations':
             stel.core.constellations.lines_visible = Boolean(message.visible);
@@ -826,7 +1412,7 @@
           case 'set_time': {
             const date = new Date(message.isoTime);
             if (Number.isNaN(date.getTime())) return reportError('Invalid time command.');
-            stel.core.observer.tt = stel.date2MJD(date);
+            stel.core.observer.utc = stel.date2MJD(date);
             forceRender();
             return;
           }
@@ -896,10 +1482,11 @@
         }
       }
       const STELLARIUM_COMMANDS = new Set([
-        'goto_radec', 'zoom_to', 'clear_selection', 'point_and_lock', 'search_target',
+        'goto_radec', 'zoom_to', 'clear_selection', 'restore_view', 'point_and_lock', 'search_target',
         'toggle_constellations', 'set_sky_layers', 'set_landscape', 'set_environment',
         'set_sky_culture', 'set_time', 'set_magnitude_limit', 'set_brightness', 'set_grid_lines',
         'set_location', 'compute_tonight', 'compute_events', 'set_view_bearing', 'set_fov_frame',
+        'get_object_info', 'set_search_catalog', 'query_targets', 'focus_target', 'cancel_search',
       ]);
       function receive(event) {
         try {
@@ -922,7 +1509,11 @@
         fetch(assetUrl('names-zh.json')).then(response => response.json()).catch(() => ({})),
         fetch(assetUrl('data/meteor-showers.json')).then(response => response.json()).catch(() => ({ showers: [] })),
       ]).then(([names, meteors]) => {
-        NAMES_ZH = names;
+        NAMES_ZH = names || {};
+        REVERSE_NAMES_ZH = {};
+        for (const [k, v] of Object.entries(NAMES_ZH)) {
+          if (typeof v === 'string') REVERSE_NAMES_ZH[v] = k;
+        }
         METEOR_SHOWERS = meteors.showers ?? [];
       }).then(startEngine);
 
@@ -935,19 +1526,36 @@
           stel = engine;
           window.stel = engine;
           const core = stel.core;
-          // Fonts must be in place before any label is rasterised, or CJK names render as tofu.
-          // Roboto has no CJK glyphs, so Chinese needs the bundled Noto subset.
-          const uiFont = window.__STEL_LANG === 'zh' ? 'fonts/NotoSansSC-Subset.ttf' : 'fonts/Roboto-Regular.ttf';
-          const uiFontBold = window.__STEL_LANG === 'zh' ? 'fonts/NotoSansSC-Subset.ttf' : 'fonts/Roboto-Bold.ttf';
-          // Font loading is asynchronous. A malformed font must report its error
-          // without becoming an unhandled rejection that obscures skyculture failures.
-          void stel.setFont('regular', assetUrl(uiFont)).catch(reportError);
-          void stel.setFont('bold', assetUrl(uiFontBold)).catch(reportError);
+          // The SDK queues its first render before onReady, but core_add_font
+          // needs the native renderer created by that frame. Fast local fetches
+          // otherwise register fonts too early and trap inside WASM.
+          const fontsReady = new Promise(resolve => requestAnimationFrame(resolve)).then(() => {
+            const uiFont = window.__STEL_LANG === 'zh' ? 'fonts/NotoSansSC-Subset.ttf' : 'fonts/Roboto-Regular.ttf';
+            const uiFontBold = window.__STEL_LANG === 'zh' ? 'fonts/NotoSansSC-Subset.ttf' : 'fonts/Roboto-Bold.ttf';
+            return Promise.all([
+              stel.setFont('regular', assetUrl(uiFont)),
+              stel.setFont('bold', assetUrl(uiFontBold)),
+            ]);
+          });
           core.stars.addDataSource({ url: assetUrl('data/stars') });
           core.dsos.addDataSource({ url: assetUrl('data/dso') });
           core.skycultures.addDataSource({ url: assetUrl('data/skycultures/western'), key: 'western' });
           core.milkyway.addDataSource({ url: assetUrl('data/surveys/milkyway') });
           core.landscapes.addDataSource({ url: assetUrl('data/landscapes/guereins'), key: 'guereins' });
+          try {
+            if (core.satellites && typeof core.satellites.addDataSource === 'function') {
+              core.satellites.addDataSource({ url: assetUrl('data/tle_satellite.jsonl.gz'), key: 'jsonl/sat' });
+            }
+          } catch (e) {
+            console.warn('Failed to add satellites data source:', e);
+          }
+          try {
+            if (core.comets && typeof core.comets.addDataSource === 'function') {
+              core.comets.addDataSource({ url: assetUrl('data/CometEls.txt'), key: 'mpc_comets' });
+            }
+          } catch (e) {
+            console.warn('Failed to add comets data source:', e);
+          }
           core.atmosphere.visible = true;
           core.landscapes.visible = true;
           core.constellations.images_visible = true;
@@ -962,10 +1570,12 @@
           const horizonDirection = stel.s2c(0, 20 * stel.D2R);
           stel.lookAt(horizonDirection, 0);
           stel.on('click', handleSkyClick);
-          send({ type: 'ready' });
-          publishBearing();
-          setInterval(publishBearing, 250);
-          while (pendingCommands.length) execute(pendingCommands.shift());
+          void fontsReady.then(() => {
+            send({ type: 'ready' });
+            publishBearing();
+            setInterval(publishBearing, 250);
+            while (pendingCommands.length) execute(pendingCommands.shift());
+          }).catch(reportError);
         },
         onError: reportError,
       }).catch?.(reportError);

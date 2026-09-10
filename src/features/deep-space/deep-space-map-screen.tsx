@@ -1,7 +1,11 @@
+import type { CelestialSearchItem } from '@/features/deep-space/search/celestial-catalog';
+import type { CelestialMetricsItem, ExtendedCelestialCategory, SearchFailureReason } from '@/features/deep-space/search/celestial-search-sheet';
+import type { DeepSpaceViewPreferences, ViewPreferenceDefaults } from '@/features/deep-space/tools/deep-space-view-preferences';
 import type { FieldOfViewInput } from '@/features/deep-space/tools/field-of-view';
 import type { RecentSkyObject } from '@/features/deep-space/tools/recent-sky-objects';
+import type { TimePlaybackSpeed } from '@/features/deep-space/tools/use-sky-time';
 import type { StartTimePolicy } from '@/features/deep-space/tools/use-stellarium-settings';
-import type { SelectedCelestialObject, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
+import type { SelectedCelestialObject, StellariumSkyLayers, StellariumViewState } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import * as React from 'react';
 import { Animated, Easing, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, TextInput, View } from 'react-native';
@@ -12,14 +16,19 @@ import { Text } from '@/components/ui';
 import { CalendarPanel } from '@/features/deep-space/calendar/calendar-panel';
 import { DEFAULT_LANDSCAPE_ID, LANDSCAPES } from '@/features/deep-space/landscape/landscape-catalog';
 import { ObjectInfoSheet } from '@/features/deep-space/object-info/object-info-sheet';
+import { ALL_CELESTIAL_OBJECTS } from '@/features/deep-space/search/celestial-catalog';
+import { CelestialSearchSheet } from '@/features/deep-space/search/celestial-search-sheet';
+import { clearViewPreferences, readStoredViewState, readViewPreferences, viewPreferencesSignature, writeStoredViewState, writeViewPreferences } from '@/features/deep-space/tools/deep-space-view-preferences';
 import { FieldOfViewOverlay } from '@/features/deep-space/tools/field-of-view-overlay';
 import { FieldOfViewPanel } from '@/features/deep-space/tools/field-of-view-panel';
-import { addRecentSkyObject, loadRecentSkyObjects } from '@/features/deep-space/tools/recent-sky-objects';
+import { addRecentSkyObject, clearRecentSkyObjects, loadRecentSkyObjects, removeRecentSkyObject } from '@/features/deep-space/tools/recent-sky-objects';
 import { parseSkyCoordinateInput } from '@/features/deep-space/tools/sky-coordinate-input';
 import { TelescopeControlPanel } from '@/features/deep-space/tools/telescope-control-panel';
 import { useCompassFollowing } from '@/features/deep-space/tools/use-compass-following';
 import { useObserverLocation } from '@/features/deep-space/tools/use-observer-location';
-import { useStellariumSettings } from '@/features/deep-space/tools/use-stellarium-settings';
+import { useSelectedObjectContext } from '@/features/deep-space/tools/use-selected-object-context';
+import { TIME_PLAYBACK_SPEEDS, useSkyTime } from '@/features/deep-space/tools/use-sky-time';
+import { restoreStellariumContext, useStellariumSettings } from '@/features/deep-space/tools/use-stellarium-settings';
 import { StellariumView } from '@/features/stellarium/stellarium-view';
 import { getLanguage, translate } from '@/lib/i18n';
 import { storage } from '@/lib/storage';
@@ -172,6 +181,45 @@ const BORTLE_KEYS = [
 /** User-selected safe default: Bortle 1, the lowest skyglow / best dark sky. */
 const DEFAULT_BORTLE_INDEX = 1;
 
+const DEFAULT_ENVIRONMENT = {
+  bortleIndex: DEFAULT_BORTLE_INDEX,
+  cardinals: true,
+  fog: true,
+  turbidity: DEFAULT_TURBIDITY,
+};
+
+/** The page's own defaults, used for the first visit and after a reset. */
+const VIEW_PREFERENCE_DEFAULTS: ViewPreferenceDefaults = {
+  currentCulture: 'western',
+  environment: DEFAULT_ENVIRONMENT,
+  gridLines: DEFAULT_GRID_LINES,
+  landscapeId: DEFAULT_LANDSCAPE_ID,
+  nightMode: false,
+  skyLayers: DEFAULT_SKY_LAYERS,
+};
+
+/**
+ * Persists the display preferences as soon as they change and, on reset, drops
+ * the archive instead of writing the defaults back so the next visit opens on
+ * the page defaults. Opening the page never rewrites what is already archived.
+ */
+function useViewPreferenceArchive(preferences: DeepSpaceViewPreferences) {
+  const signature = viewPreferencesSignature(preferences);
+  const lastSignature = React.useRef(signature);
+
+  React.useEffect(() => {
+    if (signature === lastSignature.current)
+      return;
+    lastSignature.current = signature;
+    writeViewPreferences(storage, preferences);
+  }, [preferences, signature]);
+
+  return React.useCallback(() => {
+    lastSignature.current = viewPreferencesSignature(VIEW_PREFERENCE_DEFAULTS);
+    clearViewPreferences(storage);
+  }, []);
+}
+
 function airQualityStepper(bortleIndex: number, onSelect: (next: number) => void) {
   const index = Math.min(BORTLE_KEYS.length - 1, Math.max(0, bortleIndex - 1));
 
@@ -205,20 +253,11 @@ type ReferenceDrawerProps = {
   onOpen: (feature: DrawerFeature) => void;
 };
 
-type ReferenceSearchSheetProps = {
-  error: boolean;
-  onChange: (value: string) => void;
-  onClose: () => void;
-  onSelectRecent: (object: RecentSkyObject) => void;
-  onSubmit: () => void;
-  query: string;
-  recentObjects: RecentSkyObject[];
-};
-
 type DrawerFeatureOptions = {
   automaticLocation: boolean;
   currentCulture: string;
   enableAutomaticLocation: () => Promise<void>;
+  initialPreferences: DeepSpaceViewPreferences;
   observer: ReturnType<typeof useObserverLocation>['observer'];
   setCurrentCulture: (id: string) => void;
   setManualCoordinate: ReturnType<typeof useObserverLocation>['setManualCoordinate'];
@@ -232,6 +271,7 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     automaticLocation,
     currentCulture,
     enableAutomaticLocation,
+    initialPreferences,
     observer,
     setCurrentCulture,
     setManualCoordinate,
@@ -240,17 +280,12 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     toggleAutomaticLocation,
   } = options;
   const [active, setActive] = React.useState<DrawerFeature>();
-  const [fieldOfView, setFieldOfView] = React.useState<FieldOfViewInput>();
-  const [gridLines, setGridLines] = React.useState(DEFAULT_GRID_LINES);
-  const [landscapeId, setLandscapeId] = React.useState(DEFAULT_LANDSCAPE_ID);
+  const [fieldOfView, setFieldOfView] = React.useState<FieldOfViewInput | undefined>(initialPreferences.fieldOfView);
+  const [gridLines, setGridLines] = React.useState(initialPreferences.gridLines);
+  const [landscapeId, setLandscapeId] = React.useState(initialPreferences.landscapeId);
   // `turbidity` mirrors the engine's own default (measured: 0.96). Seeding a
   // different value here would silently re-tint the sky on first render.
-  const [environment, setEnvironment] = React.useState({
-    bortleIndex: DEFAULT_BORTLE_INDEX,
-    cardinals: true,
-    fog: true,
-    turbidity: DEFAULT_TURBIDITY,
-  });
+  const [environment, setEnvironment] = React.useState(initialPreferences.environment);
   const close = () => setActive(undefined);
 
   const updateGridLines = React.useCallback((patch: Partial<typeof DEFAULT_GRID_LINES>) => {
@@ -303,10 +338,12 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
 
 function useStellariumDrawerFeature({
   currentCulture,
+  initialPreferences,
   setCurrentCulture,
   stellaRef,
 }: {
   currentCulture: string;
+  initialPreferences: DeepSpaceViewPreferences;
   setCurrentCulture: (id: string) => void;
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 }) {
@@ -316,6 +353,7 @@ function useStellariumDrawerFeature({
     automaticLocation: observerLocation.automaticLocation,
     currentCulture,
     enableAutomaticLocation: observerLocation.enableAutomaticLocation,
+    initialPreferences,
     observer: observerLocation.observer,
     setCurrentCulture,
     setManualCoordinate: observerLocation.setManualCoordinate,
@@ -348,6 +386,7 @@ type StarMapOverlayControlsProps = {
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   onUpdateTime?: (date: Date) => void;
+  playback: TimePlaybackProps;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
   timePanelOpen?: boolean;
 };
@@ -464,6 +503,7 @@ function OverlaySheets({
   onReturnToNow,
   onSetAzimuth,
   onUpdateTime,
+  playback,
   timePanelOpen = false,
 }: {
   activeDetail: QuickControlId | null;
@@ -482,6 +522,7 @@ function OverlaySheets({
   onReturnToNow: () => void;
   onSetAzimuth?: (azimuthDeg: number) => void;
   onUpdateTime?: (date: Date) => void;
+  playback: TimePlaybackProps;
   timePanelOpen?: boolean;
 }) {
   return (
@@ -509,6 +550,7 @@ function OverlaySheets({
           onClose={() => onCloseTimePanel?.()}
           onReturnToNow={onReturnToNow}
           onUpdateTime={date => onUpdateTime?.(date)}
+          playback={playback}
         />
       )}
     </>
@@ -634,6 +676,7 @@ function StarMapOverlayControls(props: StarMapOverlayControlsProps) {
         onReturnToNow={handleReturnToNow}
         onSetAzimuth={onSetAzimuth}
         onUpdateTime={onUpdateTime}
+        playback={props.playback}
         timePanelOpen={timePanelOpen}
       />
     </View>
@@ -1507,22 +1550,207 @@ function GridQuickBar({
   );
 }
 
-function useStarMapSearch(stellaRef: React.RefObject<StellariumViewHandle | null>) {
-  const [error, setError] = React.useState(false);
+type MetricsLifetime = {
+  active: boolean;
+  generation: number;
+  pending?: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+  deadlineTimer?: ReturnType<typeof setTimeout>;
+};
+
+type MetricsSnapshot = {
+  metrics: Record<string, CelestialMetricsItem>;
+  retryAvailable: boolean;
+};
+
+function stopMetricsTimers(state: MetricsLifetime) {
+  clearTimeout(state.timer);
+  clearTimeout(state.deadlineTimer);
+  state.timer = undefined;
+  state.deadlineTimer = undefined;
+}
+
+function useSearchMetrics(stellaRef: React.RefObject<StellariumViewHandle | null>, open: boolean) {
+  const [metrics, setMetrics] = React.useState<Record<string, CelestialMetricsItem>>({});
+  const [metricsRetryAvailable, setRetryAvailable] = React.useState(false);
+  const [metricsRefreshing, setMetricsRefreshing] = React.useState(false);
+  const snapshots = React.useRef(new Map<string, MetricsSnapshot>());
+  const lifetime = React.useRef<MetricsLifetime>({ active: true, generation: 0 });
+  const visibleIds = React.useRef<string[]>([]);
+  const openRef = React.useRef(open);
+  openRef.current = open;
+  React.useEffect(() => {
+    const state = lifetime.current;
+    state.active = true;
+    return () => {
+      state.active = false;
+      state.generation++;
+      stopMetricsTimers(state);
+    };
+  }, []);
+  const clearMetrics = React.useCallback(() => {
+    lifetime.current.generation++;
+    lifetime.current.pending = false;
+    stopMetricsTimers(lifetime.current);
+    snapshots.current.clear();
+    visibleIds.current = [];
+    setMetrics({});
+    setRetryAvailable(false);
+    setMetricsRefreshing(false);
+  }, []);
+  const refreshMetrics = React.useCallback((ids: string[], force = false) => {
+    const state = lifetime.current;
+    const names = [...new Set(ids)].slice(0, 100);
+    const key = JSON.stringify(names);
+    if (!state.active || (state.pending && JSON.stringify(visibleIds.current) === key))
+      return;
+    state.generation++;
+    state.pending = false;
+    stopMetricsTimers(state);
+    visibleIds.current = names;
+    const cached = snapshots.current.get(key);
+    setMetrics(cached?.metrics ?? {});
+    setRetryAvailable(cached?.retryAvailable ?? false);
+    setMetricsRefreshing(false);
+    if (!openRef.current || names.length === 0 || (cached && !force))
+      return;
+    state.pending = true;
+    setRetryAvailable(false);
+    setMetricsRefreshing(true);
+    const current = state.generation;
+    const isCurrent = () => state.active && openRef.current && state.generation === current;
+    const staged: Record<string, CelestialMetricsItem> = {};
+    const finish = (retryAvailable: boolean) => {
+      if (!isCurrent())
+        return;
+      state.generation++;
+      state.pending = false;
+      stopMetricsTimers(state);
+      const next = retryAvailable && cached ? cached.metrics : staged;
+      snapshots.current.set(key, { metrics: next, retryAvailable });
+      setMetrics(next);
+      setRetryAvailable(retryAvailable);
+      setMetricsRefreshing(false);
+    };
+    const deadline = Date.now() + 10_000;
+    state.deadlineTimer = setTimeout(() => finish(true), 10_000);
+    const query = (queryNames: string[]) => {
+      if (!isCurrent())
+        return;
+      if (Date.now() >= deadline) {
+        finish(true);
+        return;
+      }
+      const request = stellaRef.current?.queryTargets?.(queryNames);
+      if (!request) {
+        finish(true);
+        return;
+      }
+      request.then((results) => {
+        if (!isCurrent())
+          return;
+        Object.assign(staged, Object.fromEntries(results.map(result => [result.id, result])));
+        const loading = results.filter(result => !result.available && result.reason === 'loading').map(result => result.id);
+        if (loading.length > 0)
+          state.timer = setTimeout(() => query(loading), 500);
+        else
+          finish(false);
+      }).catch(() => {
+        if (!isCurrent())
+          return;
+        for (const id of queryNames)
+          staged[id] = { available: false, reason: 'failed' };
+        finish(true);
+      });
+    };
+    query(names);
+  }, [stellaRef]);
+  return { clearMetrics, metrics, metricsRefreshing, metricsRetryAvailable, refreshMetrics, retryMetrics: () => refreshMetrics(visibleIds.current, true) };
+}
+
+function searchFailureReason(error: unknown): SearchFailureReason {
+  const reason = error instanceof Error && error.message.startsWith('FOCUS_UNAVAILABLE:') ? error.message.slice('FOCUS_UNAVAILABLE:'.length) : '';
+  switch (reason) {
+    case 'loading':
+    case 'culture_mismatch':
+    case 'missing_data':
+    case 'not_found':
+      return reason;
+    default:
+      return 'failed';
+  }
+}
+
+function useStarMapSearch(
+  stellaRef: React.RefObject<StellariumViewHandle | null>,
+  onSelected: (object: SelectedCelestialObject) => void,
+  stopCompassFollowing: () => void,
+) {
+  const [error, setError] = React.useState<SearchFailureReason | false>(false);
+  const lastTarget = React.useRef('');
+  const generation = React.useRef(0);
   const [open, setOpen] = React.useState(false);
+  const [pending, setPending] = React.useState(false);
   const [query, setQuery] = React.useState('');
+  const [category, setCategory] = React.useState<ExtendedCelestialCategory>('all');
+  const { clearMetrics, metrics, metricsRefreshing, metricsRetryAvailable, refreshMetrics, retryMetrics } = useSearchMetrics(stellaRef, open);
+  React.useEffect(() => () => {
+    generation.current++;
+    stellaRef.current?.cancelSearch?.();
+  }, [stellaRef]);
 
   const openSearch = (onCloseOthers: () => void) => {
+    clearMetrics();
+    generation.current++;
     onCloseOthers();
     setError(false);
+    setPending(false);
     setOpen(true);
   };
 
-  const closeSearch = () => {
+  const closeSearch = React.useCallback(() => {
+    clearMetrics();
+    generation.current++;
     setError(false);
+    setPending(false);
     setOpen(false);
     setQuery('');
-  };
+    setCategory('all');
+    stellaRef.current?.cancelSearch?.();
+  }, [clearMetrics, stellaRef]);
+
+  const resolveFocusedTarget = React.useCallback((name: string) => {
+    // Focusing re-centers the map, so the sensor has to let go first.
+    stopCompassFollowing();
+    const current = ++generation.current;
+    lastTarget.current = name;
+    setError(false);
+    setPending(true);
+    const request = stellaRef.current?.focusTarget?.(name);
+    if (!request) {
+      setPending(false);
+      return;
+    }
+    request.then((object) => {
+      if (generation.current !== current)
+        return;
+      setPending(false);
+      if (object) {
+        onSelected(object);
+        closeSearch();
+      }
+      else {
+        setError('not_found');
+      }
+    }).catch((error) => {
+      if (generation.current !== current)
+        return;
+      setPending(false);
+      setError(searchFailureReason(error));
+    });
+  }, [closeSearch, onSelected, stellaRef, stopCompassFollowing]);
+
+  const selectItem = (item: CelestialSearchItem | RecentSkyObject) => resolveFocusedTarget(item.id);
 
   const submitSearch = () => {
     const target = query.trim();
@@ -1536,23 +1764,29 @@ function useStarMapSearch(stellaRef: React.RefObject<StellariumViewHandle | null
       return;
     }
 
-    setError(false);
-    stellaRef.current?.searchTarget?.(target);
-  };
-
-  const selectRecent = (object: RecentSkyObject) => {
-    setError(false);
-    stellaRef.current?.searchTarget?.(object.id.replace(/^NAME\s+/, ''));
+    resolveFocusedTarget(target);
   };
 
   return {
+    category,
     closeSearch,
-    error,
+    error: Boolean(error),
+    errorReason: error || undefined,
+    metrics,
+    metricsRefreshing,
+    metricsRetryAvailable,
+    refreshCurrentMetrics: retryMetrics,
+    retrySearch: () => error ? resolveFocusedTarget(lastTarget.current) : retryMetrics(),
     open,
     openSearch,
+    pending,
     query,
-    selectRecent,
-    setError,
+    refreshMetrics,
+    selectItem,
+    selectRecent: selectItem,
+    setCategory,
+    setError: (value: boolean) => setError(value ? 'not_found' : false),
+    setPending,
     setQuery,
     submitSearch,
   };
@@ -1602,8 +1836,8 @@ function RestoreCultureFlow({
  * rapid taps a render-closure snapshot can be one render stale, which would
  * send the engine the wrong value and desync the switch UI from the sky.
  */
-function useSkyLayers(stellaRef: React.RefObject<StellariumViewHandle | null>) {
-  const [skyLayers, setSkyLayers] = React.useState(DEFAULT_SKY_LAYERS);
+function useSkyLayers(stellaRef: React.RefObject<StellariumViewHandle | null>, initialSkyLayers: typeof DEFAULT_SKY_LAYERS) {
+  const [skyLayers, setSkyLayers] = React.useState(initialSkyLayers);
 
   const updateSkyLayers = React.useCallback((patch: Partial<typeof DEFAULT_SKY_LAYERS>) => {
     setSkyLayers((prev) => {
@@ -1625,48 +1859,20 @@ function useSkyLayers(stellaRef: React.RefObject<StellariumViewHandle | null>) {
 }
 
 function useInteractiveClock(stellaRef: React.RefObject<StellariumViewHandle | null>) {
-  const [clock, setClock] = React.useState(() => new Date());
-  const [isCustomTime, setIsCustomTime] = React.useState(false);
+  const time = useSkyTime(stellaRef);
   const [timePanelOpen, setTimePanelOpen] = React.useState(false);
-
-  const updateTime = React.useCallback((nextDate: Date) => {
-    setClock(nextDate);
-    setIsCustomTime(true);
-    stellaRef.current?.setTime?.(nextDate);
-  }, [stellaRef]);
-
-  const returnToNow = React.useCallback(() => {
-    const now = new Date();
-    setClock(now);
-    setIsCustomTime(false);
-    stellaRef.current?.setTime?.(now);
-  }, [stellaRef]);
-
-  React.useEffect(() => {
-    const interval = globalThis.setInterval(() => {
-      if (!isCustomTime) {
-        const now = new Date();
-        setClock(now);
-        stellaRef.current?.setTime?.(now);
-      }
-    }, 60_000);
-    return () => globalThis.clearInterval(interval);
-  }, [isCustomTime, stellaRef]);
-
   return {
-    clock,
+    ...time,
     closeTimePanel: () => setTimePanelOpen(false),
-    isCustomTime,
-    returnToNow,
     timePanelOpen,
     toggleTimePanel: () => setTimePanelOpen(prev => !prev),
-    updateTime,
   };
 }
 
 function SelectedObjectOverlay({
   drawerActive,
   drawerOpen,
+  onCenterObject,
   onGotoTools,
   searchOpen,
   selectedObject,
@@ -1675,6 +1881,7 @@ function SelectedObjectOverlay({
 }: {
   drawerActive: boolean;
   drawerOpen: boolean;
+  onCenterObject: (object: SelectedCelestialObject) => void;
   onGotoTools: () => void;
   searchOpen: boolean;
   selectedObject: SelectedCelestialObject | null;
@@ -1688,7 +1895,7 @@ function SelectedObjectOverlay({
     <ObjectInfoSheet
       key={selectedObject.id}
       object={selectedObject}
-      onCenter={obj => stellaRef.current?.pointAndLock(obj.id)}
+      onCenter={onCenterObject}
       onClose={() => {
         setSelectedObject(null);
         stellaRef.current?.clearSelection?.();
@@ -1711,6 +1918,10 @@ function StarMapModals({
   drawerFeature,
   drawerOpen,
   insetsBottom,
+  nightMode,
+  onCenterObject,
+  onClearRecentHistory,
+  onRemoveRecentHistoryItem,
   recentObjects,
   onResetAll,
   onToggleCompassFollowing,
@@ -1729,9 +1940,13 @@ function StarMapModals({
   drawerFeature: ReturnType<typeof useDrawerFeature>;
   drawerOpen: boolean;
   insetsBottom: number;
-  recentObjects: RecentSkyObject[];
+  nightMode: boolean;
+  onCenterObject: (object: SelectedCelestialObject) => void;
+  onClearRecentHistory: () => void;
+  onRemoveRecentHistoryItem: (id: string) => void;
   onResetAll?: () => void;
   onToggleCompassFollowing: () => void;
+  recentObjects: RecentSkyObject[];
   search: ReturnType<typeof useStarMapSearch>;
   selectedObject: SelectedCelestialObject | null;
   setCurrentCulture: (c: string) => void;
@@ -1775,6 +1990,7 @@ function StarMapModals({
       <SelectedObjectOverlay
         drawerActive={Boolean(drawerFeature.active)}
         drawerOpen={drawerOpen}
+        onCenterObject={onCenterObject}
         onGotoTools={() => drawerFeature.open('tools')}
         searchOpen={search.open}
         selectedObject={selectedObject}
@@ -1782,17 +1998,49 @@ function StarMapModals({
         stellaRef={stellaRef}
       />
       {search.open && (
-        <ReferenceSearchSheet
-          error={search.error}
-          onChange={search.setQuery}
-          onClose={search.closeSearch}
-          onSelectRecent={search.selectRecent}
-          onSubmit={search.submitSearch}
-          query={search.query}
+        <StarMapSearchSheet
+          nightMode={nightMode}
+          onClearRecentHistory={onClearRecentHistory}
+          onRemoveRecentHistoryItem={onRemoveRecentHistoryItem}
           recentObjects={recentObjects}
+          search={search}
         />
       )}
     </>
+  );
+}
+
+function StarMapSearchSheet({ nightMode, onClearRecentHistory, onRemoveRecentHistoryItem, recentObjects, search }: {
+  nightMode: boolean;
+  onClearRecentHistory: () => void;
+  onRemoveRecentHistoryItem: (id: string) => void;
+  recentObjects: RecentSkyObject[];
+  search: ReturnType<typeof useStarMapSearch>;
+}) {
+  return (
+    <CelestialSearchSheet
+      category={search.category}
+      error={search.error}
+      errorReason={search.errorReason}
+      metrics={search.metrics}
+      metricsRefreshing={search.metricsRefreshing}
+      metricsRetryAvailable={search.metricsRetryAvailable}
+      onRefreshMetrics={search.refreshCurrentMetrics}
+      onRetry={search.retrySearch}
+      nightMode={nightMode}
+      onChange={search.setQuery}
+      onClearHistory={onClearRecentHistory}
+      onClose={search.closeSearch}
+      onRemoveRecent={onRemoveRecentHistoryItem}
+      onSelectCategory={search.setCategory}
+      onSelectItem={search.selectItem}
+      onSelectRecent={search.selectRecent}
+      onSubmit={search.submitSearch}
+      onVisibleItemsChange={search.refreshMetrics}
+      pending={search.pending}
+      query={search.query}
+      recentObjects={recentObjects}
+    />
   );
 }
 
@@ -1803,7 +2051,7 @@ function useDeepSpaceSelection() {
   const handleObjectSelected = React.useCallback((object: SelectedCelestialObject) => {
     setSelectedObject(object);
     const candidate: RecentSkyObject = {
-      id: object.id,
+      id: object.catalogId || object.id,
       name: object.name,
       typeZh: object.typeZh ?? undefined,
     };
@@ -1811,33 +2059,103 @@ function useDeepSpaceSelection() {
     addRecentSkyObject(storage, candidate);
   }, []);
 
+  const clearRecentHistory = React.useCallback(() => {
+    setRecentObjects([]);
+    clearRecentSkyObjects(storage);
+  }, []);
+
+  const removeRecentHistoryItem = React.useCallback((id: string) => {
+    setRecentObjects(prev => prev.filter(item => item.id !== id));
+    removeRecentSkyObject(storage, id);
+  }, []);
+
   return {
+    clearRecentHistory,
     clearSelection: () => setSelectedObject(null),
     handleObjectSelected,
     recentObjects,
+    removeRecentHistoryItem,
     selectedObject,
     setSelectedObject,
   };
 }
 
-function useDeepSpaceMapReset(
-  drawerFeature: ReturnType<typeof useStellariumDrawerFeature>,
-  updateSkyLayers: (layers: typeof DEFAULT_SKY_LAYERS) => void,
-  settings: ReturnType<typeof useStellariumSettings>,
-) {
+function useDeepSpaceMapReset(options: {
+  clearArchive: () => void;
+  drawerFeature: ReturnType<typeof useStellariumDrawerFeature>;
+  resetCulture: () => void;
+  resetNightMode: () => void;
+  settings: ReturnType<typeof useStellariumSettings>;
+  updateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
+}) {
+  const { clearArchive, drawerFeature, resetCulture, resetNightMode, settings, updateSkyLayers } = options;
   return React.useCallback(() => {
     updateSkyLayers(DEFAULT_SKY_LAYERS);
-    drawerFeature.updateEnvironment({
-      bortleIndex: DEFAULT_BORTLE_INDEX,
-      cardinals: true,
-      fog: true,
-      turbidity: DEFAULT_TURBIDITY,
-    });
+    drawerFeature.updateEnvironment(DEFAULT_ENVIRONMENT);
     drawerFeature.selectLandscape(DEFAULT_LANDSCAPE_ID);
     drawerFeature.updateGridLines(DEFAULT_GRID_LINES);
+    drawerFeature.clearFieldOfView();
     drawerFeature.selectCity(OBSERVER_CITIES[0]);
+    resetCulture();
+    resetNightMode();
     settings.resetSettings();
-  }, [drawerFeature, settings, updateSkyLayers]);
+    // Dropped last so the page defaults are not archived straight back.
+    clearArchive();
+  }, [clearArchive, drawerFeature, resetCulture, resetNightMode, settings, updateSkyLayers]);
+}
+
+/** Ties the page state to its archive: writes on change, resets, and centering. */
+function useDeepSpaceViewArchive(options: {
+  currentCulture: string;
+  drawerFeature: ReturnType<typeof useStellariumDrawerFeature>;
+  nightMode: boolean;
+  setCurrentCulture: (id: string) => void;
+  setNightMode: (value: boolean) => void;
+  settings: ReturnType<typeof useStellariumSettings>;
+  skyLayers: typeof DEFAULT_SKY_LAYERS;
+  stellaRef: React.RefObject<StellariumViewHandle | null>;
+  stopCompassFollowing: () => void;
+  updateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
+}) {
+  const {
+    currentCulture,
+    drawerFeature,
+    nightMode,
+    setCurrentCulture,
+    setNightMode,
+    settings,
+    skyLayers,
+    stellaRef,
+    stopCompassFollowing,
+    updateSkyLayers,
+  } = options;
+  const preferences = React.useMemo<DeepSpaceViewPreferences>(() => ({
+    currentCulture,
+    environment: drawerFeature.environment,
+    gridLines: drawerFeature.gridLines,
+    landscapeId: drawerFeature.landscapeId,
+    nightMode,
+    skyLayers,
+    ...(drawerFeature.fieldOfView ? { fieldOfView: drawerFeature.fieldOfView } : {}),
+  }), [currentCulture, drawerFeature.environment, drawerFeature.fieldOfView, drawerFeature.gridLines, drawerFeature.landscapeId, nightMode, skyLayers]);
+  const clearArchive = useViewPreferenceArchive(preferences);
+  const resetCulture = React.useCallback(() => {
+    setCurrentCulture('western');
+    stellaRef.current?.setSkyCulture?.('western');
+  }, [setCurrentCulture, stellaRef]);
+  const resetNightMode = React.useCallback(() => setNightMode(false), [setNightMode]);
+  const handleResetAll = useDeepSpaceMapReset({ clearArchive, drawerFeature, resetCulture, resetNightMode, settings, updateSkyLayers });
+  const handleCenterObject = React.useCallback((object: SelectedCelestialObject) => {
+    // Re-centering must survive the sensor: let go of the compass first, then
+    // lock the target. The details sheet stays open and no camera command runs.
+    stopCompassFollowing();
+    stellaRef.current?.pointAndLock?.(object.id);
+  }, [stellaRef, stopCompassFollowing]);
+  const handleViewStateChange = React.useCallback((state: StellariumViewState) => {
+    // Archiving a report is a plain write: it must never restore the view.
+    writeStoredViewState(storage, state);
+  }, []);
+  return { handleCenterObject, handleResetAll, handleViewStateChange };
 }
 
 function ActiveStarMapControls({
@@ -1921,23 +2239,31 @@ function useDeepSpaceFullscreenSync(fullscreen: boolean) {
 }
 
 type EngineReadyOptions = {
-  environment: Parameters<NonNullable<StellariumViewHandle['setEnvironment']>>[0];
+  drawerFeature: ReturnType<typeof useStellariumDrawerFeature>;
+  getCurrentTime: () => Date;
   settings: ReturnType<typeof useStellariumSettings>;
   skyLayers: StellariumSkyLayers;
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 };
 
-function useStellariumEngineReady({ environment, settings, skyLayers, stellaRef }: EngineReadyOptions) {
+function useStellariumEngineReady(options: EngineReadyOptions) {
+  const latest = React.useRef(options);
+  latest.current = options;
   return React.useCallback(() => {
-    stellaRef.current?.setSkyLayers?.(skyLayers);
-    stellaRef.current?.setEnvironment?.(environment);
-    if (settings.limitMagEnabled) {
-      stellaRef.current?.setMagnitudeLimit?.(settings.limitMagValue);
-    }
-    if (settings.brightness !== 1.0) {
-      stellaRef.current?.setBrightness?.(settings.brightness);
-    }
-  }, [stellaRef, skyLayers, environment, settings.limitMagEnabled, settings.limitMagValue, settings.brightness]);
+    const { drawerFeature, getCurrentTime, settings, skyLayers, stellaRef } = latest.current;
+    stellaRef.current?.setSearchCatalog?.(ALL_CELESTIAL_OBJECTS);
+    restoreStellariumContext(stellaRef.current, {
+      ...drawerFeature,
+      brightness: settings.brightness,
+      clock: getCurrentTime(),
+      limitMagEnabled: settings.limitMagEnabled,
+      limitMagValue: settings.limitMagValue,
+      skyLayers,
+    });
+    // The archived camera angle is replayed last, only after the observation
+    // context. Archiving a new report never triggers a restore.
+    stellaRef.current?.restoreView?.(readStoredViewState(storage));
+  }, []);
 }
 
 function useAzimuthController(stellaRef: React.RefObject<StellariumViewHandle | null>) {
@@ -1956,30 +2282,139 @@ function useAzimuthController(stellaRef: React.RefObject<StellariumViewHandle | 
   return { azimuthDeg, handleSetAzimuth, setAzimuthDeg };
 }
 
-export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps): React.ReactElement {
-  const insets = useSafeAreaInsets();
-  const stellaRef = React.useRef<StellariumViewHandle>(null);
-  const { azimuthDeg, handleSetAzimuth, setAzimuthDeg } = useAzimuthController(stellaRef);
-  const [currentCulture, setCurrentCulture] = React.useState('western');
-  const selection = useDeepSpaceSelection();
-  const drawerFeature = useStellariumDrawerFeature({ currentCulture, setCurrentCulture, stellaRef });
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [nightMode, setNightMode] = React.useState(false);
-  const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(stellaRef);
-  const { compassFollowing, toggleCompassFollowing } = useCompassFollowing(stellaRef);
-  const search = useStarMapSearch(stellaRef);
+function useStarMapObservation(stellaRef: React.RefObject<StellariumViewHandle | null>, options: {
+  currentCulture: string;
+  drawerFeature: ReturnType<typeof useStellariumDrawerFeature>;
+  drawerOpen: boolean;
+  selection: ReturnType<typeof useDeepSpaceSelection>;
+  skyLayers: StellariumSkyLayers;
+  stopCompassFollowing: () => void;
+}) {
+  const { currentCulture, drawerFeature, drawerOpen, selection, skyLayers, stopCompassFollowing } = options;
+  const [sceneVersion, setSceneVersion] = React.useState(0);
   const timeState = useInteractiveClock(stellaRef);
+  const contextKey = `${timeState.clock.getTime()}:${drawerFeature.observer.latitudeDeg}:${drawerFeature.observer.longitudeDeg}:${currentCulture}:${sceneVersion}`;
+  const search = useStarMapSearch(stellaRef, selection.handleObjectSelected, stopCompassFollowing);
   const settings = useStellariumSettings(stellaRef, { onReturnToNow: timeState.returnToNow });
-  const handleResetAll = useDeepSpaceMapReset(drawerFeature, updateSkyLayers, settings);
-
-  useDeepSpaceFullscreenSync(settings.fullscreen);
-  const handleEngineReady = useStellariumEngineReady({
-    environment: drawerFeature.environment,
+  const restoreEngine = useStellariumEngineReady({
+    drawerFeature,
+    getCurrentTime: timeState.getCurrentTime,
     settings,
     skyLayers,
     stellaRef,
   });
+  useSelectedObjectContext(stellaRef, {
+    contextKey,
+    selectedObject: selection.selectedObject,
+    setSelectedObject: selection.setSelectedObject,
+    visible: !drawerOpen && !drawerFeature.active && !search.open,
+  });
+  const handleEngineReady = React.useCallback(() => {
+    restoreEngine();
+    setSceneVersion(version => version + 1);
+  }, [restoreEngine]);
+  return { handleEngineReady, search, settings, timeState };
+}
 
+function buildStarMapControlsProps(options: {
+  azimuthDeg: number;
+  drawerFeature: ReturnType<typeof useStellariumDrawerFeature>;
+  handleSetAzimuth: (azimuthDeg: number) => void;
+  insets: ReturnType<typeof useSafeAreaInsets>;
+  nightMode: boolean;
+  search: ReturnType<typeof useStarMapSearch>;
+  setDrawerOpen: (open: boolean) => void;
+  setNightMode: React.Dispatch<React.SetStateAction<boolean>>;
+  skyLayers: typeof DEFAULT_SKY_LAYERS;
+  timeState: ReturnType<typeof useInteractiveClock>;
+  toggleSkyLayer: (key: SkyLayerKey) => void;
+  updateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
+}): StarMapOverlayControlsProps {
+  const { azimuthDeg, drawerFeature, handleSetAzimuth, insets, nightMode, search, setDrawerOpen, setNightMode, skyLayers, timeState, toggleSkyLayer, updateSkyLayers } = options;
+  return {
+    azimuthDeg,
+    clock: timeState.clock,
+    environment: drawerFeature.environment,
+    gridLines: drawerFeature.gridLines,
+    insets,
+    isCustomTime: timeState.isCustomTime,
+    landscapeId: drawerFeature.landscapeId,
+    nightMode,
+    onCloseTimePanel: timeState.closeTimePanel,
+    onOpenMenu: () => {
+      timeState.closeTimePanel();
+      setDrawerOpen(true);
+    },
+    onOpenSearch: () => {
+      timeState.closeTimePanel();
+      search.openSearch(() => setDrawerOpen(false));
+    },
+    onReturnToNow: timeState.returnToNow,
+    onSelectLandscape: drawerFeature.selectLandscape,
+    onSetAzimuth: handleSetAzimuth,
+    onToggleGridLine: drawerFeature.toggleGridLine,
+    onToggleNightMode: () => setNightMode(value => !value),
+    onToggleSkyLayer: toggleSkyLayer,
+    onToggleTimePanel: timeState.toggleTimePanel,
+    onUpdateEnvironment: drawerFeature.updateEnvironment,
+    onUpdateGridLines: drawerFeature.updateGridLines,
+    onUpdateSkyLayers: updateSkyLayers,
+    onUpdateTime: timeState.updateTime,
+    playback: { isPlaying: timeState.isPlaying, onSelectSpeed: timeState.setPlaybackSpeed, onTogglePlayback: timeState.togglePlayback, playbackSpeed: timeState.playbackSpeed },
+    skyLayers,
+    timePanelOpen: timeState.timePanelOpen,
+  };
+}
+
+export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps): React.ReactElement {
+  const insets = useSafeAreaInsets();
+  const stellaRef = React.useRef<StellariumViewHandle>(null);
+  const { azimuthDeg, handleSetAzimuth, setAzimuthDeg } = useAzimuthController(stellaRef);
+  // Read once per visit: the archive is the starting point, never re-read later.
+  const [initialPreferences] = React.useState(() => readViewPreferences(storage, VIEW_PREFERENCE_DEFAULTS));
+  const [currentCulture, setCurrentCulture] = React.useState(initialPreferences.currentCulture);
+  const selection = useDeepSpaceSelection();
+  const drawerFeature = useStellariumDrawerFeature({ currentCulture, initialPreferences, setCurrentCulture, stellaRef });
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [nightMode, setNightMode] = React.useState(initialPreferences.nightMode);
+  const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(stellaRef, initialPreferences.skyLayers);
+  const { compassFollowing, stopCompassFollowing, toggleCompassFollowing } = useCompassFollowing(stellaRef);
+  const { handleEngineReady, search, settings, timeState } = useStarMapObservation(stellaRef, {
+    currentCulture,
+    drawerFeature,
+    drawerOpen,
+    selection,
+    skyLayers,
+    stopCompassFollowing,
+  });
+  const { handleCenterObject, handleResetAll, handleViewStateChange } = useDeepSpaceViewArchive({
+    currentCulture,
+    drawerFeature,
+    nightMode,
+    setCurrentCulture,
+    setNightMode,
+    settings,
+    skyLayers,
+    stellaRef,
+    stopCompassFollowing,
+    updateSkyLayers,
+  });
+  useDeepSpaceFullscreenSync(settings.fullscreen);
+
+  const controlsProps = buildStarMapControlsProps({
+    azimuthDeg,
+    drawerFeature,
+    handleSetAzimuth,
+    insets,
+    nightMode,
+    search,
+    setDrawerOpen,
+    setNightMode,
+    skyLayers,
+    timeState,
+    toggleSkyLayer,
+    updateSkyLayers,
+  });
   const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selection.selectedObject;
 
   return (
@@ -1989,47 +2424,20 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         style={styles.webView}
         onBearingChange={setAzimuthDeg}
         onReady={handleEngineReady}
-        onCommandError={() => search.setError(true)}
+        onCommandError={() => showDeepSpaceFeedback({ message: translate('deep_space.operation_failed'), tone: 'danger' })}
         onObjectSelected={selection.handleObjectSelected}
         onSelectionCleared={selection.clearSelection}
         onTargetFound={search.closeSearch}
-        onTargetNotFound={() => search.setError(true)}
+        onTargetNotFound={() => {
+          search.setPending(false);
+          search.setError(true);
+        }}
+        onViewStateChange={handleViewStateChange}
       />
       {drawerFeature.fieldOfView && <FieldOfViewOverlay input={drawerFeature.fieldOfView} stellaRef={stellaRef} />}
       {nightMode && <View pointerEvents="none" style={styles.nightModeOverlay} testID="deep-space-night-mode-overlay" />}
       <ActiveStarMapControls
-        controlsProps={{
-          azimuthDeg,
-          clock: timeState.clock,
-          environment: drawerFeature.environment,
-          gridLines: drawerFeature.gridLines,
-          insets,
-          isCustomTime: timeState.isCustomTime,
-          landscapeId: drawerFeature.landscapeId,
-          nightMode,
-          onCloseTimePanel: timeState.closeTimePanel,
-          onOpenMenu: () => {
-            timeState.closeTimePanel();
-            setDrawerOpen(true);
-          },
-          onOpenSearch: () => {
-            timeState.closeTimePanel();
-            search.openSearch(() => setDrawerOpen(false));
-          },
-          onReturnToNow: timeState.returnToNow,
-          onSelectLandscape: drawerFeature.selectLandscape,
-          onSetAzimuth: handleSetAzimuth,
-          onToggleGridLine: drawerFeature.toggleGridLine,
-          onToggleNightMode: () => setNightMode(value => !value),
-          onToggleSkyLayer: toggleSkyLayer,
-          onToggleTimePanel: timeState.toggleTimePanel,
-          onUpdateEnvironment: drawerFeature.updateEnvironment,
-          onUpdateGridLines: drawerFeature.updateGridLines,
-          onUpdateSkyLayers: updateSkyLayers,
-          onUpdateTime: timeState.updateTime,
-          skyLayers,
-          timePanelOpen: timeState.timePanelOpen,
-        }}
+        controlsProps={controlsProps}
         fullscreen={settings.fullscreen}
         insetsTop={insets.top}
         onExitFullscreen={() => settings.setFullscreen(false)}
@@ -2041,9 +2449,13 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         drawerFeature={drawerFeature}
         drawerOpen={drawerOpen}
         insetsBottom={insets.bottom}
-        recentObjects={selection.recentObjects}
+        nightMode={nightMode}
+        onCenterObject={handleCenterObject}
+        onClearRecentHistory={selection.clearRecentHistory}
+        onRemoveRecentHistoryItem={selection.removeRecentHistoryItem}
         onResetAll={handleResetAll}
         onToggleCompassFollowing={toggleCompassFollowing}
+        recentObjects={selection.recentObjects}
         search={search}
         selectedObject={selection.selectedObject}
         setCurrentCulture={setCurrentCulture}
@@ -3082,59 +3494,6 @@ function SettingsPanel({
   );
 }
 
-function ReferenceSearchSheet({ error, onChange, onClose, onSelectRecent, onSubmit, query, recentObjects }: ReferenceSearchSheetProps) {
-  return (
-    <View testID="deep-space-reference-search-sheet" style={styles.searchOverlay}>
-      <Pressable accessibilityLabel={translate('deep_space.search')} accessibilityRole="button" onPress={onClose} style={styles.searchScrim} />
-      <View style={styles.searchSheet}>
-        <View style={styles.searchBar}>
-          <Pressable accessibilityLabel={translate('deep_space.menu')} accessibilityRole="button" onPress={onClose} style={styles.searchBack}>
-            <Text style={styles.searchBackText}>‹</Text>
-          </Pressable>
-          <TextInput
-            accessibilityLabel={translate('deep_space.search')}
-            autoFocus
-            onChangeText={onChange}
-            onSubmitEditing={onSubmit}
-            placeholder={translate('deep_space.search_placeholder')}
-            placeholderTextColor={OVERLAY.muted}
-            returnKeyType="search"
-            style={styles.searchInput}
-            testID="deep-space-map-search-input"
-            value={query}
-          />
-          <Pressable accessibilityLabel={translate('deep_space.search')} accessibilityRole="button" onPress={onSubmit} style={styles.searchSubmit} testID="deep-space-map-search-submit">
-            <SearchIcon color={OVERLAY.text} size={24} />
-          </Pressable>
-        </View>
-        {error && (
-          <Text testID="deep-space-map-search-error" style={styles.searchError}>
-            {translate('deep_space.search_not_found')}
-          </Text>
-        )}
-        {!query && recentObjects && recentObjects.length > 0 && (
-          <View style={styles.searchRecentList}>
-            <Text style={styles.searchRecentTitle}>{translate('deep_space.recent_objects')}</Text>
-            {recentObjects.map(object => (
-              <Pressable
-                accessibilityLabel={object.name}
-                accessibilityRole="button"
-                key={object.id}
-                onPress={() => onSelectRecent(object)}
-                style={styles.searchRecentRow}
-                testID={`deep-space-search-recent-${object.id}`}
-              >
-                <Text style={styles.searchRecentName}>{object.name}</Text>
-                {object.typeZh && <Text style={styles.searchRecentType}>{object.typeZh}</Text>}
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </View>
-    </View>
-  );
-}
-
 const AZIMUTH_PRESETS = [
   { deg: 0, labelKey: 'deep_space.compass_preset_north' as const },
   { deg: 90, labelKey: 'deep_space.compass_preset_east' as const },
@@ -3567,22 +3926,21 @@ function TimeSliderHeader({
   );
 }
 
-const TIME_PLAYBACK_SPEEDS = [1, 10, 60, 600] as const;
-type TimePlaybackSpeed = (typeof TIME_PLAYBACK_SPEEDS)[number];
+type TimePlaybackProps = {
+  isPlaying: boolean;
+  onSelectSpeed: (speed: TimePlaybackSpeed) => void;
+  onTogglePlayback: () => void;
+  playbackSpeed: TimePlaybackSpeed;
+};
 
 function TimePlaybackControls({
   isPlaying,
   onSelectSpeed,
   onTogglePlayback,
   playbackSpeed,
-}: {
-  isPlaying: boolean;
-  onSelectSpeed: (speed: TimePlaybackSpeed) => void;
-  onTogglePlayback: () => void;
-  playbackSpeed: TimePlaybackSpeed;
-}) {
+}: TimePlaybackProps) {
   return (
-    <View style={styles.timePlaybackRow}>
+    <View style={styles.timePlaybackRow} testID="deep-space-time-playback-controls">
       <Pressable
         accessibilityLabel={isPlaying ? translate('deep_space.time_panel.pause') : translate('deep_space.time_panel.play')}
         accessibilityRole="button"
@@ -3647,6 +4005,7 @@ function TimeSliderSheet({
   onClose,
   onReturnToNow,
   onUpdateTime,
+  playback,
 }: {
   clock: Date;
   insetsBottom: number;
@@ -3654,29 +4013,9 @@ function TimeSliderSheet({
   onClose: () => void;
   onReturnToNow: () => void;
   onUpdateTime: (date: Date) => void;
+  playback: TimePlaybackProps;
 }) {
-  const [isPlaying, setIsPlaying] = React.useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = React.useState<TimePlaybackSpeed>(1);
   const minutesOfDay = clock.getHours() * 60 + clock.getMinutes();
-
-  React.useEffect(() => {
-    if (!isPlaying) {
-      return undefined;
-    }
-
-    const interval = globalThis.setInterval(() => {
-      const next = new Date(clock);
-      next.setSeconds(next.getSeconds() + playbackSpeed);
-      onUpdateTime(next);
-    }, 1000);
-
-    return () => globalThis.clearInterval(interval);
-  }, [clock, isPlaying, onUpdateTime, playbackSpeed]);
-
-  const handleReturnToNow = () => {
-    setIsPlaying(false);
-    onReturnToNow();
-  };
 
   const handleStepDate = (deltaDays: number) => {
     const next = new Date(clock);
@@ -3704,18 +4043,13 @@ function TimeSliderSheet({
           clock={clock}
           isCustomTime={isCustomTime}
           onClose={onClose}
-          onReturnToNow={handleReturnToNow}
+          onReturnToNow={onReturnToNow}
           onStepDate={handleStepDate}
         />
 
         <TimeHourControls onStepHour={handleStepHour} />
 
-        <TimePlaybackControls
-          isPlaying={isPlaying}
-          onSelectSpeed={setPlaybackSpeed}
-          onTogglePlayback={() => setIsPlaying(value => !value)}
-          playbackSpeed={playbackSpeed}
-        />
+        <TimePlaybackControls {...playback} />
 
         <TimeSliderTrack minutesOfDay={minutesOfDay} onMinutesChange={handleMinuteChange} />
 
@@ -4053,6 +4387,7 @@ const styles = StyleSheet.create({
   timePlaybackRow: {
     alignItems: 'center',
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
     marginBottom: 6,
   },
@@ -5025,6 +5360,7 @@ const styles = StyleSheet.create({
   },
   searchOverlay: {
     ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
   },
   glossaryRegion: {
     color: OVERLAY.muted,
@@ -5440,22 +5776,32 @@ const styles = StyleSheet.create({
     width: 22,
   },
   searchSheet: {
-    backgroundColor: 'rgba(15, 17, 20, 0.96)',
-    borderBottomColor: OVERLAY.hairline,
+    backgroundColor: '#11141A',
+    borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
     borderBottomWidth: 1,
-    paddingHorizontal: 14,
-    paddingTop: 14,
+    elevation: 20,
+    maxHeight: '86%',
+    paddingBottom: 14,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    shadowColor: '#000000',
+    shadowOffset: { height: 10, width: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    zIndex: 10000,
   },
   searchBar: {
     alignItems: 'center',
     flexDirection: 'row',
-    minHeight: 56,
+    minHeight: 52,
   },
   searchBack: {
     alignItems: 'center',
     height: 44,
     justifyContent: 'center',
-    width: 44,
+    width: 36,
   },
   searchBackText: {
     color: OVERLAY.text,
@@ -5466,19 +5812,258 @@ const styles = StyleSheet.create({
   searchInput: {
     color: OVERLAY.text,
     flex: 1,
-    fontSize: 18,
-    paddingHorizontal: 12,
+    fontSize: 16,
+    paddingHorizontal: 10,
+  },
+  searchClearBtn: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 12,
+    height: 24,
+    justifyContent: 'center',
+    marginRight: 6,
+    width: 24,
+  },
+  searchClearBtnText: {
+    color: 'rgba(255, 255, 255, 0.75)',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   searchSubmit: {
     alignItems: 'center',
     height: 44,
     justifyContent: 'center',
-    width: 44,
+    width: 40,
   },
   searchError: {
     color: OVERLAY.warning,
     fontSize: 13,
-    paddingBottom: 12,
+    paddingBottom: 8,
+    paddingHorizontal: 6,
+  },
+  searchCategoryBar: {
+    marginVertical: 10,
+  },
+  searchCategoryScroll: {
+    gap: 8,
+    paddingHorizontal: 2,
+  },
+  searchCategoryPill: {
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
+  },
+  searchCategoryPillActive: {
+    backgroundColor: '#2563EB',
+    borderColor: '#3B82F6',
+  },
+  searchCategoryText: {
+    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  searchCategoryTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  searchResultsContainer: {
+    maxHeight: 380,
+  },
+  searchResultsContent: {
+    paddingBottom: 16,
+  },
+  searchResultsCount: {
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  searchResultRow: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: 'rgba(255, 255, 255, 0.07)',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    marginBottom: 8,
     paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  searchCategoryBadge: {
+    alignItems: 'center',
+    borderRadius: 6,
+    flexDirection: 'row',
+    marginRight: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  searchCategoryDot: {
+    borderRadius: 3,
+    height: 6,
+    marginRight: 4,
+    width: 6,
+  },
+  searchCategoryBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  searchResultMain: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  searchResultTitleRow: {
+    alignItems: 'baseline',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  searchResultPrimary: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  searchResultSecondary: {
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 13,
+  },
+  searchResultSubRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 2,
+  },
+  searchResultDesignation: {
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 11,
+  },
+  searchResultConstellation: {
+    color: '#93C5FD',
+    fontSize: 11,
+  },
+  searchResultMag: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  searchResultMagText: {
+    color: '#FCD34D',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  searchNoResultBox: {
+    alignItems: 'center',
+    paddingVertical: 24,
+  },
+  searchNoResultText: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  searchDirectSubmitBtn: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderColor: '#3B82F6',
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  searchDirectSubmitText: {
+    color: '#93C5FD',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  searchRecentSection: {
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopWidth: 1,
+    paddingTop: 10,
+  },
+  searchSectionHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  searchSectionTitle: {
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  searchClearHistoryBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  searchClearHistoryText: {
+    color: '#93C5FD',
+    fontSize: 12,
+  },
+  searchRecentChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  searchRecentChip: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  searchRecentChipName: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  searchRecentChipType: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11,
+  },
+  searchPopularSection: {
+    marginTop: 14,
+  },
+  searchPopularGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  searchPopularCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 10,
+    borderWidth: 1,
+    flexBasis: '31%',
+    flexGrow: 1,
+    padding: 8,
+  },
+  searchPopularBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 4,
+    flexDirection: 'row',
+    marginBottom: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  searchPopularCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  searchPopularCardSub: {
+    color: 'rgba(255, 255, 255, 0.45)',
+    fontSize: 11,
+    marginTop: 2,
   },
 });

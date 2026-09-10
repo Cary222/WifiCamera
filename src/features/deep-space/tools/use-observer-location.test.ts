@@ -1,6 +1,8 @@
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import { act, renderHook } from '@testing-library/react-native';
 import * as Location from 'expo-location';
+import { storage } from '@/lib/storage';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 import { useObserverLocation } from './use-observer-location';
 
 jest.mock('expo-location', () => ({
@@ -133,6 +135,122 @@ describe('useObserverLocation manual controls', () => {
       source: 'manual',
     });
     expect(mockSetLocation).toHaveBeenLastCalledWith(24.87, 118.68);
+  });
+});
+
+describe('useObserverLocation restoration and permission safety', () => {
+  const setLocation = jest.fn();
+  const stellaRef = { current: { setLocation } as unknown as StellariumViewHandle };
+  const manual = { altitudeM: 42, latitudeDeg: 0, longitudeDeg: 0, name: 'Manual', source: 'manual' };
+
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(() => jest.restoreAllMocks());
+
+  it('persists the chosen observer and restores it without asking for location access', () => {
+    const { result, unmount } = renderHook(() => useObserverLocation(stellaRef));
+    act(() => result.current.setManualObserver(manual));
+    expect(storage.set).toHaveBeenLastCalledWith(STORAGE_KEYS.DEEP_SPACE_SETTINGS_OBSERVER, JSON.stringify(manual));
+    unmount();
+    jest.spyOn(storage, 'getString').mockReturnValue(JSON.stringify(manual));
+    const { result: restored } = renderHook(() => useObserverLocation(stellaRef));
+    expect(restored.current.observer).toEqual(manual);
+    expect(restored.current.automaticLocation).toBe(false);
+    expect(Location.requestForegroundPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('keeps the manual observer and editable controls after permission denial', async () => {
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: false } as Response);
+    (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'denied' });
+    const { result } = renderHook(() => useObserverLocation(stellaRef));
+    act(() => result.current.setManualObserver(manual));
+    await act(async () => result.current.enableAutomaticLocation());
+    expect(result.current.automaticLocation).toBe(false);
+    expect(result.current.observer).toEqual(manual);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    act(() => result.current.setManualCoordinate(1, 2));
+    expect(setLocation).toHaveBeenLastCalledWith(1, 2);
+  });
+
+  it('ignores GPS responses after a manual choice and removes the late subscription', async () => {
+    let resolveWatch: (value: Location.LocationSubscription) => void = () => {};
+    const remove = jest.fn();
+    (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'granted' });
+    (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValueOnce({ coords: { latitude: 34.2, longitude: 108.94 } });
+    (Location.watchPositionAsync as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => {
+      resolveWatch = resolve;
+    }));
+    const { result, unmount } = renderHook(() => useObserverLocation(stellaRef));
+    let enabling: Promise<void>;
+    await act(async () => {
+      enabling = result.current.enableAutomaticLocation();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => result.current.setManualObserver(manual));
+    await act(async () => {
+      resolveWatch({ remove });
+      await enabling;
+    });
+    expect(result.current.observer).toEqual(manual);
+    expect(remove).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the GeoIP timeout even when fetch rejects', async () => {
+    jest.useFakeTimers();
+    try {
+      (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'granted' });
+      (Location.getCurrentPositionAsync as jest.Mock).mockRejectedValueOnce(new Error('GPS unavailable'));
+      jest.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('offline'));
+      const { result, unmount } = renderHook(() => useObserverLocation(stellaRef));
+      await act(async () => result.current.enableAutomaticLocation());
+      expect(result.current.automaticLocation).toBe(false);
+      unmount();
+      // React's async act queues its own microtask; drain it without advancing timers.
+      act(() => jest.runAllTicks());
+      expect(jest.getTimerCount()).toBe(0);
+    }
+    finally {
+      jest.useRealTimers();
+    }
+  });
+});
+
+describe('useObserverLocation pending GeoIP cleanup', () => {
+  it('aborts a pending GeoIP request and clears its timer when unmounted', async () => {
+    jest.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const fetchSpy = jest.spyOn(globalThis, 'fetch').mockImplementation((_url, options) => {
+      signal = options?.signal ?? undefined;
+      return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('aborted'))));
+    });
+    try {
+      (Location.requestForegroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'granted' });
+      (Location.getCurrentPositionAsync as jest.Mock).mockRejectedValueOnce(new Error('GPS unavailable'));
+      const stellaRef = { current: { setLocation: jest.fn() } as unknown as StellariumViewHandle };
+      const { result, unmount } = renderHook(() => useObserverLocation(stellaRef));
+      let enabling: Promise<void> | undefined;
+      await act(async () => {
+        enabling = result.current.enableAutomaticLocation();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(signal).toBeDefined();
+      unmount();
+      const wasAborted = signal?.aborted;
+      // Settle the intentionally held request even on the red run.
+      if (!wasAborted)
+        act(() => jest.advanceTimersByTime(4000));
+      await act(async () => enabling);
+      act(() => jest.runAllTicks());
+      expect(wasAborted).toBe(true);
+      expect(jest.getTimerCount()).toBe(0);
+    }
+    finally {
+      fetchSpy.mockRestore();
+      jest.useRealTimers();
+    }
   });
 });
 

@@ -1,9 +1,38 @@
+import type { StellariumEnvironment, StellariumGridLines, StellariumSkyLayers } from '@/features/stellarium/stellarium-service';
 import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
 import * as React from 'react';
 import { storage } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 export type StartTimePolicy = 'now' | 'last_view';
+
+export type RestorableSkyContext = {
+  clock: Date;
+  observer: { latitudeDeg: number; longitudeDeg: number };
+  currentCulture: string;
+  landscapeId: string;
+  skyLayers: StellariumSkyLayers;
+  environment: StellariumEnvironment;
+  gridLines: StellariumGridLines;
+  brightness: number;
+  limitMagEnabled: boolean;
+  limitMagValue: number;
+};
+
+/** Replay only durable observing values, never search, focus or permission commands. */
+export function restoreStellariumContext(engine: StellariumViewHandle | null, context: RestorableSkyContext) {
+  if (!engine)
+    return;
+  engine.setTime(context.clock);
+  engine.setLocation(context.observer.latitudeDeg, context.observer.longitudeDeg);
+  engine.setSkyCulture(context.currentCulture);
+  engine.setLandscape(context.landscapeId);
+  engine.setSkyLayers(context.skyLayers);
+  engine.setEnvironment(context.environment);
+  engine.setGridLines(context.gridLines);
+  engine.setBrightness(context.brightness);
+  engine.setMagnitudeLimit(context.limitMagEnabled ? context.limitMagValue : 99);
+}
 
 export const DEFAULT_SETTINGS = {
   brightness: 1.0,

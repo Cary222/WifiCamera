@@ -2,6 +2,8 @@ import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view
 import * as Location from 'expo-location';
 import * as React from 'react';
 import { translate } from '@/lib/i18n';
+import { storage } from '@/lib/storage';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 export type ObserverLocation = {
   altitudeM?: number;
@@ -20,6 +22,28 @@ export const DEFAULT_OBSERVER_LOCATION: ObserverLocation = {
   name: '北京',
   source: 'manual',
 };
+
+function isValidObserver(value: unknown): value is ObserverLocation {
+  if (!value || typeof value !== 'object')
+    return false;
+  const next = value as ObserverLocation;
+  return Number.isFinite(next.latitudeDeg) && Math.abs(next.latitudeDeg) <= 90
+    && Number.isFinite(next.longitudeDeg) && Math.abs(next.longitudeDeg) <= 180
+    && typeof next.name === 'string'
+    && (next.source === 'automatic' || next.source === 'manual')
+    && (next.altitudeM === undefined || Number.isFinite(next.altitudeM));
+}
+
+function loadObserver(): ObserverLocation {
+  try {
+    const saved = storage.getString(STORAGE_KEYS.DEEP_SPACE_SETTINGS_OBSERVER);
+    const observer: unknown = saved ? JSON.parse(saved) : null;
+    if (isValidObserver(observer))
+      return observer;
+  }
+  catch { /* Ignore damaged storage rather than moving the observer to invalid coordinates. */ }
+  return DEFAULT_OBSERVER_LOCATION;
+}
 
 async function resolveGeocodeName(latitude: number, longitude: number): Promise<string | null> {
   try {
@@ -44,14 +68,12 @@ async function resolveGeocodeName(latitude: number, longitude: number): Promise<
  * Stellarium's official GeoIP fallback service:
  * Used by Stellarium when device GPS / Google Play Services are unavailable
  */
-async function fetchStellariumGeoIpLocation(): Promise<ObserverLocation | null> {
+async function fetchStellariumGeoIpLocation(controller: AbortController): Promise<ObserverLocation | null> {
+  const timer = setTimeout(() => controller.abort(), 4000);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
     const res = await fetch('https://freegeoip.stellarium.org/json/', {
       signal: controller.signal,
     });
-    clearTimeout(timer);
     if (res.ok) {
       const data = await res.json();
       if (typeof data.latitude === 'number' && typeof data.longitude === 'number') {
@@ -67,7 +89,10 @@ async function fetchStellariumGeoIpLocation(): Promise<ObserverLocation | null> 
     }
   }
   catch {
-    // ignore
+    // GPS fallback can fail offline; retain the chosen observer.
+  }
+  finally {
+    clearTimeout(timer);
   }
   return null;
 }
@@ -84,10 +109,13 @@ function observerFromCoordinates(coords: Location.LocationObjectCoords, name = '
 
 async function startGpsTracking(
   onUpdate: (obs: ObserverLocation) => void,
+  isCurrent: () => boolean,
 ): Promise<Location.LocationSubscription | null> {
   const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
   const geocodedName = await resolveGeocodeName(position.coords.latitude, position.coords.longitude);
   const initialName = geocodedName ?? '当前位置';
+  if (!isCurrent())
+    return null;
   onUpdate(observerFromCoordinates(position.coords, initialName));
 
   return Location.watchPositionAsync(
@@ -103,21 +131,61 @@ async function startGpsTracking(
   );
 }
 
+async function resolveAutomaticObserver(onUpdate: (obs: ObserverLocation) => void, isCurrent: () => boolean, controller: AbortController) {
+  const permission = await Location.requestForegroundPermissionsAsync();
+  if (!isCurrent() || permission.status !== Location.PermissionStatus.GRANTED)
+    return null;
+  try {
+    if (typeof Location.getLastKnownPositionAsync === 'function') {
+      const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+      if (lastKnown?.coords)
+        onUpdate(observerFromCoordinates(lastKnown.coords));
+    }
+    if (!isCurrent())
+      return null;
+    const subscription = await startGpsTracking(onUpdate, isCurrent);
+    return { subscription };
+  }
+  catch {
+    if (!isCurrent())
+      return null;
+    const geoObserver = await fetchStellariumGeoIpLocation(controller);
+    if (geoObserver && isValidObserver(geoObserver)) {
+      onUpdate(geoObserver);
+      return { subscription: null };
+    }
+    return null;
+  }
+}
+
 export function useObserverLocation(stellaRef: React.RefObject<StellariumViewHandle | null>) {
   const subscription = React.useRef<Location.LocationSubscription | null>(null);
+  const session = React.useRef(0);
+  const requestController = React.useRef<AbortController | null>(null);
+  const automaticActive = React.useRef(false);
   const [automaticLocation, setAutomaticLocation] = React.useState(false);
-  const [observer, setObserver] = React.useState<ObserverLocation>(DEFAULT_OBSERVER_LOCATION);
+  const [observer, setObserver] = React.useState(loadObserver);
 
   const applyObserver = React.useCallback((next: ObserverLocation) => {
+    if (!isValidObserver(next))
+      return;
     setObserver(next);
+    storage.set(STORAGE_KEYS.DEEP_SPACE_SETTINGS_OBSERVER, JSON.stringify(next));
     stellaRef.current?.setLocation?.(next.latitudeDeg, next.longitudeDeg);
   }, [stellaRef]);
 
-  const stopAutomaticLocation = React.useCallback(() => {
+  const clearAutomaticLocation = React.useCallback(() => {
+    session.current += 1;
+    automaticActive.current = false;
+    requestController.current?.abort();
+    requestController.current = null;
     subscription.current?.remove();
     subscription.current = null;
-    setAutomaticLocation(false);
   }, []);
+  const stopAutomaticLocation = React.useCallback(() => {
+    clearAutomaticLocation();
+    setAutomaticLocation(false);
+  }, [clearAutomaticLocation]);
 
   const setManualObserver = React.useCallback((next: ManualObserverLocation) => {
     stopAutomaticLocation();
@@ -134,30 +202,28 @@ export function useObserverLocation(stellaRef: React.RefObject<StellariumViewHan
   }, [observer.altitudeM, observer.name, setManualObserver]);
 
   const enableAutomaticLocation = React.useCallback(async () => {
-    if (automaticLocation)
+    if (automaticActive.current)
       return;
+    automaticActive.current = true;
+    const request = ++session.current;
+    const isCurrent = () => request === session.current;
+    const controller = new AbortController();
+    requestController.current = controller;
     setAutomaticLocation(true);
-
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status === Location.PermissionStatus.GRANTED) {
-        if (typeof Location.getLastKnownPositionAsync === 'function') {
-          const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
-          if (lastKnown?.coords)
-            applyObserver(observerFromCoordinates(lastKnown.coords, '当前位置'));
-        }
-        subscription.current = await startGpsTracking(applyObserver);
-        return;
-      }
+    const result = await resolveAutomaticObserver((next) => {
+      if (isCurrent())
+        applyObserver(next);
+    }, isCurrent, controller).catch(() => null);
+    if (!isCurrent()) {
+      result?.subscription?.remove();
+      return;
     }
-    catch {
-      // ignore GPS failure and run GeoIP
+    if (!result) {
+      stopAutomaticLocation();
+      return;
     }
-
-    const geoObs = await fetchStellariumGeoIpLocation();
-    if (geoObs)
-      applyObserver(geoObs);
-  }, [applyObserver, automaticLocation]);
+    subscription.current = result.subscription;
+  }, [applyObserver, stopAutomaticLocation]);
 
   const toggleAutomaticLocation = React.useCallback(async () => {
     if (automaticLocation) {
@@ -168,7 +234,7 @@ export function useObserverLocation(stellaRef: React.RefObject<StellariumViewHan
     }
   }, [automaticLocation, enableAutomaticLocation, stopAutomaticLocation]);
 
-  React.useEffect(() => stopAutomaticLocation, [stopAutomaticLocation]);
+  React.useEffect(() => clearAutomaticLocation, [clearAutomaticLocation]);
 
   return {
     automaticLocation,
