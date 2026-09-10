@@ -126,8 +126,10 @@ export function selectApk({ apk, metadata, buildDir }) {
   return requireFile(unique[0], 'APK');
 }
 
-async function assemble(context, temporary) {
+async function assemble(context, temporary, options = {}) {
   const { root, run, env } = context;
+  if (options.arch && !/^[\w,-]+$/.test(options.arch))
+    throw new Error(`Invalid architecture filter: ${options.arch}`);
   const infoFile = path.join(temporary, 'gradle-output.json');
   const initScript = path.join(temporary, 'embedded-output.gradle');
   writeFileSync(initScript, `
@@ -143,11 +145,12 @@ async function assemble(context, temporary) {
   const javaHome = env.JAVA_HOME?.replace(/^"|"$/g, '').trim();
   const java = javaHome ? path.join(javaHome, 'bin', process.platform === 'win32' ? 'java.exe' : 'java') : 'java';
   const wrapper = requireFile(path.join(root, 'android/gradle/wrapper/gradle-wrapper.jar'), 'Gradle wrapper');
+  const archArgs = options.arch ? [`-PreactNativeArchitectures=${options.arch}`] : [];
   // Invoke the same wrapper JAR as gradlew.bat; avoid cmd quoting/encoding entirely.
   await run({
     label: 'gradle',
     command: java,
-    args: ['-Xmx64m', '-jar', wrapper, ':app:assembleDebug', '--init-script', initScript],
+    args: ['-Xmx64m', '-jar', wrapper, ':app:assembleDebug', '--init-script', initScript, ...archArgs],
     cwd: path.join(root, 'android'),
     env: { ...env, WIFICAMERA_BUILD_INFO: infoFile },
   });
@@ -172,7 +175,7 @@ export async function buildAndroidEmbedded(options = {}, { run = runCommand } = 
     await nodeStep('verify-mirror', 'verify-stellar-sync.mjs', ['--root', root]);
     const expected = path.join(temporary, 'expected.json');
     writeJsonAtomic(expected, embeddedSnapshot(root));
-    const infoFile = await assemble(context, temporary);
+    const infoFile = await assemble(context, temporary, options);
     const buildDir = options.buildDir ?? (options.apk || options.metadata ? undefined : JSON.parse(readFileSync(requireFile(infoFile, 'Gradle buildDir metadata'), 'utf8')).buildDir);
     if (!options.apk && !options.metadata && (typeof buildDir !== 'string' || !path.isAbsolute(buildDir)))
       throw new Error('Gradle did not report an absolute buildDir');
@@ -198,10 +201,11 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       'metadata': { type: 'string' },
       'build-dir': { type: 'string' },
       'receipt': { type: 'string' },
+      'arch': { type: 'string' },
       'help': { type: 'boolean' },
     } });
     if (values.help)
-      console.log('Build an embedded debug APK (never installs). Options: --root <project>, --apk <file>, --metadata <output-metadata.json>, --build-dir <metadata search directory>, --receipt <file>. Conflicts require explicit resolution with sync:stellar; this command never forces sync.');
+      console.log('Build an embedded debug APK (never installs). Options: --root <project>, --apk <file>, --metadata <output-metadata.json>, --build-dir <metadata search directory>, --receipt <file>, --arch <arm64-v8a|armeabi-v7a|x86|x86_64>. Conflicts require explicit resolution with sync:stellar; this command never forces sync.');
     else
       await buildAndroidEmbedded({ ...values, buildDir: values['build-dir'] && path.resolve(values['build-dir']) });
   }

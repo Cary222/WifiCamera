@@ -347,6 +347,15 @@ test('one command exports the configured entry then verifies the metadata-select
   assert.equal(receipt.stellarIndexSha256, hash('original scene'));
 });
 
+test('passes explicit target architecture to Gradle reactNativeArchitectures property', (t) => {
+  const root = buildFixture(t);
+  const result = buildRun(root, { BUILD_OPTIONS: JSON.stringify({ arch: 'arm64-v8a' }) });
+  success(result);
+  const commands = executed(root);
+  const gradle = commands.find(item => item.label === 'gradle');
+  assert.ok(gradle.args.includes('-PreactNativeArchitectures=arm64-v8a'));
+});
+
 for (const [index, stage] of stages.entries()) {
   test(`a real exit 31 at ${stage} stops all following stages`, (t) => {
     const root = buildFixture(t);
@@ -432,13 +441,13 @@ function compositeFixture(t, withApp = true) {
   mkdirSync(wrapperDir, { recursive: true });
   copyFileSync(path.resolve(scripts, '../android/gradle/wrapper/gradle-wrapper.jar'), path.join(wrapperDir, 'gradle-wrapper.jar'));
   copyFileSync(path.resolve(scripts, '../android/gradle/wrapper/gradle-wrapper.properties'), path.join(wrapperDir, 'gradle-wrapper.properties'));
-  writeFileSync(path.join(root, 'settings.gradle'), `rootProject.name = 'fixture-root'\n${withApp ? "include ':app'\n" : ''}includeBuild 'included'\n`);
+  writeFileSync(path.join(root, 'settings.gradle'), `rootProject.name = 'fixture-root'\n${withApp ? 'include \':app\'\n' : ''}includeBuild 'included'\n`);
   if (withApp) {
     mkdirSync(path.join(root, 'app'), { recursive: true });
     writeFileSync(path.join(root, 'app/build.gradle'), '');
   }
   mkdirSync(path.join(root, 'included'), { recursive: true });
-  writeFileSync(path.join(root, 'included/settings.gradle'), "rootProject.name = 'fixture-included'\n");
+  writeFileSync(path.join(root, 'included/settings.gradle'), 'rootProject.name = \'fixture-included\'\n');
   return root;
 }
 
@@ -464,8 +473,10 @@ test('generated embedded-output.gradle safely handles included builds without mi
         return api.runCommand(spec);
       },
     });
-  } catch (error) {
-    if (error.message !== 'INIT_SCRIPT_CAPTURED') throw error;
+  }
+  catch (error) {
+    if (error.message !== 'INIT_SCRIPT_CAPTURED')
+      throw error;
   }
   assert.ok(existsSync(capturedScript), 'captured generated init script must exist');
 
@@ -492,4 +503,3 @@ test('generated embedded-output.gradle safely handles included builds without mi
   assert.notEqual(missingResult.status, 0, 'build without :app must fail');
   assert.match(missingResult.stderr, /Missing :app project/);
 });
-
