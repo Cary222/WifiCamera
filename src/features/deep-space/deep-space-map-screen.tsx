@@ -43,7 +43,7 @@ import { CityPickerModal, CoordinateInputDialog } from './ui/location-modals';
 import { LocationWorldMap } from './ui/location-world-map';
 
 const DEFAULT_SKY_LAYERS: Required<StellariumSkyLayers> = {
-  atmosphere: true,
+  atmosphere: false,
   constellationArt: true,
   constellationBoundaries: false,
   constellationLabels: true,
@@ -184,7 +184,7 @@ const DEFAULT_BORTLE_INDEX = 1;
 const DEFAULT_ENVIRONMENT = {
   bortleIndex: DEFAULT_BORTLE_INDEX,
   cardinals: true,
-  fog: true,
+  fog: false,
   turbidity: DEFAULT_TURBIDITY,
 };
 
@@ -1234,8 +1234,8 @@ function getAtmosphereControl({
     label: translate('deep_space.atmosphere_panel.label'),
     onPress: () => onToggleSkyLayer('atmosphere'),
     onReset: () => {
-      onUpdateSkyLayers({ atmosphere: true });
-      onUpdateEnvironment({ bortleIndex: DEFAULT_BORTLE_INDEX, fog: false, turbidity: DEFAULT_TURBIDITY });
+      onUpdateSkyLayers({ atmosphere: DEFAULT_SKY_LAYERS.atmosphere });
+      onUpdateEnvironment({ bortleIndex: DEFAULT_BORTLE_INDEX, fog: DEFAULT_ENVIRONMENT.fog, turbidity: DEFAULT_TURBIDITY });
     },
     resetLabel: translate('deep_space.atmosphere_panel.reset'),
   };
@@ -1873,7 +1873,6 @@ function SelectedObjectOverlay({
   drawerActive,
   drawerOpen,
   onCenterObject,
-  onGotoTools,
   searchOpen,
   selectedObject,
   setSelectedObject,
@@ -1882,7 +1881,6 @@ function SelectedObjectOverlay({
   drawerActive: boolean;
   drawerOpen: boolean;
   onCenterObject: (object: SelectedCelestialObject) => void;
-  onGotoTools: () => void;
   searchOpen: boolean;
   selectedObject: SelectedCelestialObject | null;
   setSelectedObject: (obj: SelectedCelestialObject | null) => void;
@@ -1899,12 +1897,6 @@ function SelectedObjectOverlay({
       onClose={() => {
         setSelectedObject(null);
         stellaRef.current?.clearSelection?.();
-      }}
-      onGoto={(raHours, decDeg) => {
-        setSelectedObject(null);
-        onGotoTools();
-        stellaRef.current?.gotoRaDec(raHours * 15, decDeg);
-        showDeepSpaceFeedback({ message: translate('deep_space.feedback_telescope_controls'), tone: 'success' });
       }}
       onZoomIn={() => stellaRef.current?.zoomTo(15)}
       onZoomOut={() => stellaRef.current?.zoomTo(75)}
@@ -1991,7 +1983,6 @@ function StarMapModals({
         drawerActive={Boolean(drawerFeature.active)}
         drawerOpen={drawerOpen}
         onCenterObject={onCenterObject}
-        onGotoTools={() => drawerFeature.open('tools')}
         searchOpen={search.open}
         selectedObject={selectedObject}
         setSelectedObject={setSelectedObject}

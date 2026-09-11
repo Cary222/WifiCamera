@@ -90,13 +90,11 @@ export const TRANSPORT_FALLBACK_GRACE_MS = 5_000;
 /** Minimum spacing between probes, so a flapping link cannot spam the board. */
 export const TRANSPORT_PROBE_MIN_INTERVAL_MS = 5_000;
 
-/**
- * Start on the link the user stored. `auto` has no opinion yet, so it begins on
- * USB and lets the first probe move it — starting `auto` on a hardcoded link
- * would make an unprobed guess look like a decision.
- */
-let activeTransport: CameraTransport
-  = readStoredPreference() === 'wifi' ? 'wifi' : 'usb';
+/** Preview testers start on WiFi; saved choices and auto probing remain authoritative. */
+const initialPreference = readStoredPreference();
+let activeTransport: CameraTransport = initialPreference === 'auto'
+  ? (Env.EXPO_PUBLIC_APP_ENV === 'preview' ? 'wifi' : 'usb')
+  : initialPreference;
 
 export function getTransportEndpoints(
   transport: CameraTransport,

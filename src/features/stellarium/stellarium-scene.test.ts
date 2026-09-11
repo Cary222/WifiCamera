@@ -23,7 +23,6 @@ describe('stellarium default scene', () => {
 
     expect(landscapeSource).toBeGreaterThan(-1);
     expect(landscapeSource).toBeLessThan(readySignal);
-    expect(sceneHtml).toContain('core.atmosphere.visible = true;');
     expect(sceneHtml).toContain('core.landscapes.visible = true;');
     expect(sceneHtml).toContain('core.constellations.images_visible = true;');
     expect(sceneHtml).toContain('const horizonDirection = stel.s2c(0, 20 * stel.D2R);');

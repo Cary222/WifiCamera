@@ -27,7 +27,7 @@ const MOCK_STAR = {
 };
 
 function renderObject(overrides: Partial<ObjectInfoSheetProps['object']> = {}) {
-  return render(<ObjectInfoSheet object={{ ...MOCK_STAR, ...overrides }} onCenter={jest.fn()} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={jest.fn()} />);
+  return render(<ObjectInfoSheet object={{ ...MOCK_STAR, ...overrides }} onCenter={jest.fn()} onClose={jest.fn()} onZoomIn={jest.fn()} />);
 }
 
 describe('object info sheet coordinate integrity', () => {
@@ -96,43 +96,22 @@ describe('object info sheet coordinate frame labels', () => {
   });
 });
 
-describe('object info sheet CIRS goto routing', () => {
-  it('uses J2000 coordinates for the ICRF goto interface instead of CIRS coordinates', () => {
-    const onGoto = jest.fn();
-    const object = { ...MOCK_STAR, coordinateFrame: 'CIRS' as const, decDeg: 20, decJ2000Deg: 19.5, raHours: 1.5, raJ2000Hours: 1.25 };
-    render(<ObjectInfoSheet object={object} onCenter={jest.fn()} onClose={jest.fn()} onGoto={onGoto} onZoomIn={jest.fn()} />);
+describe('object info sheet supported actions', () => {
+  it.each<Partial<ObjectInfoSheetProps['object']>>([
+    {},
+    { coordinateFrame: 'CIRS', decJ2000Deg: 19.5, raJ2000Hours: 1.25 },
+    { decDeg: 0, raHours: 0 },
+  ])('does not offer unsupported telescope pointing for coordinates %j', (coordinates) => {
+    renderObject(coordinates);
 
-    fireEvent.press(screen.getByTestId('deep-space-object-goto-btn'));
-    expect(onGoto).toHaveBeenCalledWith(1.25, 19.5);
-    expect(onGoto).toHaveBeenCalledTimes(1);
-  });
-
-  it('retains valid zero J2000 coordinates even when CIRS coordinates are missing', () => {
-    const onGoto = jest.fn();
-    const object = { ...MOCK_STAR, coordinateFrame: 'CIRS' as const, decDeg: null, decJ2000Deg: 0, raHours: null, raJ2000Hours: 0 };
-    render(<ObjectInfoSheet object={object} onCenter={jest.fn()} onClose={jest.fn()} onGoto={onGoto} onZoomIn={jest.fn()} />);
-
-    fireEvent.press(screen.getByTestId('deep-space-object-goto-btn'));
-    expect(onGoto).toHaveBeenCalledWith(0, 0);
-  });
-
-  it.each([null, undefined, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])('does not fall back to CIRS when J2000 right ascension is invalid: %s', (raJ2000Hours) => {
-    renderObject({ coordinateFrame: 'CIRS', decJ2000Deg: 19.5, raJ2000Hours });
     expect(screen.queryByTestId('deep-space-object-goto-btn')).toBeNull();
-  });
-
-  it.each([null, undefined, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -90.001, 90.001])('does not fall back to CIRS when J2000 declination is invalid: %s', (decJ2000Deg) => {
-    renderObject({ coordinateFrame: 'CIRS', decJ2000Deg, raJ2000Hours: 1.25 });
-    expect(screen.queryByTestId('deep-space-object-goto-btn')).toBeNull();
-  });
-
-  it('keeps legacy goto coordinates even when a separate J2000 pair is present', () => {
-    const onGoto = jest.fn();
-    const object = { ...MOCK_STAR, decJ2000Deg: 19.5, raJ2000Hours: 1.25 };
-    render(<ObjectInfoSheet object={object} onCenter={jest.fn()} onClose={jest.fn()} onGoto={onGoto} onZoomIn={jest.fn()} />);
-
-    fireEvent.press(screen.getByTestId('deep-space-object-goto-btn'));
-    expect(onGoto).toHaveBeenCalledWith(6.752, -16.716);
+    expect(screen.queryByText('指向望远镜')).toBeNull();
+    expect(screen.queryByRole('button', { name: '望远镜指向' })).toBeNull();
+    expect(screen.getByTestId('deep-space-object-center-btn')).toBeEnabled();
+    expect(screen.getByTestId('deep-space-object-like-btn')).toBeEnabled();
+    expect(screen.getByTestId('deep-space-object-zoom-btn')).toBeEnabled();
+    expect(screen.getByTestId('deep-space-object-zoom-out-btn')).toBeEnabled();
+    expect(screen.getByTestId('deep-space-object-close-btn')).toBeEnabled();
   });
 });
 
@@ -164,27 +143,8 @@ describe('object info sheet physical property integrity', () => {
   it.each([-0.1, 1.1])('does not draw a fabricated phase for the out-of-range value %s', (phase) => {
     const { rerender } = renderObject({ phase, type: 'moon' });
     const invalidPhaseTree = screen.toJSON();
-    rerender(<ObjectInfoSheet object={{ ...MOCK_STAR, phase: null, type: 'moon' }} onCenter={jest.fn()} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={jest.fn()} />);
+    rerender(<ObjectInfoSheet object={{ ...MOCK_STAR, phase: null, type: 'moon' }} onCenter={jest.fn()} onClose={jest.fn()} onZoomIn={jest.fn()} />);
     expect(screen.toJSON()).toEqual(invalidPhaseTree);
-  });
-});
-
-describe('object info sheet goto coordinate validation', () => {
-  it.each([null, undefined, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])('does not offer goto for invalid right ascension: %s', (value) => {
-    renderObject({ raHours: value as number });
-    expect(screen.queryByTestId('deep-space-object-goto-btn')).toBeNull();
-  });
-
-  it.each([null, undefined, Number.NaN, Number.POSITIVE_INFINITY, -90.001, 90.001])('does not offer goto for invalid declination: %s', (value) => {
-    renderObject({ decDeg: value as number });
-    expect(screen.queryByTestId('deep-space-object-goto-btn')).toBeNull();
-  });
-
-  it('allows goto with both coordinates exactly zero', () => {
-    const onGoto = jest.fn();
-    render(<ObjectInfoSheet object={{ ...MOCK_STAR, decDeg: 0, raHours: 0 }} onCenter={jest.fn()} onClose={jest.fn()} onGoto={onGoto} onZoomIn={jest.fn()} />);
-    fireEvent.press(screen.getByTestId('deep-space-object-goto-btn'));
-    expect(onGoto).toHaveBeenCalledWith(0, 0);
   });
 });
 
@@ -281,7 +241,7 @@ describe('object info sheet truthful actions', () => {
 
 describe('object info sheet', () => {
   it('renders celestial object details and coordinates aligned with Stellarium UI', () => {
-    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={jest.fn()} />);
+    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onZoomIn={jest.fn()} />);
 
     expect(screen.getByText('天狼星')).toBeTruthy();
     expect(screen.getByText('恒星')).toBeTruthy();
@@ -295,11 +255,11 @@ describe('object info sheet', () => {
     expect(screen.getByTestId('deep-space-object-zoom-btn')).toBeTruthy();
     expect(screen.getByTestId('deep-space-object-zoom-out-btn')).toBeTruthy();
     expect(screen.getByTestId('deep-space-object-like-btn')).toBeTruthy();
-    expect(screen.getByTestId('deep-space-object-goto-btn')).toBeTruthy();
+    expect(screen.queryByTestId('deep-space-object-goto-btn')).toBeNull();
   });
 
   it('flips to physical properties page when tapping page stepper', () => {
-    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={jest.fn()} />);
+    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onZoomIn={jest.fn()} />);
 
     expect(screen.getByTestId('deep-space-object-coords-page')).toBeTruthy();
 
@@ -318,7 +278,7 @@ describe('object info sheet', () => {
 
   it('triggers zoom in when zoom button is pressed', () => {
     const onZoomIn = jest.fn();
-    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={onZoomIn} />);
+    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onZoomIn={onZoomIn} />);
 
     fireEvent.press(screen.getByTestId('deep-space-object-zoom-btn'));
     expect(onZoomIn).toHaveBeenCalledWith(MOCK_STAR);
@@ -326,22 +286,14 @@ describe('object info sheet', () => {
 
   it('triggers zoom out when minus zoom button is pressed', () => {
     const onZoomOut = jest.fn();
-    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={jest.fn()} onZoomOut={onZoomOut} />);
+    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onZoomIn={jest.fn()} onZoomOut={onZoomOut} />);
 
     fireEvent.press(screen.getByTestId('deep-space-object-zoom-out-btn'));
     expect(onZoomOut).toHaveBeenCalledWith(MOCK_STAR);
   });
 
-  it('triggers goto when goto telescope button is pressed', () => {
-    const onGoto = jest.fn();
-    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onGoto={onGoto} onZoomIn={jest.fn()} />);
-
-    fireEvent.press(screen.getByTestId('deep-space-object-goto-btn'));
-    expect(onGoto).toHaveBeenCalledWith(6.752, -16.716);
-  });
-
   it('announces when the object is added to or removed from favorites', () => {
-    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onGoto={jest.fn()} onZoomIn={jest.fn()} />);
+    render(<ObjectInfoSheet object={MOCK_STAR} onCenter={jest.fn()} onClose={jest.fn()} onZoomIn={jest.fn()} />);
 
     const likeBtn = screen.getByTestId('deep-space-object-like-btn');
     fireEvent.press(likeBtn);

@@ -184,7 +184,7 @@ function createFontStartupHarness(failFont = false) {
   const loadedFonts: string[] = [];
   let rendererReady = false;
   const engine = {
-    core: Object.fromEntries(['stars', 'dsos', 'skycultures', 'milkyway', 'landscapes', 'satellites', 'comets', 'atmosphere', 'constellations'].map(key => [key, { addDataSource() {} }])),
+    core: Object.fromEntries(['stars', 'dsos', 'skycultures', 'milkyway', 'landscapes', 'satellites', 'comets', 'atmosphere', 'constellations'].map(key => [key, { addDataSource() {}, fog_visible: true, visible: true }])),
     D2R: Math.PI / 180,
     s2c() { return [1, 0, 0]; },
     lookAt() {},
@@ -225,13 +225,26 @@ function createFontStartupHarness(failFont = false) {
     (error: unknown) => errors.push(error),
     (message: { type: string }) => messages.push(message),
   ) as () => void;
-  return { startEngine, frames, messages, errors, loadedFonts };
+  return { startEngine, frames, messages, errors, loadedFonts, engine };
 }
 
 async function settleFontStartup() {
   for (let index = 0; index < 10; index++)
     await Promise.resolve();
 }
+
+describe('scene atmosphere defaults before the first frame', () => {
+  it.each([
+    ['atmosphere', 'visible'],
+    ['landscapes', 'fog_visible'],
+  ] as const)('disables %s.%s before restoring saved preferences', (module, flag) => {
+    const harness = createFontStartupHarness();
+    harness.startEngine();
+
+    expect(harness.engine.core[module][flag]).toBe(false);
+    expect(harness.engine.core.landscapes.visible).toBe(true);
+  });
+});
 
 describe('native renderer font startup ordering', () => {
   it('waits for the first native frame and both fonts before publishing ready', async () => {

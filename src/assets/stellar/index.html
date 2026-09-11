@@ -1556,8 +1556,9 @@
           } catch (e) {
             console.warn('Failed to add comets data source:', e);
           }
-          core.atmosphere.visible = true;
+          core.atmosphere.visible = false;
           core.landscapes.visible = true;
+          core.landscapes.fog_visible = false;
           core.constellations.images_visible = true;
           core.constellations.lines_visible = true;
           core.constellations.bounds_visible = false;
