@@ -1,11 +1,13 @@
 import * as React from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
+import { useUniwind } from 'uniwind';
 import { Text } from '@/components/ui';
+
 import { translate } from '@/lib/i18n';
 
 import { CloseIcon } from './close-icon';
-import { featureSheetStyles } from './feature-sheet-styles';
+import { featureSheetStyles, featureSheetStylesLight } from './feature-sheet-styles';
 
 type FeatureSheetProps = {
   children: React.ReactNode;
@@ -38,17 +40,20 @@ export function FeatureSheet({
   testID,
   title,
 }: FeatureSheetProps): React.ReactElement {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+
   return (
     <View pointerEvents="box-none" style={[featureSheetStyles.featureOverlay, placement === 'top' && featureSheetStyles.featureOverlayTop]}>
       <Pressable accessibilityLabel={title} accessibilityRole="button" onPress={onClose} style={[featureSheetStyles.sheetTopScrim, placement === 'top' && featureSheetStyles.sheetTopScrimTransparent]} />
-      <View style={[featureSheetStyles.featureSheet, scrollable && featureSheetStyles.featureSheetTall, fullScreen && featureSheetStyles.featureSheetFullScreen, placement === 'top' && featureSheetStyles.featureSheetTop]} testID={testID}>
-        <View style={featureSheetStyles.featureHeader}>
+      <View style={[featureSheetStyles.featureSheet, !isDark && featureSheetStylesLight.featureSheet, scrollable && featureSheetStyles.featureSheetTall, fullScreen && featureSheetStyles.featureSheetFullScreen, placement === 'top' && featureSheetStyles.featureSheetTop]} testID={testID}>
+        <View style={[featureSheetStyles.featureHeader, !isDark && featureSheetStylesLight.featureHeader]}>
           {headerLeft}
-          <Text style={featureSheetStyles.featureTitle}>{title}</Text>
+          <Text style={[featureSheetStyles.featureTitle, !isDark && featureSheetStylesLight.featureTitle]}>{title}</Text>
           {showCloseButton
             ? (
                 <Pressable accessibilityLabel={translate('deep_space.back')} accessibilityRole="button" onPress={onClose} style={featureSheetStyles.featureClose}>
-                  <CloseIcon />
+                  <CloseIcon color={isDark ? undefined : '#0A0B0D'} />
                 </Pressable>
               )
             : headerLeft ? <View style={featureSheetStyles.featureClose} /> : null}

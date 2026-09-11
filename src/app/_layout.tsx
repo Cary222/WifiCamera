@@ -4,7 +4,7 @@ import { ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as React from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { LogBox, Platform, StyleSheet } from 'react-native';
 import FlashMessage from 'react-native-flash-message';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -17,6 +17,8 @@ import { APIProvider } from '@/lib/api';
 import { loadSelectedTheme } from '@/lib/hooks/use-selected-theme';
 // Import  global CSS file
 import '../global.css';
+
+LogBox.ignoreAllLogs();
 
 export { ErrorBoundary } from 'expo-router';
 

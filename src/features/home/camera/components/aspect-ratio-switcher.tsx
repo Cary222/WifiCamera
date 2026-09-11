@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { Pressable, useWindowDimensions } from 'react-native';
 import { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
 import { Text } from '@/components/ui';
 
 const RATIO_16_9 = 0.5625;
@@ -192,22 +193,26 @@ export function ToolCard({
   active,
   textOnly = false,
   onPress,
-  cardBg = '#1F1F1F',
+  cardBg,
   activeBg = '#CBFF3C',
   className = '',
 }: ToolCardProps) {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+  const resolvedCardBg = cardBg ?? (isDark ? '#1F1F1F' : '#F4F4F5');
+
   return (
     <Pressable
       onPress={onPress}
-      style={{ backgroundColor: active ? activeBg : cardBg }}
+      style={{ backgroundColor: active ? activeBg : resolvedCardBg }}
       className={`h-[92px] flex-1 items-center justify-center gap-2 rounded-2xl active:opacity-80 ${className}`}
     >
       {textOnly
-        ? <Text className={`text-[21px] ${active ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>{label}</Text>
+        ? <Text className={`text-[21px] ${active ? 'text-black dark:text-black' : 'text-black dark:text-white'}`}>{label}</Text>
         : (
             <>
               {icon}
-              <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>{label}</Text>
+              <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-black dark:text-white'}`}>{label}</Text>
             </>
           )}
     </Pressable>

@@ -153,6 +153,8 @@ function storedJson(map: Map<string, string | number | boolean>, key: string) {
 }
 
 jest.mock('uniwind', () => ({
+  // eslint-disable-next-line react/no-unnecessary-use-prefix
+  useUniwind: () => ({ theme: 'dark' }),
   withUniwind: (component: unknown) => component,
 }));
 

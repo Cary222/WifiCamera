@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import { useUniwind } from 'uniwind';
 import { Text } from '@/components/ui';
 
 const BRAND = '#CBFF3C';
@@ -41,6 +42,8 @@ export function LandscapeRuler({
   formatTick,
   onChange,
 }: LandscapeRulerProps) {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
   const scrollRef = useRef<ScrollView>(null);
   const [rulerWidth, setRulerWidth] = useState(0);
   const isDraggingRef = useRef(false);
@@ -93,9 +96,9 @@ export function LandscapeRuler({
 
   return (
     <View className="w-full">
-      <Text className="text-center text-[19px] text-white">{formatValue(displayedValue)}</Text>
+      <Text className="text-center text-[19px] text-black dark:text-white">{formatValue(displayedValue)}</Text>
       <View className="mt-2 flex-row items-center">
-        {label ? <Text className="w-[86px] text-[14px] text-white">{label}</Text> : null}
+        {label ? <Text className="w-[86px] text-[14px] text-black dark:text-white">{label}</Text> : null}
         <View
           className="flex-1"
           style={{ height: RULER_HEIGHT }}
@@ -137,9 +140,9 @@ export function LandscapeRuler({
                     className="items-center justify-end"
                   >
                     {tickLabel
-                      ? <Text numberOfLines={1} style={{ width: 68 }} className="mb-1.5 text-center text-[10px] text-white/45">{tickLabel}</Text>
+                      ? <Text numberOfLines={1} style={{ width: 68 }} className={`mb-1.5 text-center text-[10px] ${isDark ? 'text-white/45' : 'text-black/55'}`}>{tickLabel}</Text>
                       : <View className="mb-1.5 h-[15px]" />}
-                    <View style={{ width: 1.5, height: major ? 22 : 14, borderRadius: 1, backgroundColor: 'rgba(255,255,255,0.34)' }} />
+                    <View style={{ width: 1.5, height: major ? 22 : 14, borderRadius: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.34)' : 'rgba(0,0,0,0.22)' }} />
                   </Pressable>
                 );
               })}

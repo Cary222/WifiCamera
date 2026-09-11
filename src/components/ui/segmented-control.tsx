@@ -42,14 +42,14 @@ type VariantConfig = {
 
 const VARIANT_CONFIG: Record<NonNullable<SegmentedControlProps<string>['variant']>, VariantConfig> = {
   'neutral-fixed': {
-    rootClass: 'flex-row overflow-hidden rounded-lg bg-transparent',
+    rootClass: 'flex-row overflow-hidden rounded-lg bg-neutral-100 dark:bg-transparent',
     trackClass: 'flex-1',
     optionClass: 'flex-1 justify-center items-center',
-    textClass: 'text-[12px] font-semibold text-white',
+    textClass: 'text-[12px] font-semibold',
     indicatorClass: 'absolute inset-y-1 rounded-md',
   },
   'capsule-lg': {
-    rootClass: 'overflow-hidden rounded-full border p-1 px-1.5',
+    rootClass: 'overflow-hidden rounded-full border border-neutral-200 dark:border-neutral-800 p-1 px-1.5',
     trackClass: 'px-0',
     optionClass: 'h-[38px] px-3 justify-center items-center',
     textClass: 'text-[14px]',
@@ -58,13 +58,13 @@ const VARIANT_CONFIG: Record<NonNullable<SegmentedControlProps<string>['variant'
 };
 
 const VARIANT_ACTIVE_TEXT: Record<NonNullable<SegmentedControlProps<string>['variant']>, string> = {
-  'neutral-fixed': 'font-semibold text-white',
+  'neutral-fixed': 'font-semibold text-[#0A0B0D] dark:text-[#0A0B0D]',
   'capsule-lg': 'font-bold text-black dark:text-black text-[12px]',
 };
 
 const VARIANT_INACTIVE_TEXT: Record<NonNullable<SegmentedControlProps<string>['variant']>, string> = {
-  'neutral-fixed': 'font-semibold text-white',
-  'capsule-lg': 'font-medium text-white dark:text-white text-[12px]',
+  'neutral-fixed': 'font-semibold text-neutral-500 dark:text-white/60',
+  'capsule-lg': 'font-medium text-neutral-600 dark:text-white text-[12px]',
 };
 
 const VARIANT_INDICATOR_BG: Record<NonNullable<SegmentedControlProps<string>['variant']>, string> = {
@@ -74,7 +74,7 @@ const VARIANT_INDICATOR_BG: Record<NonNullable<SegmentedControlProps<string>['va
 
 const VARIANT_ROOT_HEIGHT: Record<NonNullable<SegmentedControlProps<string>['variant']>, string> = {
   'neutral-fixed': 'h-[35px]',
-  'capsule-lg': 'h-12 bg-[#141518]',
+  'capsule-lg': 'h-12 bg-neutral-100 dark:bg-[#141518]',
 };
 
 const VARIANT_PX_WIDTH: Record<NonNullable<SegmentedControlProps<string>['variant']>, number | null> = {

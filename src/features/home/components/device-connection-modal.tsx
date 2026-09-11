@@ -35,6 +35,12 @@ type Props = {
   onClose: () => void;
 };
 
+export function SharedDeviceConnectionModal() {
+  const visible = useCameraStore.use.showConnectionModal();
+  const setVisible = useCameraStore.use.setShowConnectionModal();
+  return <DeviceConnectionModal visible={visible} onClose={() => setVisible(false)} />;
+}
+
 export function DeviceConnectionModal({ visible, onClose }: Props) {
   const { ref, present, dismiss } = useModal();
   const [connecting, setConnecting] = useState(false);
@@ -115,10 +121,11 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
       setItem(STORAGE_KEYS.WIFI_CAMERA_IP, cameraIp.trim());
     }
 
-    void initTransport();
+    if (connectionStatus !== 'open')
+      void initTransport();
     setTimeout(() => {
       setAvailableDevices([
-        { id: 'wifi-camera-1', name: 'Wi-Fi Camera', signalStrength: 85 },
+        { id: 'wifi-camera-1', name: translate('home.wifi_camera'), signalStrength: 85 },
       ]);
       setScanning(false);
     }, 2000);
@@ -213,7 +220,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
           {/* WiFi Camera IP Input */}
           <View className="mb-6">
             <Text className="mb-2 text-[14px] text-white/70">
-              WiFi Camera IP
+              {translate('home.camera_ip')}
             </Text>
             <View className="flex-row items-center gap-2">
               <TextInput
@@ -236,13 +243,13 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
                 className="rounded-[12px] bg-[#c8e733] px-4 py-3"
               >
                 <Text className="text-[14px] font-semibold text-[#2a3319]">
-                  {showIpInput ? 'Save' : 'Edit'}
+                  {translate(showIpInput ? 'home.save' : 'home.edit')}
                 </Text>
               </Pressable>
             </View>
             {showIpInput && (
               <Text className="mt-2 text-[12px] text-white/50">
-                Enter the IP address shown on your camera display
+                {translate('home.camera_ip_hint')}
               </Text>
             )}
           </View>
@@ -338,7 +345,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
                         {device.name}
                       </Text>
                       <Text className="mt-1 text-[14px] text-white/50">
-                        {connecting ? 'Connecting...' : 'Available'}
+                        {connecting ? translate('home.connecting') : translate('home.available')}
                       </Text>
                     </View>
                     <View className="size-[28px] items-center justify-center rounded-full bg-[#c8e733]">

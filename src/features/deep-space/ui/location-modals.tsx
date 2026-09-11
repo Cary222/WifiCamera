@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
-import { OVERLAY } from './deep-space-theme';
+import { OVERLAY, useDeepSpaceOverlayTheme } from './deep-space-theme';
 import { featureSheetStyles } from './feature-sheet-styles';
 import { cityLabel } from './location-format';
 
@@ -46,11 +46,12 @@ function CoordinateDialogContent({
     onCancel();
   };
 
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const title = kind === 'latitude' ? translate('deep_space.location.latitude_placeholder') : translate('deep_space.location.longitude_placeholder');
 
   return (
-    <View style={styles.dialogCard} testID={`deep-space-settings-${kind}-modal`}>
-      <Text style={styles.dialogTitle}>{title}</Text>
+    <View style={[styles.dialogCard, !isDark && { backgroundColor: overlay.drawer, borderColor: overlay.hairline }]} testID={`deep-space-settings-${kind}-modal`}>
+      <Text style={[styles.dialogTitle, !isDark && { color: overlay.text }]}>{title}</Text>
       <TextInput
         accessibilityLabel={title}
         autoFocus
@@ -58,15 +59,15 @@ function CoordinateDialogContent({
         onChangeText={setText}
         onSubmitEditing={handleConfirm}
         placeholder={title}
-        placeholderTextColor={OVERLAY.muted}
+        placeholderTextColor={overlay.muted}
         returnKeyType="done"
-        style={styles.dialogInput}
+        style={[styles.dialogInput, !isDark && { backgroundColor: overlay.card, borderColor: 'rgba(0,0,0,0.15)', color: overlay.text }]}
         testID={`deep-space-settings-${kind}-input`}
         value={text}
       />
       <View style={styles.dialogButtons}>
         <Pressable accessibilityLabel={translate('deep_space.dialog.cancel')} accessibilityRole="button" onPress={onCancel} style={styles.dialogButton}>
-          <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.dialog.cancel')}</Text>
+          <Text style={[styles.dialogButtonTextCancel, !isDark && { color: overlay.muted }]}>{translate('deep_space.dialog.cancel')}</Text>
         </Pressable>
         <Pressable
           accessibilityLabel={translate('deep_space.dialog.confirm')}
@@ -123,20 +124,21 @@ export function CityPickerModal({
   onSelect: (city: (typeof EXPANDED_OBSERVER_CITIES)[number]) => void;
   visible: boolean;
 }): React.ReactElement {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const [customName, setCustomName] = React.useState('');
 
   return (
     <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
       <View style={styles.modalOverlay}>
-        <View style={styles.cityCard} testID="deep-space-settings-city-modal">
-          <Text style={styles.dialogTitle}>{translate('deep_space.location.pick_city')}</Text>
+        <View style={[styles.cityCard, !isDark && { backgroundColor: overlay.drawer, borderColor: overlay.hairline }]} testID="deep-space-settings-city-modal">
+          <Text style={[styles.dialogTitle, !isDark && { color: overlay.text }]}>{translate('deep_space.location.pick_city')}</Text>
           <View style={styles.customCityRow}>
             <TextInput
               accessibilityLabel={translate('deep_space.location.custom_name')}
               onChangeText={setCustomName}
               placeholder={translate('deep_space.location.custom_name')}
-              placeholderTextColor={OVERLAY.muted}
-              style={styles.customCityInput}
+              placeholderTextColor={overlay.muted}
+              style={[styles.customCityInput, !isDark && { backgroundColor: overlay.card, borderColor: 'rgba(0,0,0,0.15)', color: overlay.text }]}
               testID="deep-space-settings-custom-city-input"
               value={customName}
             />
@@ -163,19 +165,19 @@ export function CityPickerModal({
                 accessibilityState={{ selected: city.name === currentCity }}
                 key={city.name}
                 onPress={() => onSelect(city)}
-                style={styles.cityRow}
+                style={[styles.cityRow, !isDark && { borderBottomColor: overlay.hairline }]}
                 testID={`deep-space-settings-city-${city.name}`}
               >
                 <View style={featureSheetStyles.featureRowText}>
-                  <Text style={featureSheetStyles.featureRowLabel}>{cityLabel(city.name)}</Text>
-                  <Text style={featureSheetStyles.featureRowHint}>{`${city.latitudeDeg.toFixed(2)}°, ${city.longitudeDeg.toFixed(2)}°`}</Text>
+                  <Text style={[featureSheetStyles.featureRowLabel, !isDark && { color: overlay.text }]}>{cityLabel(city.name)}</Text>
+                  <Text style={[featureSheetStyles.featureRowHint, !isDark && { color: overlay.muted }]}>{`${city.latitudeDeg.toFixed(2)}°, ${city.longitudeDeg.toFixed(2)}°`}</Text>
                 </View>
                 {city.name === currentCity && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
               </Pressable>
             ))}
           </ScrollView>
           <Pressable accessibilityLabel={translate('deep_space.location.close')} accessibilityRole="button" onPress={onCancel} style={styles.cityCloseBtn}>
-            <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.location.close')}</Text>
+            <Text style={[styles.dialogButtonTextCancel, !isDark && { color: overlay.muted }]}>{translate('deep_space.location.close')}</Text>
           </Pressable>
         </View>
       </View>

@@ -33,6 +33,10 @@ export const STORAGE_KEYS = {
   CAMERA_TRANSPORT: 'CAMERA_TRANSPORT',
   /** WiFi mode camera IP address (e.g., '192.168.1.1'). */
   WIFI_CAMERA_IP: 'WIFI_CAMERA_IP',
+  /** Stable installation identifier for the firmware download backend. */
+  OTA_APP_DEVICE_CODE: 'OTA_APP_DEVICE_CODE',
+  /** Last downloaded firmware metadata, local URI and device serial number. */
+  OTA_DOWNLOADED_PACKAGE: 'OTA_DOWNLOADED_PACKAGE',
   /** Serialised CelesTrak visual-group OMM records. */
   SATELLITE_VISUAL_OMM: 'SATELLITE_VISUAL_OMM',
   /** Unix milliseconds when the visual OMM cache was last refreshed. */

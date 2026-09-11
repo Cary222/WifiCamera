@@ -10,7 +10,7 @@ type Props = {
 
 export function SettingsContainer({ children, title }: Props) {
   return (
-    <View className="mb-5">
+    <View className="mb-6">
       {title && (
         <Text
           className="mb-3 px-1 text-[14px] font-semibold text-neutral-500 dark:text-charcoal-400"

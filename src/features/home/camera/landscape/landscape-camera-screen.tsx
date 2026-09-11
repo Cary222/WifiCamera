@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
@@ -84,14 +85,18 @@ type ParamCardProps = {
 };
 
 function ParamCard({ title, value, active, onPress }: ParamCardProps) {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+  const cardBg = isDark ? CARD_BG : '#F4F4F5';
+
   return (
     <Pressable
       onPress={onPress}
-      style={{ backgroundColor: active ? BRAND : CARD_BG }}
+      style={{ backgroundColor: active ? BRAND : cardBg }}
       className="h-[80px] flex-1 items-center justify-center gap-1 rounded-2xl active:opacity-80"
     >
-      <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>{title}</Text>
-      <Text className={`text-[17px] ${active ? 'font-medium text-black dark:text-black' : 'text-white dark:text-white'}`}>{value}</Text>
+      <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-neutral-500 dark:text-white/60'}`}>{title}</Text>
+      <Text className={`text-[17px] ${active ? 'font-medium text-black dark:text-black' : 'text-black dark:text-white'}`}>{value}</Text>
     </Pressable>
   );
 }
@@ -227,13 +232,15 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
     setRatio(ratio === '4:3' ? '16:9' : '4:3');
   }, [ratio, setRatio]);
 
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
   const shutterDisabled = isCapturing || isRepeating || isRecordingBusy;
 
   return (
-    <View className="flex-1" style={{ backgroundColor: '#000' }}>
+    <View className="flex-1" style={{ backgroundColor: isDark ? '#000' : '#F9FAFB' }}>
       <Animated.View
-        className="absolute items-center justify-center overflow-hidden bg-black"
-        style={previewStyle as any}
+        className="absolute items-center justify-center overflow-hidden"
+        style={[previewStyle as any, { backgroundColor: isDark ? '#000' : '#F9FAFB' }]}
       >
         <PreviewSurface
           stream={stream}
@@ -256,6 +263,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
         onBack={onBack}
         onTitlePress={() => setSheetTarget(current => (current === 'tools' ? 'manual' : 'tools'))}
         expanded={sheetTarget === 'tools'}
+        isDark={isDark}
         style={topBarStyle as any}
         rightContent={(
           <Pressable
@@ -266,16 +274,16 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                 setSheetOpen(false);
             }}
             disabled={shutterDisabled}
-            style={{ backgroundColor: 'rgba(34,42,54,0.72)' }}
+            style={{ backgroundColor: isDark ? 'rgba(34,42,54,0.72)' : 'rgba(0, 0, 0, 0.08)' }}
             className="h-[30px] min-w-[62px] items-center justify-center rounded-full px-3 active:opacity-80"
           >
-            <Text className="text-[13px] text-white">{isPro ? 'M' : 'AUTO'}</Text>
+            <Text className={`text-[13px] ${isDark ? 'text-white' : 'text-black'}`}>{isPro ? 'M' : 'AUTO'}</Text>
           </Pressable>
         )}
       />
 
       {(isCapturing || isCountingDown || isRepeating || isRecording || isRecordingBusy || !isConnected) && (
-        <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 56 }}>
+        <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 56, zIndex: 10, elevation: 10 }}>
           <View className="rounded-full bg-black/70 px-4 py-1.5">
             <Text className="text-xs text-white">
               {isConnected
@@ -321,7 +329,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                 borderRadius: captureMode === 'video' && isRecording ? 8 : shutterInner / 2,
                 backgroundColor: captureMode === 'video' && isRecording
                   ? '#FF3B30'
-                  : shutterDisabled ? 'rgba(255,255,255,0.6)' : '#FFFFFF',
+                  : shutterDisabled ? (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.3)') : (isDark ? '#FFFFFF' : '#0A0B0D'),
               }}
             />
           </Pressable>
@@ -331,32 +339,35 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
       {sheetOpen && (
         <View
           className="absolute inset-x-0 rounded-t-[26px]"
-          style={{ bottom: insets.bottom + 96, backgroundColor: SHEET_BG }}
+          style={{ bottom: insets.bottom + 96, backgroundColor: isDark ? SHEET_BG : '#FFFFFF', borderTopWidth: isDark ? 0 : 1, borderTopColor: 'rgba(0, 0, 0, 0.08)' }}
         >
           {sheetTarget === 'tools' && !burstOpen && (
             <View className="flex-row gap-3 p-4">
               <ToolCard
-                icon={<StopwatchIcon color={timedShootOn ? '#111' : '#FFF'} disabled={!timedShootOn} />}
+                icon={<StopwatchIcon color={timedShootOn ? '#111' : (isDark ? '#FFF' : '#222')} disabled={!timedShootOn} />}
                 label={translate('landscape.timed_shoot')}
                 active={timedShootOn}
+                cardBg={isDark ? CARD_BG : '#F4F4F5'}
                 onPress={() => {
                   setTimedShootOn(value => !value);
                   setBurstOpen(true);
                 }}
               />
               <ToolCard
-                icon={<CountdownIcon color={countdownOn ? '#111' : '#FFF'} disabled={!countdownOn} />}
+                icon={<CountdownIcon color={countdownOn ? '#111' : (isDark ? '#FFF' : '#222')} disabled={!countdownOn} />}
                 label={translate('landscape.countdown')}
                 active={countdownOn}
+                cardBg={isDark ? CARD_BG : '#F4F4F5'}
                 onPress={() => {
                   setCountdownOn(value => !value);
                   setBurstOpen(true);
                 }}
               />
-              <AspectRatioButton ratio={ratio} onPress={handleRatioPress} cardBg={CARD_BG} />
+              <AspectRatioButton ratio={ratio} onPress={handleRatioPress} cardBg={isDark ? CARD_BG : '#F4F4F5'} />
               <ToolCard
-                icon={<WatermarkFlaskIcon color={watermark ? '#111' : '#FFF'} disabled={!watermark} />}
+                icon={<WatermarkFlaskIcon color={watermark ? '#111' : (isDark ? '#FFF' : '#222')} disabled={!watermark} />}
                 label={translate('landscape.watermark')}
+                cardBg={isDark ? CARD_BG : '#F4F4F5'}
                 active={watermark}
                 onPress={() => setWatermark(!watermark)}
               />
@@ -442,20 +453,21 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
               <View className="flex-row items-center justify-between">
                 <Pressable
                   onPress={() => setBurstOpen(false)}
-                  style={{ backgroundColor: PILL_BG }}
+                  style={{ backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.06)' }}
                   className="size-11 items-center justify-center rounded-full active:opacity-70"
                 >
-                  <CloseIcon />
+                  <CloseIcon color={isDark ? undefined : '#0A0B0D'} />
                 </Pressable>
-                <Text className="text-[16px] text-white">{translate('landscape.timed_repeat')}</Text>
+                <Text className={`text-[16px] ${isDark ? 'text-white' : 'text-black'}`}>{translate('landscape.timed_repeat')}</Text>
                 <Pressable
                   onPress={() => {
                     setTimerPlan({ count: 3, interval: 3 });
                     setCountdownSeconds(3);
                   }}
+                  style={{ backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.06)' }}
                   className="size-11 items-center justify-center rounded-full active:opacity-70"
                 >
-                  <ResetIcon />
+                  <ResetIcon color={isDark ? undefined : '#0A0B0D'} />
                 </Pressable>
               </View>
 
@@ -499,7 +511,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
         thumbnailUri={thumbnailUri}
         onThumbnailPress={() => router.push('/album' as never)}
         isRecording={isRecording}
-        rightButton={<SheetMenuIcon color={sheetOpen && isPro ? BRAND : '#FFFFFF'} />}
+        rightButton={<SheetMenuIcon color={sheetOpen && isPro ? BRAND : (isDark ? '#FFFFFF' : '#0A0B0D')} />}
         rightButtonActive={sheetOpen && isPro}
         onRightButtonPress={() => setSheetOpen((open) => {
           if (open)

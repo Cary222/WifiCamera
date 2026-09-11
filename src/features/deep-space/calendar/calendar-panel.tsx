@@ -9,6 +9,7 @@ import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { storage } from '@/lib/storage';
 
+import { useDeepSpaceOverlayTheme } from '../ui/deep-space-theme';
 import { cityLabel } from '../ui/location-format';
 import { SatellitePassList } from './satellite-pass-list';
 import { loadVisualOmm, predictVisiblePasses } from './satellite-pass-service';
@@ -158,6 +159,7 @@ export function CalendarPanel({
   onClose: () => void;
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const [tab, setTab] = React.useState<'events' | 'tonight'>('tonight');
   const calendar = useCalendarData(stellaRef, clock, city);
   const tonight = calendar.result.status === 'ready' ? calendar.result.tonight : null;
@@ -167,8 +169,8 @@ export function CalendarPanel({
 
   return (
     <Modal animationType="none" onRequestClose={onClose} transparent visible>
-      <View style={styles.screen} testID="deep-space-calendar-panel">
-        <View style={styles.header}>
+      <View style={[styles.screen, !isDark && { backgroundColor: 'rgba(255, 255, 255, 0.98)' }]} testID="deep-space-calendar-panel">
+        <View style={[styles.header, !isDark && { backgroundColor: overlay.drawerHeader }]}>
           <Pressable
             accessibilityLabel={translate('deep_space.back')}
             accessibilityRole="button"
@@ -176,9 +178,9 @@ export function CalendarPanel({
             style={styles.headerButton}
             testID="deep-space-calendar-close"
           >
-            <BackIcon />
+            <BackIcon color={overlay.text} />
           </Pressable>
-          <Text style={styles.headerTitle}>{translate('deep_space.calendar.title')}</Text>
+          <Text style={[styles.headerTitle, !isDark && { color: overlay.text }]}>{translate('deep_space.calendar.title')}</Text>
           <View style={styles.headerButton} />
         </View>
         <View style={styles.tabs}>
@@ -220,6 +222,7 @@ export function CalendarPanel({
 }
 
 function CalendarTab({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID: string }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   return (
     <Pressable
       accessibilityRole="tab"
@@ -228,7 +231,7 @@ function CalendarTab({ active, label, onPress, testID }: { active: boolean; labe
       style={[styles.tab, active && styles.tabActive]}
       testID={testID}
     >
-      <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
+      <Text style={[styles.tabLabel, !isDark && { color: active ? overlay.text : overlay.muted }, active && styles.tabLabelActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -244,28 +247,30 @@ function TonightTab({
   satelliteResult: SatelliteResult;
   satelliteRetry: () => void;
 }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const state = satelliteResult.status === 'failed'
     ? { retry: satelliteRetry, status: 'failed' as const }
     : satelliteResult;
   return (
     <View testID="deep-space-calendar-tonight">
-      <Text style={styles.dateHeading}>{heading}</Text>
+      <Text style={[styles.dateHeading, !isDark && { color: overlay.text }]}>{heading}</Text>
       <View style={styles.sunRow}>
-        <SunStat label={translate('deep_space.sunset')} value={formatClockTime(report.sunset)} />
-        <SunStat label={translate('deep_space.sunrise')} value={formatClockTime(report.sunrise)} />
+        <SunStat isDark={isDark} label={translate('deep_space.sunset')} value={formatClockTime(report.sunset)} />
+        <SunStat isDark={isDark} label={translate('deep_space.sunrise')} value={formatClockTime(report.sunrise)} />
       </View>
-      <Text style={styles.sectionTitle}>{translate('deep_space.solar_system')}</Text>
+      <Text style={[styles.sectionTitle, !isDark && { color: overlay.text }]}>{translate('deep_space.solar_system')}</Text>
       <SolarSystemChart report={report} />
       <SatellitePassList state={state} />
     </View>
   );
 }
 
-function SunStat({ label, value }: { label: string; value: string }) {
+function SunStat({ isDark = true, label, value }: { isDark?: boolean; label: string; value: string }) {
+  const { overlay } = useDeepSpaceOverlayTheme();
   return (
-    <View style={styles.sunStat}>
-      <Text style={styles.sunLabel}>{label}</Text>
-      <Text style={styles.sunValue}>{value}</Text>
+    <View style={[styles.sunStat, !isDark && { backgroundColor: overlay.card }]}>
+      <Text style={[styles.sunLabel, !isDark && { color: overlay.muted }]}>{label}</Text>
+      <Text style={[styles.sunValue, !isDark && { color: overlay.text }]}>{value}</Text>
     </View>
   );
 }
@@ -295,6 +300,7 @@ function eventTime(event: SkyEvent): string {
 }
 
 function EventsTab({ events }: { events: SkyEvent[] }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const groups = new Map<string, SkyEvent[]>();
   for (const event of events) {
     const date = new Date(event.time);
@@ -302,18 +308,18 @@ function EventsTab({ events }: { events: SkyEvent[] }) {
     groups.set(key, [...(groups.get(key) ?? []), event]);
   }
   if (events.length === 0)
-    return <Text style={styles.empty}>{translate('deep_space.no_events')}</Text>;
+    return <Text style={[styles.empty, !isDark && { color: overlay.muted }]}>{translate('deep_space.no_events')}</Text>;
   return (
     <View testID="deep-space-calendar-events">
       {[...groups.entries()].map(([month, monthEvents]) => (
         <View key={month}>
-          <Text style={styles.eventMonth}>{month}</Text>
+          <Text style={[styles.eventMonth, !isDark && { color: overlay.text }]}>{month}</Text>
           {monthEvents.map(event => (
             <View key={`${event.type}-${event.time}`} style={styles.eventRow}>
               <EventIcon type={event.type} />
               <View style={styles.eventText}>
-                <Text style={styles.eventName}>{eventLabel(event)}</Text>
-                <Text style={styles.eventTime}>{eventTime(event)}</Text>
+                <Text style={[styles.eventName, !isDark && { color: overlay.text }]}>{eventLabel(event)}</Text>
+                <Text style={[styles.eventTime, !isDark && { color: overlay.muted }]}>{eventTime(event)}</Text>
               </View>
             </View>
           ))}
@@ -323,10 +329,10 @@ function EventsTab({ events }: { events: SkyEvent[] }) {
   );
 }
 
-function BackIcon() {
+function BackIcon({ color = '#FFFFFF' }: { color?: string } = {}) {
   return (
     <Svg height={34} viewBox="0 0 34 34" width={34}>
-      <Path d="M21 7 11 17l10 10" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} />
+      <Path d="M21 7 11 17l10 10" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} />
     </Svg>
   );
 }

@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
 import { SegmentedControl, Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
@@ -94,20 +95,24 @@ function ParamCard({ label, value, active, disabled = false, onPress }: {
   disabled?: boolean;
   onPress: () => void;
 }) {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+  const cardBg = isDark ? CARD_BG : '#F4F4F5';
+
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       style={{
-        backgroundColor: active ? BRAND : CARD_BG,
-        borderColor: active ? BRAND : 'rgba(255, 255, 255, 0.12)',
+        backgroundColor: active ? BRAND : cardBg,
+        borderColor: active ? BRAND : (isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)'),
       }}
       className="h-[74px] flex-1 items-center justify-center rounded-2xl border active:opacity-80 disabled:opacity-40"
     >
-      <Text className={`text-[12px] ${active ? 'font-medium text-black/75 dark:text-black/75' : 'text-white/55 dark:text-white/55'}`}>
+      <Text className={`text-[12px] ${active ? 'font-medium text-black dark:text-black' : 'text-neutral-500 dark:text-white/55'}`}>
         {label}
       </Text>
-      <Text className={`mt-1.5 text-[17px] font-bold ${active ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>
+      <Text className={`mt-1.5 text-[17px] font-bold ${active ? 'text-black dark:text-black' : 'text-black dark:text-white'}`}>
         {value}
       </Text>
     </Pressable>
@@ -115,6 +120,11 @@ function ParamCard({ label, value, active, disabled = false, onPress }: {
 }
 
 export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+  const cardBg = isDark ? CARD_BG : '#F4F4F5';
+  const sheetBg = isDark ? SHEET_BG : '#FFFFFF';
+  const pillGroupBg = isDark ? PILL_GROUP_BG : 'rgba(0, 0, 0, 0.05)';
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { width, height } = useWindowDimensions();
@@ -251,14 +261,22 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   );
 
   return (
-    <View className="flex-1 bg-black">
+    <View className="flex-1" style={{ backgroundColor: isDark ? '#000' : '#F9FAFB' }}>
       {/* 1. Camera Viewport */}
-      <View className="flex-1 items-center justify-center overflow-hidden bg-black">
+      <View
+        className="flex-1 items-center overflow-hidden"
+        style={{
+          marginTop: insets.top + 48,
+          marginBottom: isPanelOpen ? 240 : 100,
+          justifyContent: 'center',
+          backgroundColor: isDark ? '#000' : '#F9FAFB',
+        }}
+      >
         <PreviewSurface
           stream={stream}
           previewState={previewState}
           width={width}
-          height={surfaceHeight}
+          height={Math.min(surfaceHeight, height - insets.top - 48 - (isPanelOpen ? 240 : 100))}
         />
       </View>
 
@@ -268,6 +286,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
         onTitlePress={() => setArrowDirection(prev => (prev === 'down' ? 'up' : 'down'))}
         expanded={arrowDirection === 'down'}
         disabled={settingsDisabled}
+        isDark={isDark}
         style={{ top: insets.top + 10 }}
         rightContent={(
           <Pressable
@@ -275,7 +294,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
             disabled={settingsDisabled}
             className="items-end justify-center py-1 active:opacity-70 disabled:opacity-40"
           >
-            <Text className="text-[11px] font-medium tracking-wide text-white/90">
+            <Text className={`text-[11px] font-medium tracking-wide ${isDark ? 'text-white/90' : 'text-neutral-700'}`}>
               {`${effectiveRoi.width}×${effectiveRoi.height}  ${activeRoiPreset.fps}fps`}
             </Text>
           </Pressable>
@@ -303,7 +322,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
 
       {/* 5. Bottom Control Container */}
       <View
-        className="absolute inset-x-0 bottom-0 bg-[#0A0A0A] px-4 pt-3"
+        className={`absolute inset-x-0 bottom-0 ${isDark ? 'bg-[#0A0A0A]' : 'border-t border-neutral-200 bg-white'} px-4 pt-3`}
         style={{ paddingBottom: Math.max(insets.bottom, 16) + 6 }}
       >
         {isPanelOpen
@@ -353,8 +372,8 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               segmentPixelWidth={64}
                               className="h-[44px]"
                               style={{
-                                backgroundColor: PILL_GROUP_BG,
-                                borderColor: 'rgba(255, 255, 255, 0.14)',
+                                backgroundColor: pillGroupBg,
+                                borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.08)',
                               }}
                             />
 
@@ -370,8 +389,8 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               variant="capsule-lg"
                               className="h-[44px] flex-1"
                               style={{
-                                backgroundColor: PILL_GROUP_BG,
-                                borderColor: 'rgba(255, 255, 255, 0.14)',
+                                backgroundColor: pillGroupBg,
+                                borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.08)',
                                 opacity: containerFormat === 'ser' ? 1 : 0.35,
                               }}
                             />
@@ -418,12 +437,12 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                       {/* Row 1: 测光模式（板端暂无对应指令，置灰待接入） */}
                       <View className="mb-3.5 flex-row items-center justify-between px-1" style={{ opacity: 0.4 }}>
                         <View className="flex-row items-center gap-2.5">
-                          <MeteringIcon color="#FFF" size={24} />
-                          <Text className="text-[15px] font-normal text-white">{translate('planet.metering_mode')}</Text>
+                          <MeteringIcon color={isDark ? '#FFF' : '#222'} size={24} />
+                          <Text className={`text-[15px] font-normal ${isDark ? 'text-white' : 'text-black'}`}>{translate('planet.metering_mode')}</Text>
                         </View>
 
                         <View
-                          style={{ backgroundColor: '#141518', borderColor: 'rgba(255, 255, 255, 0.14)' }}
+                          style={{ backgroundColor: pillGroupBg, borderColor: isDark ? 'rgba(255, 255, 255, 0.14)' : 'rgba(0, 0, 0, 0.08)' }}
                           className="h-[38px] flex-row items-center rounded-full border p-1"
                         >
                           {(['center', 'target', 'matrix'] as const).map((modeKey) => {
@@ -442,7 +461,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               >
                                 <Text
                                   className={`text-[13px] ${
-                                    selected ? 'font-bold text-black dark:text-black' : 'font-normal text-white dark:text-white'
+                                    selected ? 'font-bold text-black dark:text-black' : (isDark ? 'font-normal text-white' : 'font-normal text-neutral-600')
                                   }`}
                                 >
                                   {label}
@@ -466,10 +485,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                             setAspectRatio(next);
                           }}
                           disabled={settingsDisabled}
-                          style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.12)' }}
+                          style={{ backgroundColor: cardBg, borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)' }}
                           className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
-                          <Text className="text-[18px] font-normal text-white">
+                          <Text className={`text-[18px] font-normal ${isDark ? 'text-white' : 'text-black'}`}>
                             {aspectRatio === 'full' ? translate('planet.aspect_full') : aspectRatio}
                           </Text>
                         </Pressable>
@@ -480,11 +499,11 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                             setCountdownSeconds(prev => (prev === 0 ? 3 : prev === 3 ? 5 : prev === 5 ? 10 : 0));
                           }}
                           disabled={settingsDisabled}
-                          style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.12)' }}
+                          style={{ backgroundColor: cardBg, borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)' }}
                           className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
-                          <CountdownIcon color="#FFF" size={24} disabled={countdownSeconds === 0} />
-                          <Text className="mt-1 text-[11px] font-normal text-white/70">
+                          <CountdownIcon color={countdownSeconds === 0 ? (isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)') : (isDark ? '#FFF' : '#000')} size={24} disabled={countdownSeconds === 0} />
+                          <Text className={`mt-1 text-[11px] font-normal ${isDark ? 'text-white/70' : 'text-neutral-500'}`}>
                             {countdownSeconds > 0 ? `${countdownSeconds}s` : translate('planet.countdown_label')}
                           </Text>
                         </Pressable>
@@ -493,10 +512,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         <Pressable
                           onPress={() => setRoiSheetOpen(true)}
                           disabled={settingsDisabled}
-                          style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.12)' }}
+                          style={{ backgroundColor: cardBg, borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)' }}
                           className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
-                          <Text className="text-[13px] font-normal text-white">
+                          <Text className={`text-[13px] font-normal ${isDark ? 'text-white' : 'text-black'}`}>
                             {`${effectiveRoi.width}×${effectiveRoi.height}`}
                           </Text>
                         </Pressable>
@@ -505,10 +524,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         <Pressable
                           onPress={() => setRoiSheetOpen(true)}
                           disabled={settingsDisabled}
-                          style={{ backgroundColor: CARD_BG, borderColor: 'rgba(255, 255, 255, 0.12)' }}
+                          style={{ backgroundColor: cardBg, borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)' }}
                           className="h-[76px] flex-1 items-center justify-center rounded-2xl border active:opacity-75 disabled:opacity-40"
                         >
-                          <Text className="text-[18px] font-normal text-white">
+                          <Text className={`text-[18px] font-normal ${isDark ? 'text-white' : 'text-black'}`}>
                             {`${activeRoiPreset.fps}fps`}
                           </Text>
                         </Pressable>
@@ -538,7 +557,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                       width: isVideoRecording ? 28 : 62,
                       height: isVideoRecording ? 28 : 62,
                       borderRadius: isVideoRecording ? 6 : 31,
-                      backgroundColor: isVideoRecording ? '#FF3B30' : '#FFFFFF',
+                      backgroundColor: isVideoRecording ? '#FF3B30' : (isDark ? '#FFFFFF' : '#0A0B0D'),
                     }}
                   >
                     {countdownRemaining > 0 && (
@@ -556,7 +575,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
           {/* Album Button */}
           <Pressable
             onPress={() => router.push('/album' as never)}
-            className="size-[54px] items-center justify-center overflow-hidden rounded-full bg-white/10 active:opacity-70"
+            className={`size-[54px] items-center justify-center overflow-hidden rounded-full active:opacity-70 ${isDark ? 'bg-white/10' : 'bg-neutral-100'}`}
           >
             {imageUrl
               ? (
@@ -567,7 +586,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                   />
                 )
               : (
-                  <View className="size-[54px] rounded-full bg-white/10" />
+                  <View className={`size-[54px] rounded-full ${isDark ? 'bg-white/10' : 'bg-neutral-200'}`} />
                 )}
           </Pressable>
 
@@ -584,12 +603,13 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
           <Pressable
             onPress={() => setIsPanelOpen(prev => !prev)}
             style={{
-              borderColor: isPanelOpen ? BRAND : 'rgba(255, 255, 255, 0.22)',
+              borderColor: isPanelOpen ? BRAND : (isDark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.15)'),
               borderWidth: 1.6,
+              backgroundColor: isDark ? 'transparent' : '#F4F4F5',
             }}
             className="size-[54px] items-center justify-center rounded-full active:opacity-70"
           >
-            <SheetMenuIcon color={isPanelOpen ? BRAND : '#FFF'} size={24} />
+            <SheetMenuIcon color={isPanelOpen ? BRAND : (isDark ? '#FFF' : '#000')} size={24} />
           </Pressable>
         </View>
       </View>
@@ -604,15 +624,15 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
         <View className="flex-1 justify-end bg-black/60">
           <View
             className="rounded-t-[26px] p-5"
-            style={{ backgroundColor: SHEET_BG, paddingBottom: insets.bottom + 20 }}
+            style={{ backgroundColor: sheetBg, paddingBottom: insets.bottom + 20 }}
           >
             <View className="mb-4 flex-row items-center justify-between">
-              <Text className="text-base font-bold text-white">{translate('planet.framing')}</Text>
+              <Text className={`text-base font-bold ${isDark ? 'text-white' : 'text-black'}`}>{translate('planet.framing')}</Text>
               <Pressable
                 onPress={() => setRoiSheetOpen(false)}
-                className="size-8 items-center justify-center rounded-full bg-white/10 active:opacity-80"
+                className={`size-8 items-center justify-center rounded-full active:opacity-80 ${isDark ? 'bg-white/10' : 'bg-neutral-100'}`}
               >
-                <CloseIcon size={16} />
+                <CloseIcon color={isDark ? undefined : '#0A0B0D'} size={16} />
               </Pressable>
             </View>
 
@@ -630,14 +650,14 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                       setRoiSheetOpen(false);
                     }}
                     disabled={settingsDisabled}
-                    style={{ backgroundColor: selected ? BRAND : CARD_BG }}
+                    style={{ backgroundColor: selected ? BRAND : (isDark ? CARD_BG : '#F4F4F5') }}
                     className="flex-row items-center justify-between rounded-xl px-4 py-3.5 active:opacity-80"
                   >
                     <View>
-                      <Text className={`text-sm font-bold ${selected ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>
+                      <Text className={`text-sm font-bold ${selected ? 'text-black dark:text-black' : (isDark ? 'text-white' : 'text-black')}`}>
                         {`${presetRoi.width}×${presetRoi.height}`}
                       </Text>
-                      <Text className={`mt-0.5 text-xs ${selected ? 'text-black/70 dark:text-black/70' : 'text-white/50 dark:text-white/50'}`}>
+                      <Text className={`mt-0.5 text-xs ${selected ? 'text-black/70 dark:text-black/70' : (isDark ? 'text-white/50' : 'text-neutral-500')}`}>
                         {translate('planet.roi_text', { fps: preset.fps })}
                       </Text>
                     </View>

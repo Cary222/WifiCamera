@@ -1,6 +1,7 @@
 /* eslint-disable perfectionist/sort-imports */
 import { Image } from 'expo-image';
 import { View } from 'react-native';
+import { useUniwind } from 'uniwind';
 
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
@@ -19,9 +20,12 @@ type Props = {
 };
 
 export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaining, isConnected }: Props) {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+
   return (
     <View className="mx-[19px] my-6 rounded-[25px] border border-neutral-200 bg-white p-5 dark:border-[#48484880] dark:bg-[#101011]">
-      <Text className="text-[28px] font-bold text-white">
+      <Text className="text-[28px] font-bold text-black dark:text-white">
         {translate('home.wifi_camera')}
       </Text>
 
@@ -44,12 +48,12 @@ export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaini
               />
             </View>
             <View className="flex-1">
-              <Text className="text-[22px] font-light text-white">
+              <Text className="text-[22px] font-light text-black dark:text-white">
                 {batteryLevel === null ? '—' : `${Math.round(batteryLevel)}%`}
               </Text>
               <Text
                 className={`mt-1 text-[12px] font-light ${
-                  inCharge ? 'text-[#c8e733]' : 'text-white/50'
+                  inCharge ? 'text-[#c8e733]' : 'text-neutral-500 dark:text-white/50'
                 }`}
               >
                 {inCharge
@@ -67,13 +71,14 @@ export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaini
                 source={cardIcon}
                 style={{ width: 28, height: 28 }}
                 contentFit="contain"
+                tintColor={isDark ? undefined : '#222222'}
               />
             </View>
             <View className="flex-1">
-              <Text className="text-[22px] font-light text-white">
+              <Text className="text-[22px] font-light text-black dark:text-white">
                 {storageRemaining}
               </Text>
-              <Text className="mt-1 text-[12px] font-light text-white/50">
+              <Text className="mt-1 text-[12px] font-light text-neutral-500 dark:text-white/50">
                 {translate('home.storage_remaining')}
               </Text>
             </View>

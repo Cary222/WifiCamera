@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
@@ -54,14 +55,18 @@ type ParamCardProps = {
 };
 
 function ParamCard({ title, value, active, onPress }: ParamCardProps) {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+  const cardBg = isDark ? CARD_BG : '#F4F4F5';
+
   return (
     <Pressable
       onPress={onPress}
-      style={{ backgroundColor: active ? BRAND : CARD_BG }}
+      style={{ backgroundColor: active ? BRAND : cardBg }}
       className="h-[80px] flex-1 items-center justify-center gap-1 rounded-2xl active:opacity-80"
     >
-      <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>{title}</Text>
-      <Text className={`text-[17px] ${active ? 'font-medium text-black dark:text-black' : 'text-white dark:text-white'}`}>{value}</Text>
+      <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-neutral-500 dark:text-white/60'}`}>{title}</Text>
+      <Text className={`text-[17px] ${active ? 'font-medium text-black dark:text-black' : 'text-black dark:text-white'}`}>{value}</Text>
     </Pressable>
   );
 }
@@ -69,8 +74,8 @@ function ParamCard({ title, value, active, onPress }: ParamCardProps) {
 function SolveResultRow({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-row gap-3">
-      <Text className="w-[58px] text-xs text-white/50">{label}</Text>
-      <Text className="flex-1 text-xs text-white">{value}</Text>
+      <Text className="w-[58px] text-xs text-neutral-500 dark:text-white/50">{label}</Text>
+      <Text className="flex-1 text-xs text-black dark:text-white">{value}</Text>
     </View>
   );
 }
@@ -130,7 +135,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   }, [landscapeRatio, setLandscapeSensorRatio]);
 
   // Use the shared aspect ratio animation hook
-  const { previewStyle, surfaceHeight, surfaceWidth, previewTop, rotation, scale } = useAspectRatioAnimation(nebulaRatio, 220, 12);
+  const { previewStyle, topBarStyle, surfaceHeight, surfaceWidth, previewTop, rotation, scale } = useAspectRatioAnimation(nebulaRatio, 220, 12);
 
   const shutterSize = Math.round(width * SHUTTER_SIZE_RATIO);
   const shutterBorder = Math.max(3, Math.round(shutterSize * SHUTTER_BORDER_RATIO));
@@ -195,11 +200,14 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
               ? `${countdownRemaining}s`
               : isCapturing ? (repeatTotal > 1 ? `定时拍摄 ${repeatTotal} 张` : '拍摄中') : null;
 
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+
   return (
-    <View className="flex-1 bg-black">
+    <View className="flex-1" style={{ backgroundColor: isDark ? '#000' : '#F9FAFB' }}>
       <Animated.View
-        className="absolute items-center justify-center overflow-hidden bg-black"
-        style={previewStyle as any}
+        className="absolute items-center justify-center overflow-hidden"
+        style={[previewStyle as any, { backgroundColor: isDark ? '#000' : '#F9FAFB' }]}
       >
         <PreviewSurface
           stream={stream}
@@ -210,60 +218,66 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
           scale={scale}
           objectFit="cover"
         />
-
-        <CameraTopBar
-          title={translate('nebula.mode_title')}
-          onBack={onBack}
-          onTitlePress={() => setSheetTarget(value => value === 'manual' ? 'tools' : 'manual')}
-          expanded={sheetTarget !== 'manual'}
-          style={{ top: insets.top + 10 }}
-          rightContent={(
-            <Pressable
-              disabled={isSolving}
-              onPress={() => solve()}
-              style={{ backgroundColor: isSolving ? BRAND : PILL_BG }}
-              className="h-7 min-w-[52px] items-center justify-center rounded-full px-3 active:opacity-80"
-            >
-              <Text className={`text-[11px] ${isSolving ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>
-                {isSolving ? translate('nebula.resolve_in_progress') : translate('nebula.resolve')}
-              </Text>
-            </Pressable>
-          )}
-        />
-
-        <Pressable
-          onPress={() => setFocusAssist(value => !value)}
-          className="absolute left-4 h-8 flex-row items-center gap-1 rounded-full px-2.5 active:opacity-80"
-          style={{
-            top: insets.top + 56,
-            backgroundColor: focusAssist ? BRAND : PILL_BG,
-          }}
-          accessibilityRole="button"
-        >
-          <Text className={`text-[11px] ${focusAssist ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}>
-            {translate('nebula.focus_assist')}
-          </Text>
-        </Pressable>
-
-        {watermark && <View className="absolute top-24 left-5"><Text className="text-base font-semibold text-white/85">SVBONY</Text></View>}
+        {watermark && (
+          <View className="absolute top-4 left-5">
+            <Text className="text-base font-semibold text-white/85">SVBONY</Text>
+          </View>
+        )}
       </Animated.View>
 
-      {(status || notice) && <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 108 }}><View className="rounded-full bg-black/55 px-4 py-1.5"><Text className="text-xs text-white">{notice ?? status}</Text></View></View>}
+      <CameraTopBar
+        title={translate('nebula.mode_title')}
+        onBack={onBack}
+        onTitlePress={() => setSheetTarget(value => value === 'manual' ? 'tools' : 'manual')}
+        expanded={sheetTarget !== 'manual'}
+        isDark={isDark}
+        style={topBarStyle as any}
+        rightContent={(
+          <Pressable
+            disabled={isSolving}
+            onPress={() => solve()}
+            style={{ backgroundColor: isSolving ? BRAND : (isDark ? PILL_BG : 'rgba(0, 0, 0, 0.08)') }}
+            className="h-7 min-w-[52px] items-center justify-center rounded-full px-3 active:opacity-80"
+          >
+            <Text className={`text-[11px] ${isSolving ? 'text-black' : (isDark ? 'text-white' : 'text-black')}`}>
+              {isSolving ? translate('nebula.resolve_in_progress') : translate('nebula.resolve')}
+            </Text>
+          </Pressable>
+        )}
+      />
+
+      <Pressable
+        onPress={() => setFocusAssist(value => !value)}
+        className="absolute left-4 h-8 flex-row items-center gap-1 rounded-full px-2.5 active:opacity-80"
+        style={{
+          top: insets.top + 56,
+          backgroundColor: focusAssist ? BRAND : (isDark ? PILL_BG : 'rgba(0, 0, 0, 0.08)'),
+          zIndex: 10,
+          elevation: 10,
+        }}
+        accessibilityRole="button"
+      >
+        <Text className={`text-[11px] ${focusAssist ? 'text-black' : (isDark ? 'text-white' : 'text-black')}`}>
+          {translate('nebula.focus_assist')}
+        </Text>
+      </Pressable>
+
+      {(status || notice) && <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 108, zIndex: 10, elevation: 10 }}><View className="rounded-full bg-black/55 px-4 py-1.5"><Text className="text-xs text-white">{notice ?? status}</Text></View></View>}
 
       {/* Full-screen countdown overlay, same interaction as landscape mode. */}
       {isCountdown && (
-        <View className="absolute inset-0 items-center justify-center">
+        <View className="absolute inset-0 items-center justify-center" style={{ zIndex: 20, elevation: 20 }}>
           <Text className="text-[88px] font-light text-white">{countdownRemaining}</Text>
         </View>
       )}
 
       {solveResult && (
-        <View className="absolute inset-x-4 rounded-2xl p-4" style={{ top: previewTop + 144, backgroundColor: SHEET_BG }}>
+        <View className="absolute inset-x-4 rounded-2xl p-4" style={{ top: previewTop + 144, backgroundColor: isDark ? SHEET_BG : '#FFFFFF', borderTopWidth: isDark ? 0 : 1, borderColor: isDark ? 'transparent' : 'rgba(0, 0, 0, 0.08)', zIndex: 20, elevation: 20 }}>
           <View className="mb-3 flex-row items-center justify-between">
-            <Text className={`text-sm font-semibold ${solveResult.success ? 'text-[#CBFF3C]' : 'text-red-300'}`}>
+            <Text className={`text-sm font-semibold ${solveResult.success ? 'text-[#CBFF3C]' : 'text-red-400'}`}>
               {solveResult.success ? translate('nebula.resolve_success') : translate('nebula.resolve_failed')}
             </Text>
-            <Pressable onPress={dismissResult} className="rounded-full bg-white/10 px-2 py-1 active:opacity-80"><Text className="text-xs text-white">关闭</Text></Pressable>
+            <Pressable onPress={dismissResult} className={`rounded-full px-2 py-1 active:opacity-80 ${isDark ? 'bg-white/10' : 'bg-neutral-100'}`}><Text className={`text-xs ${isDark ? 'text-white' : 'text-black'}`}>关闭</Text></Pressable>
           </View>
           {solveResult.success
             ? (
@@ -276,7 +290,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                   <SolveResultRow label="用时" value={formatSolveElapsed(solveResult.elapsedMs)} />
                 </View>
               )
-            : <Text className="text-xs/5 text-white/80">{solveResult.error}</Text>}
+            : <Text className={`text-xs/5 ${isDark ? 'text-white/80' : 'text-neutral-700'}`}>{solveResult.error}</Text>}
         </View>
       )}
       {!sheetOpen && (
@@ -299,7 +313,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                 width: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner,
                 height: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner,
                 borderRadius: captureMode === 'video' && isRecording ? 8 : shutterInner / 2,
-                backgroundColor: captureMode === 'video' && isRecording ? '#FF3B30' : '#FFFFFF',
+                backgroundColor: captureMode === 'video' && isRecording ? '#FF3B30' : (isDark ? '#FFFFFF' : '#0A0B0D'),
               }}
             />
           </Pressable>
@@ -307,7 +321,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
       )}
 
       {sheetOpen && (
-        <View className="absolute inset-x-0 rounded-t-[26px] p-4" style={{ bottom: insets.bottom + 96, backgroundColor: SHEET_BG }}>
+        <View className="absolute inset-x-0 rounded-t-[26px] p-4" style={{ bottom: insets.bottom + 96, backgroundColor: isDark ? SHEET_BG : '#FFFFFF', borderTopWidth: isDark ? 0 : 1, borderTopColor: 'rgba(0, 0, 0, 0.08)' }}>
           {sheetTarget === 'manual' && !burstOpen
             ? (
                 <View className="gap-4">
@@ -399,28 +413,30 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                     <View className="gap-4">
                       <View className="flex-row gap-3">
                         <ToolCard
-                          icon={<StopwatchIcon color={timerEnabled ? '#111' : '#FFF'} />}
+                          icon={<StopwatchIcon color={timerEnabled ? '#111' : (isDark ? '#FFF' : '#222')} />}
                           label="定时拍摄"
                           active={timerEnabled}
+                          cardBg={isDark ? CARD_BG : '#F4F4F5'}
                           onPress={() => {
                             setTimerEnabled(value => !value);
                             setBurstOpen(true);
                           }}
                         />
                         <ToolCard
-                          icon={<CountdownIcon color={countdownEnabled ? '#111' : '#FFF'} />}
+                          icon={<CountdownIcon color={countdownEnabled ? '#111' : (isDark ? '#FFF' : '#222')} />}
                           label="倒计时"
                           active={countdownEnabled}
+                          cardBg={isDark ? CARD_BG : '#F4F4F5'}
                           onPress={() => {
                             setCountdownEnabled(value => !value);
                             setBurstOpen(true);
                           }}
                         />
-                        <AspectRatioButton ratio={nebulaRatio} onPress={() => setLandscapeSensorRatio(nebulaRatio === '4:3' ? '16:9' : '4:3')} cardBg={CARD_BG} />
-                        <ToolCard icon={<WatermarkFlaskIcon color={watermark ? '#111' : '#FFF'} />} label={translate('nebula.watermark')} active={watermark} onPress={() => setWatermark(value => !value)} />
+                        <AspectRatioButton ratio={nebulaRatio} onPress={() => setLandscapeSensorRatio(nebulaRatio === '4:3' ? '16:9' : '4:3')} cardBg={isDark ? CARD_BG : '#F4F4F5'} />
+                        <ToolCard icon={<WatermarkFlaskIcon color={watermark ? '#111' : (isDark ? '#FFF' : '#222')} />} label={translate('nebula.watermark')} active={watermark} cardBg={isDark ? CARD_BG : '#F4F4F5'} onPress={() => setWatermark(value => !value)} />
                       </View>
-                      <Pressable onPress={() => setAutoStretch(value => !value)} style={{ backgroundColor: autoStretch ? BRAND : CARD_BG }} className="h-[70px] items-center justify-center rounded-2xl">
-                        <Text className={autoStretch ? 'text-black dark:text-black' : 'text-white dark:text-white'}>
+                      <Pressable onPress={() => setAutoStretch(value => !value)} style={{ backgroundColor: autoStretch ? BRAND : (isDark ? CARD_BG : '#F4F4F5') }} className="h-[70px] items-center justify-center rounded-2xl">
+                        <Text className={autoStretch ? 'text-black dark:text-black' : 'text-black dark:text-white'}>
                           {translate('nebula.auto_stretch')}
                           {autoStretch ? translate('nebula.auto_stretch_on') : translate('nebula.auto_stretch_off')}
                         </Text>
@@ -433,20 +449,21 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
               <View className="flex-row items-center justify-between">
                 <Pressable
                   onPress={() => setBurstOpen(false)}
-                  style={{ backgroundColor: PILL_BG }}
+                  style={{ backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.06)' }}
                   className="size-11 items-center justify-center rounded-full active:opacity-70"
                 >
-                  <CloseIcon />
+                  <CloseIcon color={isDark ? undefined : '#0A0B0D'} />
                 </Pressable>
-                <Text className="text-[16px] text-white">定时拍摄</Text>
+                <Text className={`text-[16px] ${isDark ? 'text-white' : 'text-black'}`}>定时拍摄</Text>
                 <Pressable
                   onPress={() => {
                     setTimerPlan({ count: 3, interval: 3 });
                     setCountdown(3);
                   }}
+                  style={{ backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.06)' }}
                   className="size-11 items-center justify-center rounded-full active:opacity-70"
                 >
-                  <ResetIcon />
+                  <ResetIcon color={isDark ? undefined : '#0A0B0D'} />
                 </Pressable>
               </View>
               {timerEnabled && (
@@ -468,7 +485,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
         onThumbnailPress={() => router.push('/album' as never)}
         isCapturing={isCapturing}
         isRecording={isRecording}
-        rightButton={<SheetMenuIcon color={sheetOpen ? BRAND : '#FFFFFF'} />}
+        rightButton={<SheetMenuIcon color={sheetOpen ? BRAND : (isDark ? '#FFFFFF' : '#0A0B0D')} />}
         rightButtonActive={sheetOpen}
         onRightButtonPress={() => setSheetOpen((open) => {
           if (open)

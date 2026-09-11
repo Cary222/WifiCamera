@@ -2,9 +2,10 @@ import type { SatellitePass } from './satellite-pass-service';
 import * as React from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path, Rect } from 'react-native-svg';
-
 import { Text } from '@/components/ui';
+
 import { translate } from '@/lib/i18n';
+import { useDeepSpaceOverlayTheme } from '../ui/deep-space-theme';
 
 type SatellitePassState
   = | { status: 'loading' }
@@ -16,11 +17,11 @@ function clockTime(iso: string): string {
   return `${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`;
 }
 
-function SatelliteIcon() {
+function SatelliteIcon({ color = '#FFFFFF' }: { color?: string } = {}) {
   return (
     <Svg height={26} viewBox="0 0 32 32" width={26}>
-      <Rect fill="#FFFFFF" height={8} rx={1.5} transform="rotate(45 16 16)" width={8} x={12} y={12} />
-      <Path d="M4 8l7-4 5 5-7 4zm12 15 7-4 5 5-7 4z" fill="#FFFFFF" />
+      <Rect fill={color} height={8} rx={1.5} transform="rotate(45 16 16)" width={8} x={12} y={12} />
+      <Path d="M4 8l7-4 5 5-7 4zm12 15 7-4 5 5-7 4z" fill={color} />
       <Path d="m10 10 4 4m4 4 4 4" stroke="#202326" strokeWidth={1.2} />
     </Svg>
   );
@@ -43,36 +44,37 @@ function LoadingRows() {
 }
 
 export function SatellitePassList({ state }: { state: SatellitePassState }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   return (
     <View style={styles.section}>
-      <Text style={styles.title}>{translate('deep_space.satellite_passes')}</Text>
+      <Text style={[styles.title, !isDark && { color: overlay.text }]}>{translate('deep_space.satellite_passes')}</Text>
       <View style={styles.headerRow}>
         <View style={styles.nameColumn} />
-        <Text style={[styles.headerText, styles.timeColumn]}>{translate('deep_space.satellite_time')}</Text>
-        <Text style={[styles.headerText, styles.magnitudeColumn]}>{translate('deep_space.satellite_magnitude')}</Text>
-        <Text style={[styles.headerText, styles.altitudeColumn]}>{translate('deep_space.satellite_altitude')}</Text>
+        <Text style={[styles.headerText, styles.timeColumn, !isDark && { color: overlay.muted }]}>{translate('deep_space.satellite_time')}</Text>
+        <Text style={[styles.headerText, styles.magnitudeColumn, !isDark && { color: overlay.muted }]}>{translate('deep_space.satellite_magnitude')}</Text>
+        <Text style={[styles.headerText, styles.altitudeColumn, !isDark && { color: overlay.muted }]}>{translate('deep_space.satellite_altitude')}</Text>
       </View>
       {state.status === 'loading' && <LoadingRows />}
       {state.status === 'failed' && (
         <View style={styles.messageBox}>
-          <Text style={styles.message}>{translate('deep_space.satellite_error')}</Text>
+          <Text style={[styles.message, !isDark && { color: overlay.muted }]}>{translate('deep_space.satellite_error')}</Text>
           <Pressable accessibilityRole="button" onPress={state.retry} testID="deep-space-calendar-satellite-retry">
             <Text style={styles.retry}>{translate('deep_space.satellite_retry')}</Text>
           </Pressable>
         </View>
       )}
       {state.status === 'ready' && state.passes.length === 0 && (
-        <Text style={styles.message}>{translate('deep_space.satellite_none')}</Text>
+        <Text style={[styles.message, !isDark && { color: overlay.muted }]}>{translate('deep_space.satellite_none')}</Text>
       )}
       {state.status === 'ready' && state.passes.map(pass => (
-        <View key={`${pass.noradId}-${pass.peakTime}`} style={styles.row} testID={`deep-space-calendar-satellite-${pass.noradId}`}>
+        <View key={`${pass.noradId}-${pass.peakTime}`} style={[styles.row, !isDark && { backgroundColor: overlay.card, borderColor: overlay.hairline }]} testID={`deep-space-calendar-satellite-${pass.noradId}`}>
           <View style={styles.nameColumn}>
-            <SatelliteIcon />
-            <Text numberOfLines={1} style={styles.name}>{pass.name}</Text>
+            <SatelliteIcon color={isDark ? '#FFFFFF' : '#0A0B0D'} />
+            <Text numberOfLines={1} style={[styles.name, !isDark && { color: overlay.text }]}>{pass.name}</Text>
           </View>
-          <Text style={[styles.value, styles.timeColumn]}>{clockTime(pass.peakTime)}</Text>
-          <Text style={[styles.value, styles.magnitudeColumn]}>{pass.magnitude.toFixed(1)}</Text>
-          <Text style={[styles.value, styles.altitudeColumn]}>{`${Math.round(pass.maxElevationDeg)}°`}</Text>
+          <Text style={[styles.value, styles.timeColumn, !isDark && { color: overlay.text }]}>{clockTime(pass.peakTime)}</Text>
+          <Text style={[styles.value, styles.magnitudeColumn, !isDark && { color: overlay.text }]}>{pass.magnitude.toFixed(1)}</Text>
+          <Text style={[styles.value, styles.altitudeColumn, !isDark && { color: overlay.text }]}>{`${Math.round(pass.maxElevationDeg)}°`}</Text>
         </View>
       ))}
     </View>

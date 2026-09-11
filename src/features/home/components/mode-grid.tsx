@@ -2,6 +2,7 @@ import type { Href } from 'expo-router';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Pressable, useWindowDimensions, View } from 'react-native';
+import { useUniwind } from 'uniwind';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 
@@ -14,6 +15,8 @@ type ModeCardProps = {
 
 function ModeCard({ icon, label, route, width }: ModeCardProps) {
   const router = useRouter();
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
 
   return (
     <Pressable
@@ -21,11 +24,12 @@ function ModeCard({ icon, label, route, width }: ModeCardProps) {
       style={{ width }}
       className="h-[139px] rounded-[17.069px] border-[0.569px] border-neutral-200 bg-neutral-50 p-5 active:opacity-70 dark:border-[#48484880] dark:bg-[#111213]"
     >
-      <View className="size-[45px] items-center justify-center rounded-lg bg-transparent">
+      <View className="size-[45px] items-center justify-center rounded-lg bg-neutral-200/50 dark:bg-transparent">
         <Image
           source={icon}
           style={{ width: 28, height: 28 }}
           contentFit="contain"
+          tintColor={isDark ? undefined : '#262626'}
         />
       </View>
       <Text className="mt-6 text-[20px] font-normal text-black/80 dark:text-white/80">

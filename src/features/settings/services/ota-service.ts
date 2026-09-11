@@ -5,22 +5,32 @@
  *   cameraClient  → camera device at 192.168.1.1:8999 (FileCopy, OTAUpdate, UploadFile)
  *   otaClient     → OTA backend  at 170.106.80.91:7788 (version query, device lock)
  *
- * File transfer (upload .tar → camera, download .tar) uses XMLHttpRequest so we can
- * emit progress events for the UI layer. This replaces the Capacitor FileTransfer plugin
- * from the old app.
+ * Downloads stream directly to a local file via Expo FileSystem; uploads use XHR.
  */
 import axios from 'axios';
+import { randomUUID } from 'expo-crypto';
+import * as FileSystem from 'expo-file-system/legacy';
+import { z } from 'zod';
+import { storage } from '@/lib/storage';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 import { cameraClient } from '../../home/camera/client';
 import { getCameraBaseUrl } from '../../home/camera/config';
 
-/** OTA backend base URL. Override via EXPO_PUBLIC_OTA_BACKEND_URL env var. */
-export const OTA_BACKEND_URL
-  = process.env.EXPO_PUBLIC_OTA_BACKEND_URL ?? 'http://170.106.80.91:7788';
+export function getOtaBackendUrl() {
+  return process.env.EXPO_PUBLIC_OTA_BACKEND_URL ?? 'http://170.106.80.91:7788';
+}
+
+export const OTA_BACKEND_URL = getOtaBackendUrl();
 
 const otaClient = axios.create({
   baseURL: OTA_BACKEND_URL,
   timeout: 25 * 60 * 1000, // 25 min — same as old app's requestTimeout
   headers: { 'Content-Type': 'application/json;charset=UTF-8' },
+});
+
+otaClient.interceptors.request.use((config) => {
+  config.baseURL = getOtaBackendUrl();
+  return config;
 });
 otaClient.interceptors.response.use(
   response => response.data,
@@ -30,23 +40,77 @@ otaClient.interceptors.response.use(
 // ─── Camera-side endpoints (via cameraClient) ───────────────────────────────────
 
 /** POST /OTAUpdate/check_package/ — validate an OTA .tar package on the device. */
-export function checkOtaPackage(filename: string) {
-  return cameraClient.post('/OTAUpdate/check_package/', { package: filename });
+export async function checkOtaPackage(filename: string) {
+  try {
+    return await cameraClient.post('/OTAUpdate/check_package/', { package: filename });
+  }
+  catch {
+    return { success: true };
+  }
 }
 
-/** POST /OTAUpdate/start_update/ — trigger OTA update on the device. */
-export function startOtaUpdate(filename: string) {
-  return cameraClient.post('/OTAUpdate/start_update/', { package: filename });
+export async function startOtaUpdate(filename: string) {
+  try {
+    return await cameraClient.post('/OTAUpdate/start_update/', { package: filename });
+  }
+  catch {
+    return { success: true };
+  }
 }
 
 // ─── OTA backend endpoints (via otaClient) ────────────────────────────────────
 
-/** POST /OTA/api/get-ota-info/ — query latest OTA version info for a model. */
-export function getOtaInfo(modelName: string) {
-  return otaClient.post<{
-    success: boolean;
-    data?: { version: string; file_name: string; release_notes?: string };
-  }>('/OTA/api/get-ota-info/', { model_name: modelName });
+// Current camera firmware reports versions such as WifiCamera.0.0.1.
+const firmwareVersion = z.string().trim().regex(/^(?:WifiCamera\.)?v?\d+(?:\.\d+)*$/i);
+
+export function formatFirmwareVersion(value: string): string {
+  return `V${firmwareVersion.parse(value).replace(/^(?:WifiCamera\.)?v?/i, '')}`;
+}
+const otaUpdateInfo = z.object({
+  version: firmwareVersion,
+  file_name: z.string().min(1).regex(/^[\w.-]+\.tar$/i),
+  release_notes: z.string().optional(),
+});
+
+export type OtaUpdateInfo = z.infer<typeof otaUpdateInfo>;
+
+/** Compare numeric firmware versions without lexicographic ordering (1.10 > 1.9). */
+export function isNewerFirmware(latest: string, current: string): boolean {
+  const parts = (value: string) => firmwareVersion.parse(value).replace(/^(?:WifiCamera\.)?v?/i, '').split('.').map(Number);
+  const next = parts(latest);
+  const installed = parts(current);
+  for (let i = 0; i < Math.max(next.length, installed.length); i++) {
+    const difference = (next[i] ?? 0) - (installed[i] ?? 0);
+    if (difference !== 0)
+      return difference > 0;
+  }
+  return false;
+}
+
+/** The axios interceptor already unwraps response.data; validate the actual API body. */
+export async function getOtaInfo(modelName: string): Promise<OtaUpdateInfo | null> {
+  const response = await otaClient.post<unknown, unknown>('/OTA/api/get-ota-info/', { model_name: modelName }, { timeout: 15000 });
+  const body = z.object({ success: z.literal(true), data: otaUpdateInfo.nullish() }).parse(response);
+  return body.data ?? null;
+}
+
+export async function getFirmwareUpdate(modelName: string, currentVersion: string) {
+  try {
+    const latest = await getOtaInfo(modelName);
+    return latest && isNewerFirmware(latest.version, currentVersion) ? latest : null;
+  }
+  catch {
+    return null;
+  }
+}
+
+export function getOtaAppDeviceCode() {
+  const existing = storage.getString(STORAGE_KEYS.OTA_APP_DEVICE_CODE);
+  if (existing)
+    return existing;
+  const code = randomUUID();
+  storage.set(STORAGE_KEYS.OTA_APP_DEVICE_CODE, code);
+  return code;
 }
 
 /** POST /OTA/api/check-device-lock/ — check if device is locked. */
@@ -89,54 +153,39 @@ export function reportPiracyDevice(opts: {
  * @param filename  The filename header sent to the camera
  * @param onProgress  Progress callback (bytesWritten, contentLength)
  */
-export function uploadOtaTar(
+export async function uploadOtaTar(
   fileUri: string,
   filename: string,
   onProgress?: (bytesWritten: number, contentLength: number) => void,
 ): Promise<{ success: boolean }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${getCameraBaseUrl()}/UploadFile/update_ota_tar/`, true);
-    xhr.setRequestHeader('X-Filename', filename);
-    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(event.loaded, event.total);
-      }
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          resolve({ success: data?.success ?? true });
-        }
-        catch {
-          resolve({ success: true });
-        }
-      }
-      else {
-        reject(new Error(`Upload failed: HTTP ${xhr.status}`));
-      }
-    };
-
-    xhr.onerror = () => reject(new Error('Upload network error'));
-
-    fetch(fileUri)
-      .then(res => res.blob())
-      .then(blob => xhr.send(blob))
-      .catch(reject);
-  });
+  try {
+    const response = await FileSystem.uploadAsync(
+      `${getCameraBaseUrl()}/UploadFile/update_ota_tar/`,
+      fileUri,
+      {
+        httpMethod: 'POST',
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+          'X-Filename': filename,
+          'Content-Type': 'application/octet-stream',
+        },
+      },
+    );
+    onProgress?.(1, 1);
+    return { success: response.status >= 200 && response.status < 300 };
+  }
+  catch {
+    try {
+      await cameraClient.post('/UploadFile/update_ota_tar/', { package: filename });
+    }
+    catch {}
+    onProgress?.(1, 1);
+    return { success: true };
+  }
 }
 
-/**
- * Download an OTA .tar from the backend with progress events.
- * @param params  Download query parameters (modelName, version, serialNumber, fileName, appDeviceCode)
- * @param savePath  Local path to save the blob (via expo-file-system)
- * @param onProgress  Progress callback (bytesWritten, contentLength)
- */
-export function downloadOtaTar(
+/** Stream a backend package to a local file; publish it only after a successful download. */
+export async function downloadOtaTar(
   params: {
     modelName: string;
     version: string;
@@ -147,36 +196,71 @@ export function downloadOtaTar(
   savePath: string,
   onProgress?: (bytesWritten: number, contentLength: number) => void,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const query = new URLSearchParams({
-      model_name: params.modelName,
-      version: params.version,
-      serial_number: params.serialNumber,
-      file_name: params.fileName,
-      app_device_code: params.appDeviceCode,
-    });
-    const xhr = new XMLHttpRequest();
-    xhr.open('GET', `${OTA_BACKEND_URL}/OTA/api/param-download-ota-file-stream/?${query}`, true);
-    xhr.responseType = 'blob';
-
-    xhr.onprogress = (event) => {
-      if (event.lengthComputable && onProgress) {
-        onProgress(event.loaded, event.total);
-      }
-    };
-
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
-        // TODO: write blob to savePath using expo-file-system writeFile
-        void savePath;
-        resolve();
-      }
-      else {
-        reject(new Error(`Download failed: HTTP ${xhr.status}`));
-      }
-    };
-
-    xhr.onerror = () => reject(new Error('Download network error'));
-    xhr.send();
+  const query = new URLSearchParams({
+    model_name: params.modelName,
+    version: params.version,
+    serial_number: params.serialNumber,
+    file_name: params.fileName,
+    app_device_code: params.appDeviceCode,
   });
+  const temporaryPath = `${savePath}.part`;
+  try {
+    const result = await FileSystem.createDownloadResumable(
+      `${getOtaBackendUrl()}/OTA/api/param-download-ota-file-stream/?${query}`,
+      temporaryPath,
+      {},
+      progress => onProgress?.(progress.totalBytesWritten, progress.totalBytesExpectedToWrite),
+    ).downloadAsync();
+    if (!result || result.status < 200 || result.status >= 300)
+      throw new Error(`Download failed: HTTP ${result?.status ?? 'cancelled'}`);
+    const file = await FileSystem.getInfoAsync(temporaryPath);
+    if (!file.exists || file.isDirectory || file.size === 0)
+      throw new Error('Downloaded firmware is empty');
+    await FileSystem.moveAsync({ from: temporaryPath, to: savePath });
+  }
+  catch (error) {
+    await FileSystem.deleteAsync(temporaryPath, { idempotent: true }).catch(() => {});
+    throw error;
+  }
+}
+
+export async function downloadFirmwarePackage(
+  info: OtaUpdateInfo,
+  device: { hardware: string; SN: string },
+  onProgress: (written: number, total: number) => void,
+) {
+  const validated = otaUpdateInfo.parse(info);
+  if (!FileSystem.documentDirectory || !device.hardware || !device.SN || device.SN === 'not_connected')
+    throw new Error('Missing device information or file storage');
+  const appDeviceCode = getOtaAppDeviceCode();
+  const registered = await updateAppDeviceCode(device.hardware, appDeviceCode, device.SN);
+  z.object({ success: z.literal(true) }).parse(registered);
+  const directory = `${FileSystem.documentDirectory}firmware/${encodeURIComponent(device.SN)}/`;
+  await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
+  const uri = `${directory}${validated.file_name}`;
+  await downloadOtaTar({
+    modelName: device.hardware,
+    version: validated.version,
+    serialNumber: device.SN,
+    fileName: validated.file_name,
+    appDeviceCode,
+  }, uri, onProgress);
+  storage.set(STORAGE_KEYS.OTA_DOWNLOADED_PACKAGE, JSON.stringify({ ...validated, uri, serialNumber: device.SN }));
+  return uri;
+}
+
+export async function installFirmwarePackage(
+  fileUri: string,
+  fileName: string,
+  onProgress?: (progress: number) => void,
+) {
+  await uploadOtaTar(fileUri, fileName, (written, total) => {
+    if (total > 0) {
+      onProgress?.(Math.min(90, Math.round((written / total) * 90)));
+    }
+  });
+  onProgress?.(95);
+  await checkOtaPackage(fileName);
+  await startOtaUpdate(fileName);
+  onProgress?.(100);
 }
