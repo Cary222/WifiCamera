@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 
-import { OVERLAY } from './deep-space-theme';
+import { OVERLAY, OVERLAY_LIGHT } from './deep-space-theme';
 
 /**
  * Layout for the shared feature sheet and the rows that live inside it.
@@ -26,6 +26,9 @@ export const featureSheetStyles = StyleSheet.create({
   featureOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
+  },
+  featureOverlayTop: {
+    justifyContent: 'flex-start',
   },
   featureRow: {
     alignItems: 'center',
@@ -66,6 +69,18 @@ export const featureSheetStyles = StyleSheet.create({
   featureSheetTall: {
     maxHeight: '82%',
   },
+  featureSheetTop: {
+    alignSelf: 'stretch',
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    paddingBottom: 0,
+  },
+  featureSheetFullScreen: {
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    height: '100%',
+    paddingBottom: 0,
+  },
   featureTitle: {
     color: OVERLAY.text,
     flex: 1,
@@ -76,5 +91,31 @@ export const featureSheetStyles = StyleSheet.create({
   sheetTopScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
+  },
+  sheetTopScrimTransparent: {
+    backgroundColor: 'transparent',
+  },
+});
+
+export const featureSheetStylesLight = StyleSheet.create({
+  featureHeader: {
+    borderBottomColor: OVERLAY_LIGHT.hairline,
+  },
+  featureRow: {
+    borderBottomColor: OVERLAY_LIGHT.hairline,
+  },
+  featureRowHint: {
+    color: OVERLAY_LIGHT.muted,
+  },
+  featureRowLabel: {
+    color: OVERLAY_LIGHT.text,
+  },
+  featureSheet: {
+    backgroundColor: OVERLAY_LIGHT.drawer,
+    borderColor: OVERLAY_LIGHT.hairline,
+    borderWidth: 1,
+  },
+  featureTitle: {
+    color: OVERLAY_LIGHT.text,
   },
 });

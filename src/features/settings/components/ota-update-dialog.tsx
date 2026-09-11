@@ -1,263 +1,439 @@
-import * as React from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
-import { Modal, useModal } from '@/components/ui';
-import { Button } from '@/components/ui/button';
-import { ProgressBar } from '@/components/ui/progress-bar';
-import { translate } from '@/lib/i18n';
-import { uploadOtaTar } from '../services/ota-service';
+/* eslint-disable max-lines-per-function, react-hooks/set-state-in-effect, react-hooks-extra/no-direct-set-state-in-use-effect */
+import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
+import type { OtaUpdateInfo } from '../services/ota-service';
+import {
+  BottomSheetBackdrop,
+  BottomSheetModal,
+  BottomSheetView,
+} from '@gorhom/bottom-sheet';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Pressable, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
 
-export type OtaUpdateInfo = {
-  version: string;
-  file_name: string;
-  release_notes?: string;
-};
+import { Text, useModal } from '@/components/ui';
+import { translate } from '@/lib/i18n';
+import {
+  downloadFirmwarePackage,
+  formatFirmwareVersion,
+  installFirmwarePackage,
+} from '../services/ota-service';
+
+export type OtaDialogPhase
+  = | 'available'
+    | 'already_latest'
+    | 'downloading'
+    | 'download_complete'
+    | 'updating'
+    | 'update_complete';
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   updateInfo: OtaUpdateInfo | null;
+  device: { hardware: string; SN: string } | null;
+  initialPhase?: OtaDialogPhase;
+  onUpdated?: () => void;
 };
 
-type Phase = 'prompt' | 'uploading' | 'done' | 'error';
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0)
-    return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${Number.parseFloat((bytes / k ** i).toFixed(2))} ${sizes[i]}`;
-}
-
-function PromptContent({
+export function OtaUpdateDialog({
+  visible,
+  onClose,
   updateInfo,
-  onIgnore,
-  onInstall,
-}: {
-  updateInfo: OtaUpdateInfo | null;
-  onIgnore: () => void;
-  onInstall: () => void;
-}) {
+  device,
+  initialPhase,
+  onUpdated,
+}: Props) {
+  const { ref, present, dismiss } = useModal();
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+
+  const [phase, setPhase] = useState<OtaDialogPhase>(() => {
+    if (initialPhase)
+      return initialPhase;
+    return updateInfo ? 'available' : 'already_latest';
+  });
+
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [updateProgress, setUpdateProgress] = useState(0);
+  const [downloadedUri, setDownloadedUri] = useState<string | null>(null);
+  const isCancelledRef = useRef(false);
+  const prevVisibleRef = useRef(false);
+
+  useEffect(() => {
+    if (visible && !prevVisibleRef.current) {
+      setPhase(initialPhase ?? (updateInfo ? 'available' : 'already_latest'));
+      present();
+    }
+    else if (!visible && prevVisibleRef.current) {
+      dismiss();
+    }
+    prevVisibleRef.current = visible;
+  }, [visible, present, dismiss, updateInfo, initialPhase]);
+
+  const handleClose = useCallback(() => {
+    dismiss();
+    onClose();
+  }, [dismiss, onClose]);
+
+  const startDownload = async () => {
+    if (!updateInfo || !device)
+      return;
+    setPhase('downloading');
+    setDownloadProgress(0);
+    isCancelledRef.current = false;
+
+    try {
+      const uri = await downloadFirmwarePackage(
+        updateInfo,
+        device,
+        (written, total) => {
+          if (isCancelledRef.current)
+            return;
+          if (total > 0) {
+            setDownloadProgress(
+              Math.min(100, Math.round((written / total) * 100)),
+            );
+          }
+        },
+      );
+      if (isCancelledRef.current)
+        return;
+      setDownloadedUri(uri);
+      setPhase('download_complete');
+    }
+    catch (err) {
+      if (isCancelledRef.current)
+        return;
+      Alert.alert(translate('ota.error'), String(err), [
+        {
+          text: translate('ota.cancel'),
+          onPress: handleClose,
+          style: 'cancel',
+        },
+        { text: translate('ota.retry'), onPress: startDownload },
+      ]);
+      setPhase('available');
+    }
+  };
+
+  const startInstall = async () => {
+    if (!downloadedUri || !updateInfo)
+      return;
+    setPhase('updating');
+    setUpdateProgress(10);
+
+    try {
+      await installFirmwarePackage(downloadedUri, updateInfo.file_name, p =>
+        setUpdateProgress(p));
+      setPhase('update_complete');
+    }
+    catch (err) {
+      Alert.alert(translate('ota.error'), String(err), [
+        {
+          text: translate('ota.cancel'),
+          onPress: handleClose,
+          style: 'cancel',
+        },
+        { text: translate('ota.retry'), onPress: startInstall },
+      ]);
+      setPhase('download_complete');
+    }
+  };
+
+  const isNonDismissable = phase === 'downloading' || phase === 'updating';
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        appearsOnIndex={0}
+        disappearsOnIndex={-1}
+        pressBehavior={isNonDismissable ? 'none' : 'close'}
+      />
+    ),
+    [isNonDismissable],
+  );
+
   return (
-    <>
-      <View className="mb-6 px-2">
-        <View className="mb-3 flex-row items-center justify-between">
-          <View>
-            <View className="mb-1">
-              <Text className="text-xs text-neutral-400 dark:text-neutral-500">
-                {translate('ota.version_label')}
-              </Text>
-              <Text className="text-base font-bold text-neutral-900 dark:text-white">
-                {updateInfo?.version ?? '-'}
-              </Text>
-            </View>
-          </View>
-        </View>
+    <BottomSheetModal
+      ref={ref}
+      snapPoints={[Math.min(height - insets.top, 300 + insets.bottom)]}
+      enableDynamicSizing={false}
+      enablePanDownToClose={!isNonDismissable}
+      enableContentPanningGesture={false}
+      onDismiss={onClose}
+      backdropComponent={renderBackdrop}
+      backgroundStyle={{
+        backgroundColor: isDark ? '#101011' : '#FFFFFF',
+        borderRadius: 25,
+        borderWidth: 1,
+        borderColor: isDark ? '#484848' : '#E5E5E5',
+      }}
+      handleIndicatorStyle={{
+        width: 50,
+        height: 4,
+        backgroundColor: '#858585',
+      }}
+    >
+      <BottomSheetView style={{ paddingHorizontal: 24, paddingBottom: Math.max(insets.bottom, 24) }}>
+        <Text
+          tx="ota.title"
+          className="mt-2 mb-6 text-center text-[20px] font-bold text-black dark:text-white"
+        />
 
-        <View className="mb-3 rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800">
-          <Text className="mb-1 text-xs text-neutral-400 dark:text-neutral-500">
-            {translate('ota.file_name')}
-          </Text>
-          <Text className="text-sm text-neutral-700 dark:text-neutral-200">
-            {updateInfo?.file_name ?? '-'}
-          </Text>
-        </View>
-
-        {updateInfo?.release_notes
-          ? (
-              <View className="rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800">
-                <Text className="mb-1 text-xs text-neutral-400 dark:text-neutral-500">
-                  {translate('ota.release_notes')}
-                </Text>
-                <Text className="text-sm text-neutral-700 dark:text-neutral-200">
-                  {updateInfo.release_notes}
-                </Text>
-              </View>
-            )
-          : null}
-      </View>
-
-      <View className="flex-row gap-3 px-2">
-        <View className="flex-1">
-          <Button variant="outline" label={translate('ota.skip')} onPress={onIgnore} />
-        </View>
-        <View className="flex-1">
-          <Button variant="default" label={translate('ota.start_update')} onPress={onInstall} />
-        </View>
-      </View>
-    </>
+        {phase === 'available' && updateInfo && (
+          <AvailablePhase
+            version={formatFirmwareVersion(updateInfo.version)}
+            onCancel={handleClose}
+            onDownload={startDownload}
+          />
+        )}
+        {phase === 'already_latest' && (
+          <AlreadyLatestPhase onConfirm={handleClose} />
+        )}
+        {phase === 'downloading' && (
+          <DownloadingPhase
+            progress={downloadProgress}
+            onCancel={() => {
+              isCancelledRef.current = true;
+              handleClose();
+            }}
+          />
+        )}
+        {phase === 'download_complete' && (
+          <DownloadCompletePhase
+            onCancel={handleClose}
+            onUpdate={startInstall}
+          />
+        )}
+        {phase === 'updating' && <UpdatingPhase progress={updateProgress} />}
+        {phase === 'update_complete' && (
+          <UpdateCompletePhase
+            onConfirm={() => {
+              onUpdated?.();
+              handleClose();
+            }}
+          />
+        )}
+      </BottomSheetView>
+    </BottomSheetModal>
   );
 }
 
-function UploadingContent({
-  progress,
-  bytesWritten,
-  totalBytes,
-  fileName,
-  progressRef,
-}: {
-  progress: number;
-  bytesWritten: number;
-  totalBytes: number;
-  fileName: string | undefined;
-  progressRef: React.RefObject<{ setProgress: (v: number) => void } | null>;
-}) {
+function ProgressBar({ progress }: { progress: number }) {
   return (
-    <View className="mb-6 items-center px-2">
-      <ActivityIndicator size="large" className="mb-4" />
-      <Text className="mb-2 text-base font-semibold text-neutral-900 dark:text-white">
-        {translate('ota.uploading')}
-      </Text>
-      <Text className="mb-4 text-sm text-neutral-500 dark:text-neutral-400">
-        {fileName ?? '-'}
-      </Text>
-      <ProgressBar ref={progressRef} initialProgress={progress} className="w-full" />
-      <View className="mt-2 flex-row justify-between text-xs text-neutral-400 dark:text-neutral-500">
-        <Text>{formatBytes(bytesWritten)}</Text>
-        <Text>
-          {progress.toFixed(0)}
-          %
-        </Text>
-        <Text>{formatBytes(totalBytes)}</Text>
-      </View>
+    <View className="mt-6 h-[8px] w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-[#2A2A2D]">
+      <View
+        style={{ width: `${Math.max(5, Math.min(100, progress))}%` }}
+        className="h-full rounded-full bg-[#C8E733]"
+      />
     </View>
   );
 }
 
-function DoneContent({ onDone }: { onDone: () => void }) {
-  return (
-    <>
-      <View className="mb-6 items-center px-2">
-        <Text className="mb-3 text-base font-semibold text-green-600">
-          {translate('ota.success')}
-        </Text>
-        <Text className="text-sm text-neutral-600 dark:text-neutral-400">
-          {translate('ota.success_message')}
-        </Text>
-      </View>
-      <View className="px-2">
-        <Button variant="default" label={translate('ota.done')} onPress={onDone} />
-      </View>
-    </>
-  );
-}
-
-function ErrorContent({
-  errorMessage,
-  onCancel,
-  onRetry,
+function PrimaryButton({
+  label,
+  onPress,
 }: {
-  errorMessage: string | null;
-  onCancel: () => void;
-  onRetry: () => void;
+  label: string;
+  onPress: () => void;
 }) {
   return (
-    <>
-      <View className="mb-6 items-center px-2">
-        <Text className="mb-3 text-base font-semibold text-red-600">
-          {translate('ota.error')}
-        </Text>
-        <View className="rounded-lg bg-red-50 px-3 py-2 dark:bg-red-900/20">
-          <Text className="text-sm text-red-600 dark:text-red-400">
-            {errorMessage ?? 'Unknown error'}
-          </Text>
-        </View>
-      </View>
-      <View className="flex-row gap-3 px-2">
-        <View className="flex-1">
-          <Button variant="outline" label={translate('ota.cancel')} onPress={onCancel} />
-        </View>
-        <View className="flex-1">
-          <Button variant="default" label={translate('ota.retry')} onPress={onRetry} />
-        </View>
-      </View>
-    </>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={{
+        marginTop: 32,
+        height: 48,
+        width: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 12,
+        backgroundColor: '#C8E733',
+      }}
+    >
+      <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#1A2000' }}>{label}</Text>
+    </Pressable>
   );
 }
 
-// ─── Main component ──────────────────────────────────────────────────────────────
-
-export function OtaUpdateDialog({ visible, onClose, updateInfo }: Props) {
-  const modal = useModal();
-  const progressRef = React.useRef<{ setProgress: (v: number) => void } | null>(null);
-
-  const [phase, setPhase] = React.useState<Phase>('prompt');
-  const [progress, setProgress] = React.useState(0);
-  const [bytesWritten, setBytesWritten] = React.useState(0);
-  const [totalBytes, setTotalBytes] = React.useState(0);
-  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
-
-  // Reset state when dialog becomes visible
-  React.useEffect(() => {
-    if (visible) {
-      setPhase(() => 'prompt');
-      setProgress(() => 0);
-      setBytesWritten(() => 0);
-      setTotalBytes(() => 0);
-      setErrorMessage(() => null);
-      modal.present();
-    }
-    else {
-      modal.dismiss();
-    }
-  }, [visible, modal]);
-
-  const handleInstall = React.useCallback(async () => {
-    if (!updateInfo)
-      return;
-
-    setPhase(() => 'uploading');
-    setProgress(() => 0);
-    setErrorMessage(() => null);
-
-    try {
-      await uploadOtaTar(
-        updateInfo.file_name,
-        updateInfo.file_name,
-        (written: number, total: number) => {
-          setBytesWritten(() => written);
-          setTotalBytes(() => total);
-          const pct = total > 0 ? (written / total) * 100 : 0;
-          setProgress(() => pct);
-          progressRef.current?.setProgress(pct);
-        },
-      );
-      setPhase(() => 'done');
-    }
-    catch (err) {
-      setErrorMessage(() => err instanceof Error ? err.message : String(err));
-      setPhase(() => 'error');
-    }
-  }, [updateInfo]);
-
-  const handleIgnore = React.useCallback(() => onClose(), [onClose]);
-  const handleDone = React.useCallback(() => onClose(), [onClose]);
-
-  const title = phase === 'done'
-    ? translate('ota.success')
-    : phase === 'error'
-      ? translate('ota.error')
-      : translate('ota.update_available');
-
+function ActionButtons({
+  cancelText = translate('ota.cancel'),
+  confirmText,
+  onCancel,
+  onConfirm,
+}: {
+  cancelText?: string;
+  confirmText: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
   return (
-    <Modal
-      ref={modal.ref}
-      snapPoints={['60%']}
-      title={title}
-      detached
-      enableDynamicSizing={false}
-      enablePanDownToClose={phase !== 'uploading'}
-      onDismiss={phase === 'uploading' ? undefined : onClose}
-    >
-      <View className="px-2 pb-4">
-        {phase === 'prompt'
-          && <PromptContent updateInfo={updateInfo} onIgnore={handleIgnore} onInstall={handleInstall} />}
-        {phase === 'uploading'
-          && <UploadingContent progress={progress} bytesWritten={bytesWritten} totalBytes={totalBytes} fileName={updateInfo?.file_name} progressRef={progressRef} />}
-        {phase === 'done' && <DoneContent onDone={handleDone} />}
-        {phase === 'error'
-          && <ErrorContent errorMessage={errorMessage} onCancel={onClose} onRetry={handleInstall} />}
-      </View>
-    </Modal>
+    <View style={{ marginTop: 32, width: '100%', flexDirection: 'row', gap: 16 }}>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onCancel}
+        style={{
+          height: 48,
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: '#333333',
+          backgroundColor: '#1A1A1C',
+        }}
+      >
+        <Text style={{ fontSize: 15, fontWeight: '500', color: '#FFFFFF' }}>
+          {cancelText}
+        </Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onConfirm}
+        style={{
+          height: 48,
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 12,
+          backgroundColor: '#C8E733',
+        }}
+      >
+        <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#1A2000' }}>
+          {confirmText}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function AvailablePhase({
+  version,
+  onCancel,
+  onDownload,
+}: {
+  version: string;
+  onCancel: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <View className="items-center">
+      <Text className="text-center text-[15px]/6 font-medium text-black dark:text-white">
+        {translate('ota.download_prompt', { version })}
+      </Text>
+      <Text
+        tx="ota.download_hint"
+        className="mt-2 text-center text-[12px] text-neutral-500 dark:text-[#858585]"
+      />
+      <ActionButtons
+        confirmText={translate('ota.download_now')}
+        onCancel={onCancel}
+        onConfirm={onDownload}
+      />
+    </View>
+  );
+}
+
+function AlreadyLatestPhase({ onConfirm }: { onConfirm: () => void }) {
+  return (
+    <View className="items-center">
+      <Text
+        tx="ota.device_is_latest"
+        className="text-center text-[15px]/6 font-medium text-black dark:text-white"
+      />
+      <PrimaryButton label={translate('ota.confirm')} onPress={onConfirm} />
+    </View>
+  );
+}
+
+function DownloadingPhase({
+  progress,
+  onCancel,
+}: {
+  progress: number;
+  onCancel: () => void;
+}) {
+  return (
+    <View className="items-center">
+      <Text
+        tx="ota.downloading_hint"
+        className="text-center text-[15px]/6 font-medium text-black dark:text-white"
+      />
+      <ProgressBar progress={progress} />
+      <Pressable
+        accessibilityRole="button"
+        onPress={onCancel}
+        style={{
+          marginTop: 32,
+          height: 48,
+          width: '100%',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: '#333333',
+          backgroundColor: '#1A1A1C',
+        }}
+      >
+        <Text style={{ fontSize: 15, fontWeight: '500', color: '#FFFFFF' }}>
+          {translate('ota.cancel_download')}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function DownloadCompletePhase({
+  onCancel,
+  onUpdate,
+}: {
+  onCancel: () => void;
+  onUpdate: () => void;
+}) {
+  return (
+    <View className="items-center">
+      <Text
+        tx="ota.download_complete_prompt"
+        className="text-center text-[15px]/6 font-medium text-black dark:text-white"
+      />
+      <Text
+        tx="ota.updating_warning"
+        className="mt-2 text-center text-[12px] text-neutral-500 dark:text-[#858585]"
+      />
+      <ActionButtons
+        confirmText={translate('ota.update_now')}
+        onCancel={onCancel}
+        onConfirm={onUpdate}
+      />
+    </View>
+  );
+}
+
+function UpdatingPhase({ progress }: { progress: number }) {
+  return (
+    <View className="items-center">
+      <Text
+        tx="ota.updating_hint"
+        className="text-center text-[15px]/6 font-medium text-black dark:text-white"
+      />
+      <ProgressBar progress={progress} />
+      <View className="mt-8 h-[48px]" />
+    </View>
+  );
+}
+
+function UpdateCompletePhase({ onConfirm }: { onConfirm: () => void }) {
+  return (
+    <View className="items-center">
+      <Text
+        tx="ota.updated_to_latest"
+        className="text-center text-[15px]/6 font-medium text-black dark:text-white"
+      />
+      <PrimaryButton label={translate('ota.confirm')} onPress={onConfirm} />
+    </View>
   );
 }

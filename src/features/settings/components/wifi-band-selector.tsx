@@ -92,21 +92,21 @@ export function WifiBandSelector({ standalone = false, onSwitch, allowDisconnect
   const borderColor = isDark ? '#48484880' : '#E5E7EB';
 
   const switcherElement = (
-    <View style={[styles.container, { borderColor, opacity: isDisabled ? 0.4 : 1 }]}>
+    <View style={[styles.container, { backgroundColor: isDark ? 'transparent' : '#F4F4F5', borderColor, opacity: isDisabled ? 0.4 : 1 }]}>
       <Animated.View style={[styles.indicator, indicatorStyle]} />
       <Pressable
         style={styles.button}
         onPress={() => handleSwitch(false)}
         disabled={isDisabled}
       >
-        <Text style={styles.text}>2.4GHz</Text>
+        <Text style={[styles.text, { color: !is5G ? '#0A0B0D' : (isDark ? '#FFFFFF' : '#687076') }]}>2.4GHz</Text>
       </Pressable>
       <Pressable
         style={styles.button}
         onPress={() => handleSwitch(true)}
         disabled={isDisabled}
       >
-        <Text style={styles.text}>5GHz</Text>
+        <Text style={[styles.text, { color: is5G ? '#0A0B0D' : (isDark ? '#FFFFFF' : '#687076') }]}>5GHz</Text>
       </Pressable>
     </View>
   );

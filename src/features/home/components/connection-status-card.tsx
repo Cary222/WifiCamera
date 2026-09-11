@@ -25,10 +25,10 @@ export function ConnectionStatusCard({ onConnectPress }: Props) {
         </View>
 
         <View className="items-center gap-1">
-          <Text className="text-center text-[28px] font-bold text-white">
+          <Text className="text-center text-[28px] font-bold text-black dark:text-white">
             {translate('home.device_not_connected')}
           </Text>
-          <Text className="text-center text-[15px] font-normal text-white/50">
+          <Text className="text-center text-[15px] font-normal text-neutral-500 dark:text-white/50">
             {translate('home.connect_hint')}
           </Text>
         </View>

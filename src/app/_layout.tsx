@@ -4,7 +4,7 @@ import { ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as React from 'react';
-import { StyleSheet } from 'react-native';
+import { LogBox, Platform, StyleSheet } from 'react-native';
 import FlashMessage from 'react-native-flash-message';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -18,6 +18,8 @@ import { loadSelectedTheme } from '@/lib/hooks/use-selected-theme';
 // Import  global CSS file
 import '../global.css';
 
+LogBox.ignoreAllLogs();
+
 export { ErrorBoundary } from 'expo-router';
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -25,6 +27,17 @@ export const unstable_settings = {
   initialRouteName: '/(app)/(home)',
 };
 
+if (Platform.OS === 'web') {
+  // React 19 warns about `collapsable={false}` passed by React Native libraries
+  // (ScrollView, Animated, expo-router) to underlying DOM divs.
+  const origConsoleError = console.error;
+  console.error = (...args: unknown[]) => {
+    if (typeof args[0] === 'string' && args[0].includes('non-boolean attribute `collapsable`')) {
+      return;
+    }
+    origConsoleError(...args);
+  };
+}
 hydrateAuth();
 loadSelectedTheme();
 // Prevent the splash screen from auto-hiding before asset loading is complete.

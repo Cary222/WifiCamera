@@ -33,10 +33,38 @@ export const STORAGE_KEYS = {
   CAMERA_TRANSPORT: 'CAMERA_TRANSPORT',
   /** WiFi mode camera IP address (e.g., '192.168.1.1'). */
   WIFI_CAMERA_IP: 'WIFI_CAMERA_IP',
+  /** Stable installation identifier for the firmware download backend. */
+  OTA_APP_DEVICE_CODE: 'OTA_APP_DEVICE_CODE',
+  /** Last downloaded firmware metadata, local URI and device serial number. */
+  OTA_DOWNLOADED_PACKAGE: 'OTA_DOWNLOADED_PACKAGE',
   /** Serialised CelesTrak visual-group OMM records. */
   SATELLITE_VISUAL_OMM: 'SATELLITE_VISUAL_OMM',
   /** Unix milliseconds when the visual OMM cache was last refreshed. */
   SATELLITE_VISUAL_FETCHED_AT: 'SATELLITE_VISUAL_FETCHED_AT',
+  /** Recently selected sky objects, stored as a compact JSON list. */
+  DEEP_SPACE_RECENT_OBJECTS: 'DEEP_SPACE_RECENT_OBJECTS',
+  /** Favorite sky object identifiers, stored as a compact JSON list. */
+  DEEP_SPACE_FAVORITE_OBJECT_IDS: 'DEEP_SPACE_FAVORITE_OBJECT_IDS',
+  /** Start time policy: 'now' | 'last_view'. */
+  DEEP_SPACE_SETTINGS_START_TIME_POLICY: 'DEEP_SPACE_SETTINGS_START_TIME_POLICY',
+  /** Last observed star-map time (ISO string); last_view restores it paused. */
+  DEEP_SPACE_SETTINGS_LAST_VIEW_TIME: 'DEEP_SPACE_SETTINGS_LAST_VIEW_TIME',
+  /** Whether star map runs in full screen mode. */
+  DEEP_SPACE_SETTINGS_FULLSCREEN: 'DEEP_SPACE_SETTINGS_FULLSCREEN',
+  /** Whether limiting magnitude filter is active. */
+  DEEP_SPACE_SETTINGS_LIMIT_MAG_ENABLED: 'DEEP_SPACE_SETTINGS_LIMIT_MAG_ENABLED',
+  /** Limiting magnitude cutoff value (number). */
+  DEEP_SPACE_SETTINGS_LIMIT_MAG_VALUE: 'DEEP_SPACE_SETTINGS_LIMIT_MAG_VALUE',
+  /** Star map display brightness multiplier (number). */
+  DEEP_SPACE_SETTINGS_BRIGHTNESS: 'DEEP_SPACE_SETTINGS_BRIGHTNESS',
+  /** Whether sensor/compass follow mode is active. */
+  DEEP_SPACE_SETTINGS_SENSOR: 'DEEP_SPACE_SETTINGS_SENSOR',
+  /** Serialized observer location object { latitudeDeg, longitudeDeg, name, source }. */
+  DEEP_SPACE_SETTINGS_OBSERVER: 'DEEP_SPACE_SETTINGS_OBSERVER',
+  /** Serialized display preferences restored when the deep-space map is reopened. */
+  DEEP_SPACE_VIEW_PREFERENCES: 'DEEP_SPACE_VIEW_PREFERENCES',
+  /** Serialized last camera view { azimuthDeg, altitudeDeg, fovDeg } of the deep-space map. */
+  DEEP_SPACE_VIEW_STATE: 'DEEP_SPACE_VIEW_STATE',
 } as const;
 
 /** Union of every key string. Useful for type-safe helpers. */

@@ -3,8 +3,11 @@ import * as React from 'react';
 import { PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle, Defs, Line, LinearGradient, Mask, Path, Rect, Stop } from 'react-native-svg';
 import { Text } from '@/components/ui';
+import { isFavoriteSkyObject, toggleFavoriteSkyObject } from '@/features/deep-space/tools/favorite-sky-objects';
+import { translate } from '@/lib/i18n';
+import { storage } from '@/lib/storage';
+import { showDeepSpaceFeedback } from '../ui/deep-space-feedback';
 import {
-  estimateConstellation,
   formatAltPrecision,
   formatAzPrecision,
   formatDecPrecision,
@@ -13,10 +16,10 @@ import {
   formatPhase,
   formatRaPrecision,
   formatSize,
+  isValidPhase,
 } from './object-info-types';
 
-function PlanetMoonAvatar({ phase }: { phase?: number | null }) {
-  const phaseVal = typeof phase === 'number' ? Math.max(0, Math.min(1, phase)) : 0.5;
+function PlanetMoonAvatar({ phase: phaseVal }: { phase: number }) {
   return (
     <View style={styles.avatarWrapper}>
       <Svg height={48} viewBox="0 0 48 48" width={48}>
@@ -62,9 +65,10 @@ function ObjectAvatar({
   phase?: number | null;
   type?: string;
 }) {
-  const isMoonOrPlanet = type === 'planet' || type === 'moon' || ['金星', '水星', '月球', '火星'].includes(name);
+  // The engine returns names in the app language, so match both scripts.
+  const isMoonOrPlanet = type === 'planet' || type === 'moon' || ['金星', 'Venus', '水星', 'Mercury', '月球', 'Moon', '火星', 'Mars'].includes(name);
 
-  if (isMoonOrPlanet && typeof phase === 'number') {
+  if (isMoonOrPlanet && isValidPhase(phase)) {
     return <PlanetMoonAvatar phase={phase} />;
   }
 
@@ -93,7 +97,7 @@ function PageStepper({
   return (
     <View style={styles.stepperPill} testID="deep-space-object-page-stepper">
       <Pressable
-        accessibilityLabel="上一页"
+        accessibilityLabel={translate('deep_space.object.prev')}
         accessibilityRole="button"
         hitSlop={6}
         onPress={onPrev}
@@ -103,7 +107,7 @@ function PageStepper({
         <Text style={styles.stepperArrowText}>‹</Text>
       </Pressable>
       <Pressable
-        accessibilityLabel="下一页"
+        accessibilityLabel={translate('deep_space.object.next')}
         accessibilityRole="button"
         hitSlop={6}
         onPress={onNext}
@@ -130,13 +134,13 @@ function CoordinatePage({
   const azStr = formatAzPrecision(object.azDeg);
   const altStr = formatAltPrecision(object.altDeg);
   const haStr = formatHourAngle(object.hourAngleHours);
-  const raJ2000Str = formatRaPrecision(object.raJ2000Hours ?? object.raHours);
-  const decJ2000Str = formatDecPrecision(object.decJ2000Deg ?? object.decDeg);
+  const raJ2000Str = formatRaPrecision(object.raJ2000Hours);
+  const decJ2000Str = formatDecPrecision(object.decJ2000Deg);
 
   return (
     <View style={styles.dataPage} testID="deep-space-object-coords-page">
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>RA/Dec</Text>
+        <Text style={styles.dataLabel}>{object.coordinateFrame === 'CIRS' ? 'RA/Dec (CIRS)' : 'RA/Dec'}</Text>
         <View style={styles.dataValueWithStepper}>
           <Text style={styles.dataValue}>{`${raStr}   ${decStr}`}</Text>
           <PageStepper onNext={onNextPage} onPrev={onPrevPage} />
@@ -149,7 +153,7 @@ function CoordinatePage({
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>时角</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.hour_angle')}</Text>
         <Text style={styles.dataValue}>{haStr}</Text>
       </View>
 
@@ -170,8 +174,8 @@ function PhysicalPage({
   onNextPage: () => void;
   onPrevPage: () => void;
 }) {
-  const constellation = object.constellationZh || estimateConstellation(object.raHours, object.decDeg);
-  const vmagStr = typeof object.vmag === 'number' ? (object.vmag > 0 ? `${object.vmag.toFixed(2)}` : object.vmag.toFixed(2)) : '--';
+  const constellation = object.constellationZh?.trim() || '--';
+  const vmagStr = typeof object.vmag === 'number' && Number.isFinite(object.vmag) ? object.vmag.toFixed(2) : '--';
   const distStr = formatDistanceStellarium(object.distanceAu);
   const phaseStr = formatPhase(object.phase);
   const sizeStr = formatSize(object.sizeArcsec);
@@ -179,7 +183,7 @@ function PhysicalPage({
   return (
     <View style={styles.dataPage} testID="deep-space-object-physical-page">
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>星座</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.constellation_panel.label')}</Text>
         <View style={styles.dataValueWithStepper}>
           <Text style={styles.dataValue}>{constellation}</Text>
           <PageStepper onNext={onNextPage} onPrev={onPrevPage} />
@@ -187,22 +191,22 @@ function PhysicalPage({
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>星等</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.magnitude')}</Text>
         <Text style={styles.dataValue}>{vmagStr}</Text>
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>距离</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.distance')}</Text>
         <Text style={styles.dataValue}>{distStr}</Text>
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>阶段</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.phase')}</Text>
         <Text style={styles.dataValue}>{phaseStr}</Text>
       </View>
 
       <View style={styles.dataRow}>
-        <Text style={styles.dataLabel}>直径</Text>
+        <Text style={styles.dataLabel}>{translate('deep_space.object.diameter')}</Text>
         <Text style={styles.dataValue}>{sizeStr}</Text>
       </View>
     </View>
@@ -231,7 +235,7 @@ function ObjectHeader({
   onZoomOut?: (object: ObjectInfoSheetProps['object']) => void;
 }) {
   const subtitleFromDesig = formatSubtitle(object.name, object.englishName, object.designations);
-  const displaySubtitle = object.typeZh || subtitleFromDesig || '天体';
+  const displaySubtitle = object.typeZh || subtitleFromDesig || translate('deep_space.object.object');
 
   return (
     <View style={styles.header}>
@@ -245,7 +249,7 @@ function ObjectHeader({
       <View style={styles.zoomControlBlock}>
         <View style={styles.zoomButtonsRow}>
           <Pressable
-            accessibilityLabel="缩小视角"
+            accessibilityLabel={translate('deep_space.object.zoom_out')}
             accessibilityRole="button"
             hitSlop={6}
             onPress={() => (onZoomOut ? onZoomOut(object) : onZoomIn(object))}
@@ -258,7 +262,7 @@ function ObjectHeader({
           </Pressable>
 
           <Pressable
-            accessibilityLabel="放大视角"
+            accessibilityLabel={translate('deep_space.object.zoom_in')}
             accessibilityRole="button"
             hitSlop={6}
             onPress={() => onZoomIn(object)}
@@ -271,7 +275,7 @@ function ObjectHeader({
             </Svg>
           </Pressable>
         </View>
-        <Text style={styles.zoomLabel}>缩放</Text>
+        <Text style={styles.zoomLabel}>{translate('deep_space.object.zoom')}</Text>
       </View>
     </View>
   );
@@ -284,7 +288,6 @@ function ObjectActionPills({
   onClose,
   onGoto,
   onToggleLike,
-  onZoomIn,
 }: {
   liked: boolean;
   object: ObjectInfoSheetProps['object'];
@@ -292,12 +295,20 @@ function ObjectActionPills({
   onClose: () => void;
   onGoto?: (raHours: number, decDeg: number) => void;
   onToggleLike: () => void;
-  onZoomIn: (object: ObjectInfoSheetProps['object']) => void;
 }) {
+  const useJ2000 = object.coordinateFrame === 'CIRS';
+  const raHours = useJ2000 ? object.raJ2000Hours : object.raHours;
+  const decDeg = useJ2000 ? object.decJ2000Deg : object.decDeg;
+  const handleGoto = onGoto
+    && typeof raHours === 'number' && Number.isFinite(raHours)
+    && typeof decDeg === 'number' && Number.isFinite(decDeg) && Math.abs(decDeg) <= 90
+    ? () => onGoto(raHours, decDeg)
+    : undefined;
+
   return (
     <View style={styles.actionPillsRow}>
       <Pressable
-        accessibilityLabel="可见度"
+        accessibilityLabel={translate('deep_space.object_center')}
         accessibilityRole="button"
         onPress={() => onCenter(object)}
         style={styles.pillButton}
@@ -307,25 +318,26 @@ function ObjectActionPills({
           <Circle cx={8} cy={8} fill="none" r={6.5} stroke="#7BA7F7" strokeWidth={1.8} />
           <Circle cx={8} cy={8} fill="#7BA7F7" r={2.5} />
         </Svg>
-        <Text style={styles.pillButtonText}>可见度</Text>
+        <Text style={styles.pillButtonText}>{translate('deep_space.object_center')}</Text>
       </Pressable>
 
       <Pressable
-        accessibilityLabel="3D视角"
+        accessibilityLabel={translate('deep_space.object_3d_unavailable')}
         accessibilityRole="button"
-        onPress={() => onZoomIn(object)}
-        style={styles.pillButton}
+        accessibilityState={{ disabled: true }}
+        disabled
+        style={[styles.pillButton, styles.unavailablePillButton]}
         testID="deep-space-object-3d-btn"
       >
         <Svg height={16} viewBox="0 0 16 16" width={16}>
           <Circle cx={8} cy={8} fill="none" r={6.5} stroke="#7BA7F7" strokeWidth={1.6} />
           <Path d="M 2 8 C 4 4, 12 4, 14 8 C 12 12, 4 12, 2 8 Z" fill="none" stroke="#7BA7F7" strokeWidth={1.2} />
         </Svg>
-        <Text style={styles.pillButtonText}>3D</Text>
+        <Text style={styles.pillButtonText}>{translate('deep_space.object_3d_unavailable')}</Text>
       </Pressable>
 
       <Pressable
-        accessibilityLabel="收藏"
+        accessibilityLabel={translate('deep_space.object.favorite')}
         accessibilityRole="button"
         onPress={onToggleLike}
         style={styles.heartButton}
@@ -341,20 +353,20 @@ function ObjectActionPills({
         </Svg>
       </Pressable>
 
-      {onGoto && (
+      {handleGoto && (
         <Pressable
-          accessibilityLabel="望远镜指向"
+          accessibilityLabel={translate('deep_space.object.telescope')}
           accessibilityRole="button"
-          onPress={() => onGoto(object.raHours, object.decDeg)}
+          onPress={handleGoto}
           style={styles.gotoPillButton}
           testID="deep-space-object-goto-btn"
         >
-          <Text style={styles.gotoPillButtonText}>指向望远镜</Text>
+          <Text style={styles.gotoPillButtonText}>{translate('deep_space.object.goto_telescope')}</Text>
         </Pressable>
       )}
 
       <Pressable
-        accessibilityLabel="关闭天体信息"
+        accessibilityLabel={translate('deep_space.object.close')}
         accessibilityRole="button"
         hitSlop={8}
         onPress={onClose}
@@ -376,7 +388,7 @@ export function ObjectInfoSheet({
   onZoomOut,
 }: ObjectInfoSheetProps): React.ReactElement {
   const [page, setPage] = React.useState(0);
-  const [liked, setLiked] = React.useState(false);
+  const [liked, setLiked] = React.useState(() => isFavoriteSkyObject(storage, object.catalogId ?? object.id));
 
   const handleNextPage = () => setPage(p => (p + 1) % 2);
   const handlePrevPage = () => setPage(p => (p - 1 + 2) % 2);
@@ -395,6 +407,16 @@ export function ObjectInfoSheet({
     }),
   ).current;
 
+  const handleToggleLike = () => {
+    const isFavorite = !liked;
+    toggleFavoriteSkyObject(storage, object.catalogId ?? object.id);
+    setLiked(isFavorite);
+    showDeepSpaceFeedback({
+      message: translate(isFavorite ? 'deep_space.object.favorited' : 'deep_space.object.unfavorited', { name: object.name }),
+      tone: 'success',
+    });
+  };
+
   return (
     <View pointerEvents="box-none" style={styles.overlay}>
       <View style={styles.card} testID="deep-space-object-info-sheet">
@@ -406,8 +428,7 @@ export function ObjectInfoSheet({
           onCenter={onCenter}
           onClose={onClose}
           onGoto={onGoto}
-          onToggleLike={() => setLiked(v => !v)}
-          onZoomIn={onZoomIn}
+          onToggleLike={handleToggleLike}
         />
         <View style={styles.divider} />
         <View style={styles.dataPagesContainer} {...panResponder.panHandlers}>
@@ -434,38 +455,42 @@ const styles = StyleSheet.create({
     width: 48,
   },
   card: {
-    backgroundColor: 'rgba(30, 34, 40, 0.96)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
+    backgroundColor: 'rgba(18, 26, 40, 0.78)',
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderTopColor: 'rgba(255, 255, 255, 0.3)',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
     borderWidth: 1,
-    elevation: 24,
+    elevation: 20,
     overflow: 'hidden',
     paddingBottom: Platform.OS === 'ios' ? 28 : 20,
-    paddingHorizontal: 18,
-    paddingTop: 8,
+    paddingHorizontal: 20,
+    paddingTop: 10,
     shadowColor: '#000000',
     shadowOffset: { height: -6, width: 0 },
     shadowOpacity: 0.5,
-    shadowRadius: 16,
+    shadowRadius: 18,
     width: '100%',
   },
   closeRoundBtn: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     borderRadius: 18,
+    borderWidth: 1,
     height: 36,
     justifyContent: 'center',
     marginLeft: 'auto',
     width: 36,
   },
   closeRoundBtnText: {
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: 'rgba(255, 255, 255, 0.72)',
     fontSize: 14,
+    fontWeight: '500',
   },
   dataLabel: {
-    color: 'rgba(255, 255, 255, 0.58)',
-    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.52)',
+    fontSize: 13.5,
     fontWeight: '400',
     width: 110,
   },
@@ -486,7 +511,7 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     fontVariant: ['tabular-nums'],
     fontWeight: '600',
-    letterSpacing: 0.2,
+    letterSpacing: 0.3,
   },
   dataValueWithStepper: {
     alignItems: 'center',
@@ -501,25 +526,33 @@ const styles = StyleSheet.create({
   },
   gotoPillButton: {
     alignItems: 'center',
-    backgroundColor: '#2B82F6',
+    backgroundColor: '#2563EB',
+    borderColor: '#60A5FA',
     borderRadius: 18,
+    borderWidth: 1,
+    elevation: 4,
     height: 36,
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
+    shadowColor: '#3B82F6',
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 6,
   },
   gotoPillButtonText: {
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+    letterSpacing: 0.2,
   },
   handleBar: {
     alignSelf: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.26)',
-    borderRadius: 2.5,
-    height: 4.5,
-    marginBottom: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.32)',
+    borderRadius: 3,
+    height: 5,
+    marginBottom: 12,
     marginTop: 2,
-    width: 36,
+    width: 38,
   },
   header: {
     alignItems: 'center',
@@ -529,7 +562,7 @@ const styles = StyleSheet.create({
   heartButton: {
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     borderRadius: 18,
     borderWidth: 1,
     height: 36,
@@ -543,8 +576,8 @@ const styles = StyleSheet.create({
   },
   pillButton: {
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     borderRadius: 18,
     borderWidth: 1,
     flexDirection: 'row',
@@ -593,6 +626,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 12,
+  },
+  unavailablePillButton: {
+    opacity: 0.45,
   },
   zoomButtonsRow: {
     alignItems: 'center',

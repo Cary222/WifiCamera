@@ -49,8 +49,9 @@ function getWifiWhepUrl(): string {
   return WIFI_FALLBACK_WHEP_URL;
 }
 
-const USB_BASE_URL = 'http://10.0.2.2:18999';
-const USB_WHEP_URL = 'http://10.0.2.2:18787/board-webrtc/cam0/whep';
+const USB_HOST = Platform.OS === 'android' ? '10.0.2.2' : '127.0.0.1';
+const USB_BASE_URL = `http://${USB_HOST}:18999`;
+const USB_WHEP_URL = `http://${USB_HOST}:18787/board-webrtc/cam0/whep`;
 
 /**
  * `.env` only overrides the USB slot: those values describe host-side ADB
@@ -89,6 +90,11 @@ export const TRANSPORT_FALLBACK_GRACE_MS = 5_000;
 /** Minimum spacing between probes, so a flapping link cannot spam the board. */
 export const TRANSPORT_PROBE_MIN_INTERVAL_MS = 5_000;
 
+/**
+ * Start on the link the user stored. `auto` has no opinion yet, so it begins on
+ * USB and lets the first probe move it — starting `auto` on a hardcoded link
+ * would make an unprobed guess look like a decision.
+ */
 let activeTransport: CameraTransport
   = readStoredPreference() === 'wifi' ? 'wifi' : 'usb';
 
@@ -195,6 +201,8 @@ export async function probeTransports(
     isTransportReachable(preferred),
     isTransportReachable(other),
   ]);
+  // The caller's link wins whenever it answers. Returning a hardcoded winner
+  // here would move USB users onto WiFi they never selected.
   if (preferredOk)
     return preferred;
   return otherOk ? other : null;

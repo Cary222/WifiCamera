@@ -12,9 +12,10 @@ import type { AlbumData, PhotoItem, StorageCardState } from './types';
 import { useNavigation } from '@react-navigation/native';
 import { Image as NImage } from 'expo-image';
 import * as React from 'react';
-
 import { Platform, ScrollView, View } from 'react-native';
+
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
 import { FocusAwareStatusBar, Pressable, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera';
 import { CameraBackButton } from '@/features/home/camera/components/camera-top-bar';
@@ -191,8 +192,10 @@ function groupIntoAlbumData(
 }
 
 function TitleBar({
+  isDark,
   onRefreshPress,
 }: {
+  isDark: boolean;
   onRefreshPress?: () => void;
 }) {
   const navigation = useNavigation();
@@ -204,11 +207,11 @@ function TitleBar({
         onPress={() => navigation.goBack()}
         style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' }}
       >
-        <CameraBackButton onBack={() => navigation.goBack()} />
+        <CameraBackButton isDark={isDark} onBack={() => navigation.goBack()} />
       </Pressable>
 
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text className="text-[20px] font-light text-white">
+        <Text className="text-[20px] font-light text-black dark:text-white">
           {translate('album.title')}
         </Text>
       </View>
@@ -218,13 +221,19 @@ function TitleBar({
         onPress={onRefreshPress}
         style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-end' }}
       >
-        <NImage source={moreIcon} style={{ width: 28, height: 28 }} contentFit="contain" />
+        <NImage
+          source={moreIcon}
+          style={{ width: 28, height: 28 }}
+          contentFit="contain"
+          tintColor={isDark ? undefined : '#222222'}
+        />
       </Pressable>
     </View>
   );
 }
 
 function AlbumBody({
+  isDark,
   storage,
   data,
   collapsed,
@@ -234,6 +243,7 @@ function AlbumBody({
   onItemPress,
   insetsBottom,
 }: {
+  isDark: boolean;
   storage: StorageCardState;
   data: AlbumData;
   collapsed: Record<string, boolean>;
@@ -247,7 +257,7 @@ function AlbumBody({
     <ScrollView
       style={{
         flex: 1,
-        backgroundColor: '#090a0c',
+        backgroundColor: isDark ? '#090a0c' : '#FFFFFF',
         ...(Platform.OS === 'web' ? { scrollbarWidth: 'none' } : {}),
       }}
       contentContainerStyle={{ paddingBottom: 40 + insetsBottom }}
@@ -287,6 +297,8 @@ function AlbumBody({
 }
 
 export function AlbumScreen() {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
   const insets = useSafeAreaInsets();
   const isMockMode = useCameraStore.use.isMockMode();
   const connectionStatus = useCameraStore.use.connectionStatus();
@@ -340,8 +352,8 @@ export function AlbumScreen() {
   const renderContent = () => {
     if (status === 'loading') {
       return (
-        <View className="flex-1 items-center justify-center bg-[#090a0c]">
-          <Text className="text-[14px] text-white">{translate('album.loading')}</Text>
+        <View className={`flex-1 items-center justify-center ${isDark ? 'bg-[#090a0c]' : 'bg-white'}`}>
+          <Text className="text-[14px] text-black dark:text-white">{translate('album.loading')}</Text>
         </View>
       );
     }
@@ -357,6 +369,7 @@ export function AlbumScreen() {
 
     return (
       <AlbumBody
+        isDark={isDark}
         storage={storageState}
         data={albumData}
         collapsed={collapsed}
@@ -372,8 +385,8 @@ export function AlbumScreen() {
   return (
     <>
       <FocusAwareStatusBar />
-      <SafeAreaView style={{ flex: 1, backgroundColor: '#090a0c' }}>
-        <TitleBar onRefreshPress={handleRefresh} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#090a0c' : '#FFFFFF' }}>
+        <TitleBar isDark={isDark} onRefreshPress={handleRefresh} />
         {renderContent()}
       </SafeAreaView>
 

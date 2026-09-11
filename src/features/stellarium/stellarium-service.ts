@@ -38,6 +38,32 @@ export type StellariumEnvironment = {
   turbidity?: number;
 };
 
+/** Camera view archived across visits so the map reopens on the observer's last angle. */
+export type StellariumViewState = {
+  altitudeDeg: number;
+  azimuthDeg: number;
+  fovDeg: number;
+};
+
+export type StellariumSearchCatalogItem = {
+  id: string;
+  nameEn: string;
+  nameZh: string;
+  category: string;
+  aliases?: string[];
+  engineIds?: string[];
+  constellationZh?: string;
+};
+
+export type TargetLookupReason = 'available' | 'loading' | 'not_found' | 'missing_data' | 'culture_mismatch';
+
+export class StellariumTargetLookupError extends Error {
+  constructor(public readonly reason: Exclude<TargetLookupReason, 'available'>) {
+    super(`FOCUS_UNAVAILABLE:${reason}`);
+    this.name = 'StellariumTargetLookupError';
+  }
+}
+
 export type StellariumCommand
   = | { type: 'goto_radec'; raDeg: number; decDeg: number; duration?: number }
     | { type: 'zoom_to'; fovDeg: number; duration?: number }
@@ -50,17 +76,39 @@ export type StellariumCommand
     | { type: 'set_environment' } & StellariumEnvironment
     | { type: 'set_sky_culture'; id: string; target?: string }
     | { type: 'set_time'; isoTime: string }
+    | { type: 'set_magnitude_limit'; magnitude: number }
+    | { type: 'set_brightness'; brightness: number }
     | { type: 'set_grid_lines' } & StellariumGridLines
     | { type: 'set_location'; latitudeDeg: number; longitudeDeg: number }
+    | { type: 'restore_view'; state: StellariumViewState | null }
+    | { type: 'set_view_bearing'; azimuthDeg: number }
     | { type: 'set_fov_frame'; fovDeg: number; sensorW: number; sensorH: number }
     | { type: 'compute_tonight'; isoDate: string; latitudeDeg: number; longitudeDeg: number; requestId: number }
-    | { type: 'compute_events'; isoStart: string; days: number; latitudeDeg: number; longitudeDeg: number; requestId: number };
+    | { type: 'compute_events'; isoStart: string; days: number; latitudeDeg: number; longitudeDeg: number; requestId: number }
+    | { type: 'get_object_info'; name: string; requestId: number }
+    | { type: 'set_search_catalog'; items: readonly StellariumSearchCatalogItem[] }
+    | { type: 'query_targets'; names: string[]; requestId: number }
+    | { type: 'focus_target'; name: string; fovDeg?: number; requestId: number; token: number }
+    | { type: 'cancel_search'; token: number };
+
+export type TargetQueryResult = {
+  id: string;
+  available: boolean;
+  canonicalId?: string;
+  reason?: TargetLookupReason;
+  altDeg?: number | null;
+  azDeg?: number | null;
+  vmag?: number | null;
+};
 
 export type SelectedCelestialObject = {
+  /** Stable search/history/favorite key; id remains the native engine identifier. */
+  catalogId?: string;
   altDeg?: number | null;
   azDeg?: number | null;
   constellationZh?: string | null;
-  decDeg: number;
+  coordinateFrame?: 'CIRS';
+  decDeg: number | null;
   decJ2000Deg?: number | null;
   designations: string[];
   distanceAu?: number | null;
@@ -69,7 +117,7 @@ export type SelectedCelestialObject = {
   id: string;
   name: string;
   phase?: number | null;
-  raHours: number;
+  raHours: number | null;
   raJ2000Hours?: number | null;
   sizeArcsec?: number | null;
   type?: string;
@@ -121,11 +169,21 @@ export type StellariumBridge = {
   setEnvironment: (patch: StellariumEnvironment) => void;
   setSkyCulture: (id: string, target?: string) => void;
   setTime: (date: Date) => void;
+  setMagnitudeLimit: (magnitude: number) => void;
+  setBrightness: (brightness: number) => void;
   setGridLines: (lines: StellariumGridLines) => void;
   setLocation: (latitudeDeg: number, longitudeDeg: number) => void;
+  /** Replays the archived camera angle; null only opens the view-reporting channel. */
+  restoreView: (state: StellariumViewState | null) => void;
+  setViewBearing: (azimuthDeg: number) => void;
   setFovFrame: (fovDeg: number, sensorW: number, sensorH: number) => void;
   computeTonight: (date: Date, observer: ObserverLocation) => Promise<TonightReport>;
   computeEvents: (start: Date, days: number, observer: ObserverLocation) => Promise<SkyEvent[]>;
+  getObjectInfo: (name: string) => Promise<SelectedCelestialObject | null>;
+  setSearchCatalog: (items: readonly StellariumSearchCatalogItem[]) => void;
+  queryTargets: (names: string[]) => Promise<TargetQueryResult[]>;
+  focusTarget: (name: string, fovDeg?: number) => Promise<SelectedCelestialObject | null>;
+  cancelSearch: () => void;
   reload: () => void;
 };
 
@@ -139,6 +197,27 @@ const REQUEST_TIMEOUT_MS = 20_000;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+const VIEW_STATE_ERROR = 'Invalid view state.';
+
+/**
+ * Accepts a finite in-range view report and strips every other field.
+ * Azimuth stays inside [0, 360); the scene normalizes 360 to 0 before reporting.
+ * The field of view follows the engine's own zoom range (0, 360], so a
+ * wide-angle view at 182° is archived and restored like any other.
+ */
+export function parseStellariumViewState(value: unknown): StellariumViewState | null {
+  if (!value || typeof value !== 'object')
+    return null;
+  const { altitudeDeg, azimuthDeg, fovDeg } = value as Partial<StellariumViewState>;
+  if (!isFiniteNumber(azimuthDeg) || azimuthDeg < 0 || azimuthDeg >= 360)
+    return null;
+  if (!isFiniteNumber(altitudeDeg) || altitudeDeg < -90 || altitudeDeg > 90)
+    return null;
+  if (!isFiniteNumber(fovDeg) || fovDeg <= 0 || fovDeg > 360)
+    return null;
+  return { altitudeDeg, azimuthDeg, fovDeg };
 }
 
 function validateObserver(latitudeDeg: number, longitudeDeg: number): string | undefined {
@@ -167,6 +246,57 @@ function validateEnvironment(command: Extract<StellariumCommand, { type: 'set_en
   }
 }
 
+function validateMagnitudeLimit(magnitude: number): string | undefined {
+  if (!isFiniteNumber(magnitude) || magnitude < 3.5 || magnitude > 99)
+    return 'Magnitude limit must be between 3.5 and 99.';
+}
+
+function validateBrightness(brightness: number): string | undefined {
+  if (!isFiniteNumber(brightness) || brightness < 0.1 || brightness > 10)
+    return 'Brightness must be between 0.1 and 10.';
+}
+
+function validateGridLines(command: Extract<StellariumCommand, { type: 'set_grid_lines' }>): string | undefined {
+  if ([
+    command.azimuthal,
+    command.ecliptic,
+    command.equator,
+    command.equatorial_j2000,
+    command.equatorial_jnow,
+    command.meridian,
+  ].some(value => value !== undefined && typeof value !== 'boolean')) {
+    return 'Grid line values must be booleans.';
+  }
+}
+
+function validateSearchCommand(
+  command: Extract<StellariumCommand, { type: 'query_targets' | 'focus_target' | 'search_target' | 'point_and_lock' }>,
+): string | undefined {
+  if (command.type === 'point_and_lock') {
+    if (command.name !== undefined && (typeof command.name !== 'string' || !command.name.trim()))
+      return 'Target name must be a non-empty string.';
+    return;
+  }
+  if (command.type === 'search_target') {
+    if (typeof command.name !== 'string' || !command.name.trim())
+      return 'Search target must be a non-empty string.';
+    return;
+  }
+  if (command.type === 'query_targets') {
+    if (!Array.isArray(command.names))
+      return 'queryTargets requires an array of target names.';
+    if (command.names.length > 100)
+      return 'queryTargets accepts at most 100 names.';
+    if (command.names.some(n => typeof n !== 'string' || !n.trim()))
+      return 'Each target name must be a non-empty string.';
+    return;
+  }
+  if (typeof command.name !== 'string' || !command.name.trim())
+    return 'Target name must be a non-empty string.';
+  if (command.fovDeg !== undefined && (!isFiniteNumber(command.fovDeg) || command.fovDeg <= 0 || command.fovDeg > 360))
+    return 'FOV must be greater than 0 and no more than 360 degrees.';
+}
+
 function validate(command: StellariumCommand): string | undefined {
   switch (command.type) {
     case 'goto_radec':
@@ -180,15 +310,13 @@ function validate(command: StellariumCommand): string | undefined {
         return 'FOV must be greater than 0 and no more than 360 degrees.';
       break;
     case 'clear_selection':
+    case 'cancel_search':
       break;
     case 'point_and_lock':
-      if (command.name !== undefined && (typeof command.name !== 'string' || !command.name.trim()))
-        return 'Target name must be a non-empty string.';
-      break;
     case 'search_target':
-      if (typeof command.name !== 'string' || !command.name.trim())
-        return 'Search target must be a non-empty string.';
-      break;
+    case 'query_targets':
+    case 'focus_target':
+      return validateSearchCommand(command);
     case 'toggle_constellations':
       if (typeof command.visible !== 'boolean')
         return 'Constellation visibility must be a boolean.';
@@ -234,23 +362,25 @@ function validate(command: StellariumCommand): string | undefined {
       if (typeof command.isoTime !== 'string' || Number.isNaN(Date.parse(command.isoTime)))
         return 'Time must be a valid ISO timestamp.';
       break;
+    case 'set_magnitude_limit':
+      return validateMagnitudeLimit(command.magnitude);
+    case 'set_brightness':
+      return validateBrightness(command.brightness);
     case 'set_grid_lines':
-      if ([
-        command.azimuthal,
-        command.ecliptic,
-        command.equator,
-        command.equatorial_j2000,
-        command.equatorial_jnow,
-        command.meridian,
-      ].some(value => value !== undefined && typeof value !== 'boolean')) {
-        return 'Grid line values must be booleans.';
-      }
+      return validateGridLines(command);
+    case 'restore_view':
+      if (command.state !== null && !parseStellariumViewState(command.state))
+        return VIEW_STATE_ERROR;
       break;
     case 'set_location':
       if (!isFiniteNumber(command.latitudeDeg) || command.latitudeDeg < -90 || command.latitudeDeg > 90)
         return 'Latitude must be between -90 and 90 degrees.';
       if (!isFiniteNumber(command.longitudeDeg) || command.longitudeDeg < -180 || command.longitudeDeg > 180)
         return 'Longitude must be between -180 and 180 degrees.';
+      break;
+    case 'set_view_bearing':
+      if (!isFiniteNumber(command.azimuthDeg) || command.azimuthDeg < 0 || command.azimuthDeg > 360)
+        return 'Azimuth must be between 0 and 360 degrees.';
       break;
     case 'set_fov_frame':
       if (!isFiniteNumber(command.fovDeg) || command.fovDeg <= 0 || !isFiniteNumber(command.sensorW) || command.sensorW <= 0 || !isFiniteNumber(command.sensorH) || command.sensorH <= 0)
@@ -280,20 +410,44 @@ function postCommand(webViewRef: RefObject<WebView | null>, command: StellariumC
 }
 
 /** Queues commands until either `ready` or legacy `engine_ready` arrives. */
+// eslint-disable-next-line max-lines-per-function
 export function createStellariumBridge(webViewRef: RefObject<WebView | null>, options: BridgeOptions = {}): StellariumBridgeInternal {
   let ready = false;
   let nextRequestId = 0;
+  let activeFocusToken = 0;
   const queued: StellariumCommand[] = [];
-  const pending = new Map<number, { resolve: (payload: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+  const pending = new Map<number, { type: StellariumCommand['type']; resolve: (payload: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+  const removeQueuedRequest = (requestId: number) => {
+    const index = queued.findIndex(command => 'requestId' in command && command.requestId === requestId);
+    if (index >= 0)
+      queued.splice(index, 1);
+  };
+  const cancelPendingFocus = () => {
+    for (const [requestId, entry] of pending) {
+      if (entry.type !== 'focus_target')
+        continue;
+      clearTimeout(entry.timer);
+      pending.delete(requestId);
+      removeQueuedRequest(requestId);
+      entry.resolve(null);
+    }
+  };
   const request = <T>(build: (requestId: number) => StellariumCommand): Promise<T> => {
     const requestId = ++nextRequestId;
+    const command = build(requestId);
+    const error = validate(command);
+    if (error) {
+      options.onError?.(error);
+      return Promise.reject(new Error(error));
+    }
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(requestId);
+        removeQueuedRequest(requestId);
         reject(new Error('Stellarium calculation timed out.'));
       }, REQUEST_TIMEOUT_MS);
-      pending.set(requestId, { reject, resolve: resolve as (payload: unknown) => void, timer });
-      send(build(requestId));
+      pending.set(requestId, { type: command.type, reject, resolve: resolve as (payload: unknown) => void, timer });
+      send(command);
     });
   };
   const send = (command: StellariumCommand) => {
@@ -326,14 +480,19 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
     pointAndLock: name => send({ type: 'point_and_lock', ...(name ? { name } : {}) }),
     zoomTo: (fovDeg, duration = 0.3) => send({ type: 'zoom_to', fovDeg, duration }),
     searchTarget: name => send({ type: 'search_target', name }),
+    setSearchCatalog: items => send({ type: 'set_search_catalog', items }),
     toggleConstellations: visible => send({ type: 'toggle_constellations', visible }),
     setSkyLayers: layers => send({ type: 'set_sky_layers', ...layers }),
     setSkyCulture: (id, target) => send({ type: 'set_sky_culture', id, ...(target ? { target } : {}) }),
     setTime: date => send({ type: 'set_time', isoTime: date.toISOString() }),
+    setMagnitudeLimit: magnitude => send({ type: 'set_magnitude_limit', magnitude }),
+    setBrightness: brightness => send({ type: 'set_brightness', brightness }),
     setGridLines: lines => send({ type: 'set_grid_lines', ...lines }),
     setLandscape: id => send({ type: 'set_landscape', id }),
     setEnvironment: patch => send({ type: 'set_environment', ...patch }),
     setLocation: (latitudeDeg, longitudeDeg) => send({ type: 'set_location', latitudeDeg, longitudeDeg }),
+    restoreView: state => send({ type: 'restore_view', state }),
+    setViewBearing: azimuthDeg => send({ type: 'set_view_bearing', azimuthDeg }),
     setFovFrame: (fovDeg, sensorW, sensorH) => send({ type: 'set_fov_frame', fovDeg, sensorW, sensorH }),
     computeTonight: (date, observer) => request<TonightReport>(requestId => ({
       type: 'compute_tonight',
@@ -350,8 +509,76 @@ export function createStellariumBridge(webViewRef: RefObject<WebView | null>, op
       longitudeDeg: observer.longitudeDeg,
       requestId,
     })).then(payload => payload.events),
+    getObjectInfo: (name: string) => {
+      if (typeof name !== 'string' || !name.trim())
+        return Promise.reject(new Error('Target name must be a non-empty string.'));
+      return request<SelectedCelestialObject | null>(requestId => ({ type: 'get_object_info', name: name.trim(), requestId }));
+    },
+    queryTargets: (names: string[]) => {
+      if (!Array.isArray(names))
+        return Promise.reject(new Error('queryTargets requires an array of target names.'));
+      if (names.length > 100)
+        return Promise.reject(new Error('queryTargets accepts at most 100 names.'));
+      if (names.some(n => typeof n !== 'string' || !n.trim()))
+        return Promise.reject(new Error('Each target name must be a non-empty string.'));
+      return request<TargetQueryResult[]>(requestId => ({
+        type: 'query_targets',
+        names,
+        requestId,
+      })).then((targets) => {
+        return (targets || []).map((t, index) => ({
+          id: t?.id ?? names[index],
+          available: Boolean(t?.available),
+          ...(t?.available && typeof t.canonicalId === 'string' ? { canonicalId: t.canonicalId } : {}),
+          ...(t?.reason && ['available', 'loading', 'not_found', 'missing_data', 'culture_mismatch'].includes(t.reason)
+            ? { reason: t.reason }
+            : {}),
+          ...(isFiniteNumber(t?.altDeg) ? { altDeg: t.altDeg } : (t?.altDeg === null ? { altDeg: null } : {})),
+          ...(isFiniteNumber(t?.azDeg) ? { azDeg: t.azDeg } : (t?.azDeg === null ? { azDeg: null } : {})),
+          ...(isFiniteNumber(t?.vmag) ? { vmag: t.vmag } : (t?.vmag === null ? { vmag: null } : {})),
+        }));
+      });
+    },
+    focusTarget: (name: string, fovDeg?: number) => {
+      if (typeof name !== 'string' || !name.trim())
+        return Promise.reject(new Error('Target name must be a non-empty string.'));
+      if (fovDeg !== undefined && (!isFiniteNumber(fovDeg) || fovDeg <= 0 || fovDeg > 360))
+        return Promise.reject(new Error('FOV must be greater than 0 and no more than 360 degrees.'));
+
+      const token = ++activeFocusToken;
+      cancelPendingFocus();
+      return request<SelectedCelestialObject | { unavailableReason: Exclude<TargetLookupReason, 'available'> } | null>(requestId => ({
+        type: 'focus_target',
+        name: name.trim(),
+        ...(fovDeg !== undefined ? { fovDeg } : {}),
+        requestId,
+        token,
+      })).then((payload) => {
+        if (activeFocusToken !== token) {
+          return null;
+        }
+        if (payload && 'unavailableReason' in payload)
+          throw new StellariumTargetLookupError(payload.unavailableReason);
+        return payload || null;
+      });
+    },
+    cancelSearch: () => {
+      // Bump and share the token so the WebView invalidates only the focus
+      // requests issued so far, without poisoning the counter space (Date.now()
+      // would exceed every future token and break all later focusTarget calls).
+      const token = ++activeFocusToken;
+      cancelPendingFocus();
+      send({ type: 'cancel_search', token });
+    },
     reload: () => {
       ready = false;
+      activeFocusToken++;
+      for (const [, entry] of pending.entries()) {
+        clearTimeout(entry.timer);
+        entry.reject(new Error('Stellarium bridge reloaded.'));
+      }
+      pending.clear();
+      queued.length = 0;
       options.onReload?.();
     },
     setReady: (nextReady) => {

@@ -9,6 +9,8 @@ import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { storage } from '@/lib/storage';
 
+import { useDeepSpaceOverlayTheme } from '../ui/deep-space-theme';
+import { cityLabel } from '../ui/location-format';
 import { SatellitePassList } from './satellite-pass-list';
 import { loadVisualOmm, predictVisiblePasses } from './satellite-pass-service';
 import photometryJson from './satellite-photometry.json';
@@ -26,7 +28,20 @@ type SatelliteResult
     | { status: 'failed' }
     | { status: 'ready'; passes: SatellitePass[] };
 
-const MONTHS_ZH = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
+const MONTH_KEYS = [
+  'deep_space.month.m1',
+  'deep_space.month.m2',
+  'deep_space.month.m3',
+  'deep_space.month.m4',
+  'deep_space.month.m5',
+  'deep_space.month.m6',
+  'deep_space.month.m7',
+  'deep_space.month.m8',
+  'deep_space.month.m9',
+  'deep_space.month.m10',
+  'deep_space.month.m11',
+  'deep_space.month.m12',
+] as const;
 const PLANET_KEYS = {
   jupiter: 'deep_space.jupiter',
   mars: 'deep_space.mars',
@@ -144,17 +159,18 @@ export function CalendarPanel({
   onClose: () => void;
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const [tab, setTab] = React.useState<'events' | 'tonight'>('tonight');
   const calendar = useCalendarData(stellaRef, clock, city);
   const tonight = calendar.result.status === 'ready' ? calendar.result.tonight : null;
   const satellites = useSatellitePasses(tonight, city);
   const nextDay = new Date(clock.getTime() + 86_400_000);
-  const heading = `${clock.getMonth() + 1}月 ${clock.getDate()}-${nextDay.getDate()}, ${city.name}`;
+  const heading = translate('deep_space.calendar.range', { city: cityLabel(city.name), from: clock.getDate(), month: clock.getMonth() + 1, to: nextDay.getDate() });
 
   return (
     <Modal animationType="none" onRequestClose={onClose} transparent visible>
-      <View style={styles.screen} testID="deep-space-calendar-panel">
-        <View style={styles.header}>
+      <View style={[styles.screen, !isDark && { backgroundColor: 'rgba(255, 255, 255, 0.98)' }]} testID="deep-space-calendar-panel">
+        <View style={[styles.header, !isDark && { backgroundColor: overlay.drawerHeader }]}>
           <Pressable
             accessibilityLabel={translate('deep_space.back')}
             accessibilityRole="button"
@@ -162,9 +178,9 @@ export function CalendarPanel({
             style={styles.headerButton}
             testID="deep-space-calendar-close"
           >
-            <BackIcon />
+            <BackIcon color={overlay.text} />
           </Pressable>
-          <Text style={styles.headerTitle}>日历</Text>
+          <Text style={[styles.headerTitle, !isDark && { color: overlay.text }]}>{translate('deep_space.calendar.title')}</Text>
           <View style={styles.headerButton} />
         </View>
         <View style={styles.tabs}>
@@ -206,6 +222,7 @@ export function CalendarPanel({
 }
 
 function CalendarTab({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID: string }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   return (
     <Pressable
       accessibilityRole="tab"
@@ -214,7 +231,7 @@ function CalendarTab({ active, label, onPress, testID }: { active: boolean; labe
       style={[styles.tab, active && styles.tabActive]}
       testID={testID}
     >
-      <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
+      <Text style={[styles.tabLabel, !isDark && { color: active ? overlay.text : overlay.muted }, active && styles.tabLabelActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -230,28 +247,30 @@ function TonightTab({
   satelliteResult: SatelliteResult;
   satelliteRetry: () => void;
 }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const state = satelliteResult.status === 'failed'
     ? { retry: satelliteRetry, status: 'failed' as const }
     : satelliteResult;
   return (
     <View testID="deep-space-calendar-tonight">
-      <Text style={styles.dateHeading}>{heading}</Text>
+      <Text style={[styles.dateHeading, !isDark && { color: overlay.text }]}>{heading}</Text>
       <View style={styles.sunRow}>
-        <SunStat label={translate('deep_space.sunset')} value={formatClockTime(report.sunset)} />
-        <SunStat label={translate('deep_space.sunrise')} value={formatClockTime(report.sunrise)} />
+        <SunStat isDark={isDark} label={translate('deep_space.sunset')} value={formatClockTime(report.sunset)} />
+        <SunStat isDark={isDark} label={translate('deep_space.sunrise')} value={formatClockTime(report.sunrise)} />
       </View>
-      <Text style={styles.sectionTitle}>{translate('deep_space.solar_system')}</Text>
+      <Text style={[styles.sectionTitle, !isDark && { color: overlay.text }]}>{translate('deep_space.solar_system')}</Text>
       <SolarSystemChart report={report} />
       <SatellitePassList state={state} />
     </View>
   );
 }
 
-function SunStat({ label, value }: { label: string; value: string }) {
+function SunStat({ isDark = true, label, value }: { isDark?: boolean; label: string; value: string }) {
+  const { overlay } = useDeepSpaceOverlayTheme();
   return (
-    <View style={styles.sunStat}>
-      <Text style={styles.sunLabel}>{label}</Text>
-      <Text style={styles.sunValue}>{value}</Text>
+    <View style={[styles.sunStat, !isDark && { backgroundColor: overlay.card }]}>
+      <Text style={[styles.sunLabel, !isDark && { color: overlay.muted }]}>{label}</Text>
+      <Text style={[styles.sunValue, !isDark && { color: overlay.text }]}>{value}</Text>
     </View>
   );
 }
@@ -270,7 +289,7 @@ function eventLabel(event: SkyEvent): string {
 
 function eventTime(event: SkyEvent): string {
   const date = new Date(event.time);
-  const day = `${MONTHS_ZH[date.getMonth()]} ${date.getDate()}`;
+  const day = `${translate(MONTH_KEYS[date.getMonth()])} ${date.getDate()}`;
   if (event.type === 'meteor_shower')
     return day;
   const offset = -date.getTimezoneOffset();
@@ -281,25 +300,26 @@ function eventTime(event: SkyEvent): string {
 }
 
 function EventsTab({ events }: { events: SkyEvent[] }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const groups = new Map<string, SkyEvent[]>();
   for (const event of events) {
     const date = new Date(event.time);
-    const key = `${MONTHS_ZH[date.getMonth()]} ${date.getFullYear()}`;
+    const key = `${translate(MONTH_KEYS[date.getMonth()])} ${date.getFullYear()}`;
     groups.set(key, [...(groups.get(key) ?? []), event]);
   }
   if (events.length === 0)
-    return <Text style={styles.empty}>{translate('deep_space.no_events')}</Text>;
+    return <Text style={[styles.empty, !isDark && { color: overlay.muted }]}>{translate('deep_space.no_events')}</Text>;
   return (
     <View testID="deep-space-calendar-events">
       {[...groups.entries()].map(([month, monthEvents]) => (
         <View key={month}>
-          <Text style={styles.eventMonth}>{month}</Text>
+          <Text style={[styles.eventMonth, !isDark && { color: overlay.text }]}>{month}</Text>
           {monthEvents.map(event => (
             <View key={`${event.type}-${event.time}`} style={styles.eventRow}>
               <EventIcon type={event.type} />
               <View style={styles.eventText}>
-                <Text style={styles.eventName}>{eventLabel(event)}</Text>
-                <Text style={styles.eventTime}>{eventTime(event)}</Text>
+                <Text style={[styles.eventName, !isDark && { color: overlay.text }]}>{eventLabel(event)}</Text>
+                <Text style={[styles.eventTime, !isDark && { color: overlay.muted }]}>{eventTime(event)}</Text>
               </View>
             </View>
           ))}
@@ -309,10 +329,10 @@ function EventsTab({ events }: { events: SkyEvent[] }) {
   );
 }
 
-function BackIcon() {
+function BackIcon({ color = '#FFFFFF' }: { color?: string } = {}) {
   return (
     <Svg height={34} viewBox="0 0 34 34" width={34}>
-      <Path d="M21 7 11 17l10 10" fill="none" stroke="#FFFFFF" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} />
+      <Path d="M21 7 11 17l10 10" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} />
     </Svg>
   );
 }

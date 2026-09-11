@@ -1,4 +1,5 @@
 import { Pressable, View } from 'react-native';
+import { useUniwind } from 'uniwind';
 
 import { Image, Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
@@ -22,6 +23,9 @@ type Props = {
  *   [folder icon] [date label]  ........  [count badge]  [chevron]
  */
 export function DateGroupHeader({ dateLabel, itemCount, onPress, expanded = true }: Props) {
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
+
   return (
     <Pressable
       onPress={onPress}
@@ -31,15 +35,16 @@ export function DateGroupHeader({ dateLabel, itemCount, onPress, expanded = true
         source={folderIcon}
         style={{ width: 24, height: 24 }}
         contentFit="contain"
+        tintColor={isDark ? undefined : '#4B5563'}
       />
-      <Text className="ml-2 text-[16px] font-normal tracking-[0.77px] text-white">
+      <Text className="ml-2 text-[16px] font-normal tracking-[0.77px] text-black dark:text-white">
         {dateLabel}
       </Text>
       <View className="flex-1" />
-      <Text className="mr-2 text-[10px] font-bold text-[#dedcdd]">
+      <Text className="mr-2 text-[10px] font-bold text-neutral-500 dark:text-[#dedcdd]">
         {translate('album.folder_count', { count: itemCount })}
       </Text>
-      <Text className="text-white">
+      <Text className="text-neutral-600 dark:text-white">
         {expanded ? '▾' : '›'}
       </Text>
     </Pressable>

@@ -2,13 +2,15 @@ import type { FieldOfViewInput } from './field-of-view';
 import * as React from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui';
+import { translate } from '@/lib/i18n';
+import { useDeepSpaceOverlayTheme } from '../ui/deep-space-theme';
 import { calculateFieldOfView, formatAngularSize } from './field-of-view';
 
 const SENSOR_PRESETS = [
-  { heightMm: 24, id: 'full-frame', label: '全画幅', widthMm: 36 },
+  { heightMm: 24, id: 'full-frame', label: translate('deep_space.fov_panel.full_frame'), widthMm: 36 },
   { heightMm: 15.6, id: 'aps-c', label: 'APS-C', widthMm: 23.5 },
   { heightMm: 13, id: 'micro-four-thirds', label: 'M4/3', widthMm: 17.3 },
-  { heightMm: 24, id: 'custom', label: '自定义', widthMm: 36 },
+  { heightMm: 24, id: 'custom', label: translate('deep_space.fov_panel.custom'), widthMm: 36 },
 ] as const;
 
 type FieldOfViewPanelProps = {
@@ -20,6 +22,7 @@ function numberValue(value: string): number {
 }
 
 export function FieldOfViewPanel({ onApply }: FieldOfViewPanelProps): React.ReactElement {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const [focalLength, setFocalLength] = React.useState('500');
   const [multiplier, setMultiplier] = React.useState('1');
   const [presetId, setPresetId] = React.useState<(typeof SENSOR_PRESETS)[number]['id']>('full-frame');
@@ -47,56 +50,58 @@ export function FieldOfViewPanel({ onApply }: FieldOfViewPanelProps): React.Reac
   return (
     <View style={styles.content}>
       <View style={styles.row}>
-        <NumberInput label="焦距（mm）" onChangeText={setFocalLength} testID="deep-space-fov-focal-length" value={focalLength} />
-        <NumberInput label="倍率" onChangeText={setMultiplier} testID="deep-space-fov-multiplier" value={multiplier} />
+        <NumberInput label={translate('deep_space.fov_panel.focal_length')} onChangeText={setFocalLength} testID="deep-space-fov-focal-length" value={focalLength} />
+        <NumberInput label={translate('deep_space.fov_panel.magnification')} onChangeText={setMultiplier} testID="deep-space-fov-multiplier" value={multiplier} />
       </View>
       <View style={styles.presetRow}>
         {SENSOR_PRESETS.map(item => (
-          <Pressable accessibilityLabel={item.label} accessibilityRole="button" key={item.id} onPress={() => selectPreset(item.id)} style={[styles.preset, presetId === item.id && styles.presetActive]}>
-            <Text style={[styles.presetText, presetId === item.id && styles.presetTextActive]}>{item.label}</Text>
+          <Pressable accessibilityLabel={item.label} accessibilityRole="button" key={item.id} onPress={() => selectPreset(item.id)} style={[styles.preset, !isDark && { borderColor: 'rgba(0,0,0,0.15)' }, presetId === item.id && styles.presetActive]}>
+            <Text style={[styles.presetText, !isDark && { color: overlay.text }, presetId === item.id && styles.presetTextActive]}>{item.label}</Text>
           </Pressable>
         ))}
       </View>
       <View style={styles.row}>
-        <NumberInput editable={isCustom} label="传感器宽（mm）" onChangeText={setSensorWidth} testID="deep-space-fov-sensor-width" value={sensorWidth} />
-        <NumberInput editable={isCustom} label="传感器高（mm）" onChangeText={setSensorHeight} testID="deep-space-fov-sensor-height" value={sensorHeight} />
+        <NumberInput editable={isCustom} label={translate('deep_space.fov_panel.sensor_width')} onChangeText={setSensorWidth} testID="deep-space-fov-sensor-width" value={sensorWidth} />
+        <NumberInput editable={isCustom} label={translate('deep_space.fov_panel.sensor_height')} onChangeText={setSensorHeight} testID="deep-space-fov-sensor-height" value={sensorHeight} />
       </View>
       {field
         ? (
-            <View style={styles.summary}>
-              <Result label="水平视场" value={formatAngularSize(field.horizontalDeg)} />
-              <Result label="垂直视场" value={formatAngularSize(field.verticalDeg)} />
-              <Result label="对角视场" value={formatAngularSize(field.diagonalDeg)} />
-              <Text style={styles.effectiveFocal}>
-                有效焦距
+            <View style={[styles.summary, !isDark && { backgroundColor: overlay.card, borderColor: 'rgba(0,0,0,0.06)' }]}>
+              <Result label={translate('deep_space.fov_panel.horizontal')} value={formatAngularSize(field.horizontalDeg)} />
+              <Result label={translate('deep_space.fov_panel.vertical')} value={formatAngularSize(field.verticalDeg)} />
+              <Result label={translate('deep_space.fov_panel.diagonal')} value={formatAngularSize(field.diagonalDeg)} />
+              <Text style={[styles.effectiveFocal, !isDark && { color: overlay.muted }]}>
+                {translate('deep_space.fov_panel.effective_focal')}
                 {' '}
                 {field.effectiveFocalLengthMm.toFixed(1)}
                 {' mm'}
               </Text>
             </View>
           )
-        : <Text style={styles.error}>请输入大于 0 的焦距、倍率和传感器尺寸。</Text>}
-      <Pressable accessibilityLabel="应用视场模拟" accessibilityRole="button" disabled={!field} onPress={() => field && onApply(input)} style={[styles.apply, !field && styles.applyDisabled]} testID="deep-space-fov-apply">
-        <Text style={styles.applyText}>应用到星图</Text>
+        : <Text style={styles.error}>{translate('deep_space.fov_panel.invalid')}</Text>}
+      <Pressable accessibilityLabel={translate('deep_space.fov_panel.apply')} accessibilityRole="button" disabled={!field} onPress={() => field && onApply(input)} style={[styles.apply, !field && styles.applyDisabled]} testID="deep-space-fov-apply">
+        <Text style={styles.applyText}>{translate('deep_space.fov_panel.apply_to_map')}</Text>
       </Pressable>
     </View>
   );
 }
 
 function NumberInput({ editable = true, label, onChangeText, testID, value }: { editable?: boolean; label: string; onChangeText: (value: string) => void; testID: string; value: string }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   return (
     <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <TextInput editable={editable} keyboardType="decimal-pad" onChangeText={onChangeText} selectTextOnFocus style={[styles.input, !editable && styles.inputReadOnly]} testID={testID} value={value} />
+      <Text style={[styles.inputLabel, !isDark && { color: overlay.muted }]}>{label}</Text>
+      <TextInput editable={editable} keyboardType="decimal-pad" onChangeText={onChangeText} selectTextOnFocus style={[styles.input, !isDark && { backgroundColor: overlay.card, borderColor: 'rgba(0,0,0,0.15)', color: overlay.text }, !editable && styles.inputReadOnly]} testID={testID} value={value} />
     </View>
   );
 }
 
 function Result({ label, value }: { label: string; value: string }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   return (
     <View style={styles.result}>
-      <Text style={styles.resultLabel}>{label}</Text>
-      <Text style={styles.resultValue}>{value}</Text>
+      <Text style={[styles.resultLabel, !isDark && { color: overlay.muted }]}>{label}</Text>
+      <Text style={[styles.resultValue, !isDark && { color: overlay.text }]}>{value}</Text>
     </View>
   );
 }

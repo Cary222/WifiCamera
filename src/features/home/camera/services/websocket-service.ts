@@ -51,7 +51,6 @@ export class CameraWebSocketService {
   connect(): void {
     this.manuallyClosed = false;
     this.clearReconnectTimer();
-    this.clearConnectTimeout();
 
     // Detailed state logging for debugging
     const socketInfo = this.socket
@@ -81,30 +80,30 @@ export class CameraWebSocketService {
       }
       // For CLOSED, CLOSING, or ERROR states, close and recreate
       console.log('[CameraWS] 关闭旧连接', { state: this.socket.readyState });
+      const oldSocket = this.socket;
+      this.socket = null;
       try {
-        this.socket.close();
+        oldSocket.close();
       }
       catch (e) {
         console.debug('[CameraWS] 关闭旧连接异常（可忽略）:', e);
       }
-      this.socket = null;
     }
+    this.clearConnectTimeout();
+    this.clearHeartbeatTimer();
 
     console.log('[CameraWS] 创建新连接:', this.options.url);
     this.options.onStatusChange?.('connecting');
     appLogger.info('WS', '开始连接控制通道', { url: this.options.url });
 
-    // Safety timeout: if the socket doesn't open within 4s, treat it as unreachable.
-    this.connectTimeout = setTimeout(() => {
-      if (this.socket && this.socket.readyState !== WebSocket.OPEN) {
-        this.socket.close();
-        this.handleConnectionFailed();
-      }
-      this.connectTimeout = null;
-    }, 4_000);
-
     const socket = new WebSocket(this.options.url);
     this.socket = socket;
+
+    // Bind the deadline to this attempt, not whichever socket is current later.
+    this.connectTimeout = setTimeout(() => {
+      if (this.socket === socket && socket.readyState !== WebSocket.OPEN)
+        this.retireSocket(socket);
+    }, 4_000);
 
     socket.onopen = () => {
       if (this.socket !== socket)
@@ -154,16 +153,14 @@ export class CameraWebSocketService {
         event: event?.type,
       });
       this.options.onStatusChange?.('error');
-      // Close socket immediately to force reconnect
-      try {
-        socket.close();
-      }
-      catch (e) {
-        console.debug('[CameraWS] 关闭错误套接字异常（可忽略）:', e);
-      }
-      if (this.socket === socket) {
-        this.socket = null;
-      }
+      if (socket.readyState === WebSocket.OPEN)
+        return;
+      this.socket = null;
+      this.clearConnectTimeout();
+      this.clearHeartbeatTimer();
+      // Do not call close(): after onerror it can race the pending onclose.
+      this.options.onStatusChange?.('closed');
+      this.scheduleReconnect();
     };
     socket.onclose = (event) => {
       if (this.socket !== socket)
@@ -179,8 +176,29 @@ export class CameraWebSocketService {
       });
       console.warn('[CameraWS] 连接断开:', this.options.url, event?.code, event?.reason);
       this.options.onStatusChange?.('closed');
-      this.scheduleReconnect();
+      // A manual close sets socket=null before native onclose arrives.
+      if (!this.manuallyClosed)
+        this.scheduleReconnect();
     };
+  }
+
+  /** Retire once; recovery must not depend on a native close event arriving. */
+  private retireSocket(socket: WebSocket): void {
+    if (this.socket !== socket)
+      return;
+    this.socket = null;
+    this.clearConnectTimeout();
+    this.clearHeartbeatTimer();
+    // Detach before close(): native implementations may fire close later or throw.
+    try {
+      if (socket.readyState !== WebSocket.CLOSED)
+        socket.close();
+    }
+    catch (error) {
+      console.debug('[CameraWS] 关闭失效连接异常:', error);
+    }
+    if (!this.manuallyClosed)
+      this.scheduleReconnect();
   }
 
   close(): void {
@@ -256,8 +274,9 @@ export class CameraWebSocketService {
         try {
           this.socket.send(serializeCameraJsonMessage({ device_name: 'StartUp', instruction: 'HeartBeat' }));
         }
-        catch (e) {
-          console.debug('[CameraWS] 心跳发送失败（可忽略）:', e);
+        catch (error) {
+          appLogger.warn('WS', '心跳发送失败，重新建立连接', { error: String(error) });
+          this.retireSocket(this.socket);
         }
       }
     }, this.options.heartbeatIntervalMs);

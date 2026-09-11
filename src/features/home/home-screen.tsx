@@ -1,34 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ScrollView, View } from 'react-native';
 import { FocusAwareStatusBar, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera/camera-store';
 import { getPower } from '@/features/home/camera/services/file-service';
 import { translate } from '@/lib/i18n';
 import { ConnectionStatusCard } from './components/connection-status-card';
-import { DeviceConnectionModal } from './components/device-connection-modal';
 import { DeviceInfoCards } from './components/device-info-cards';
 import { ModeGrid } from './components/mode-grid';
 import { useStorageInfo } from './hooks/use-storage-info';
 
 export function HomeScreen() {
-  const [modalVisible, setModalVisible] = useState(false);
   const connectionStatus = useCameraStore.use.connectionStatus();
   const powerLevel = useCameraStore.use.powerLevel();
   const inCharge = useCameraStore.use.inCharge();
   const setPower = useCameraStore.use.setPower();
-  const showConnectionModal = useCameraStore.use.showConnectionModal();
   const setShowConnectionModal = useCameraStore.use.setShowConnectionModal();
 
   const isConnected = connectionStatus === 'open';
   const storageInfo = useStorageInfo(isConnected);
-
-  const isConnectionModalVisible = modalVisible || showConnectionModal;
-
-  const handleConnectionModalClose = () => {
-    setModalVisible(false);
-    if (showConnectionModal)
-      setShowConnectionModal(false);
-  };
 
   useEffect(() => {
     if (!isConnected)
@@ -73,7 +62,7 @@ export function HomeScreen() {
                 />
               )
             : (
-                <ConnectionStatusCard onConnectPress={() => setModalVisible(true)} />
+                <ConnectionStatusCard onConnectPress={() => setShowConnectionModal(true)} />
               )}
 
           <View className="mt-6">
@@ -82,10 +71,6 @@ export function HomeScreen() {
         </ScrollView>
       </View>
 
-      <DeviceConnectionModal
-        visible={isConnectionModalVisible}
-        onClose={handleConnectionModalClose}
-      />
     </>
   );
 }

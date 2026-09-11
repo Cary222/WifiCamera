@@ -1,6 +1,8 @@
 import * as React from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Text } from '@/components/ui';
+import { translate } from '@/lib/i18n';
+import { useDeepSpaceOverlayTheme } from '../ui/deep-space-theme';
 
 type TelescopeControlPanelProps = {
   onGoto: (raHours: number, decDeg: number) => void;
@@ -14,6 +16,7 @@ function readCoordinate(value: string): number | null {
 }
 
 export function TelescopeControlPanel({ onGoto }: TelescopeControlPanelProps): React.ReactElement {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   const [ra, setRa] = React.useState('0');
   const [dec, setDec] = React.useState('0');
   const [step, setStep] = React.useState(1);
@@ -33,23 +36,23 @@ export function TelescopeControlPanel({ onGoto }: TelescopeControlPanelProps): R
 
   return (
     <View style={styles.content}>
-      <Text style={styles.description}>控制星图指向；尚未连接实体赤道仪。</Text>
+      <Text style={[styles.description, !isDark && { color: overlay.muted }]}>{translate('deep_space.telescope.hint')}</Text>
       <View style={styles.coordinateRow}>
-        <CoordinateInput label="赤经 RA（小时）" onChangeText={setRa} testID="deep-space-telescope-ra-input" value={ra} />
-        <CoordinateInput label="赤纬 Dec（°）" onChangeText={setDec} testID="deep-space-telescope-dec-input" value={dec} />
+        <CoordinateInput label={translate('deep_space.telescope.ra')} onChangeText={setRa} testID="deep-space-telescope-ra-input" value={ra} />
+        <CoordinateInput label={translate('deep_space.telescope.dec')} onChangeText={setDec} testID="deep-space-telescope-dec-input" value={dec} />
       </View>
-      {!valid && <Text style={styles.error}>RA 应在 0–24 小时，Dec 应在 -90–90°。</Text>}
+      {!valid && <Text style={styles.error}>{translate('deep_space.telescope.invalid')}</Text>}
       <View style={styles.stepRow}>
-        <Text style={styles.stepLabel}>步进</Text>
+        <Text style={[styles.stepLabel, !isDark && { color: overlay.muted }]}>{translate('deep_space.telescope.step')}</Text>
         {STEPS.map(value => (
           <Pressable
-            accessibilityLabel={`${value} 度步进`}
+            accessibilityLabel={translate('deep_space.telescope.step_a11y', { value })}
             accessibilityRole="button"
             key={value}
             onPress={() => setStep(value)}
-            style={[styles.stepButton, step === value && styles.stepButtonActive]}
+            style={[styles.stepButton, !isDark && { borderColor: 'rgba(0,0,0,0.15)' }, step === value && styles.stepButtonActive]}
           >
-            <Text style={[styles.stepText, step === value && styles.stepTextActive]}>
+            <Text style={[styles.stepText, !isDark && { color: overlay.text }, step === value && styles.stepTextActive]}>
               {value}
               °
             </Text>
@@ -57,31 +60,33 @@ export function TelescopeControlPanel({ onGoto }: TelescopeControlPanelProps): R
         ))}
       </View>
       <View style={styles.pad}>
-        <DirectionButton label="北" onPress={() => move(0, step)} />
+        <DirectionButton label={translate('deep_space.compass_dir.n')} onPress={() => move(0, step)} />
         <View style={styles.padRow}>
-          <DirectionButton label="西" onPress={() => move(-step / 15, 0)} />
-          <Pressable accessibilityLabel="转到坐标" accessibilityRole="button" disabled={!valid} onPress={() => valid && onGoto(raHours as number, decDeg as number)} style={[styles.gotoButton, !valid && styles.gotoButtonDisabled]} testID="deep-space-telescope-goto">
-            <Text style={styles.gotoText}>转到</Text>
+          <DirectionButton label={translate('deep_space.compass_dir.w')} onPress={() => move(-step / 15, 0)} />
+          <Pressable accessibilityLabel={translate('deep_space.telescope.goto')} accessibilityRole="button" disabled={!valid} onPress={() => valid && onGoto(raHours as number, decDeg as number)} style={[styles.gotoButton, !valid && styles.gotoButtonDisabled]} testID="deep-space-telescope-goto">
+            <Text style={styles.gotoText}>{translate('deep_space.telescope.goto_short')}</Text>
           </Pressable>
-          <DirectionButton label="东" onPress={() => move(step / 15, 0)} />
+          <DirectionButton label={translate('deep_space.compass_dir.e')} onPress={() => move(step / 15, 0)} />
         </View>
-        <DirectionButton label="南" onPress={() => move(0, -step)} />
+        <DirectionButton label={translate('deep_space.compass_dir.s')} onPress={() => move(0, -step)} />
       </View>
     </View>
   );
 }
 
 function CoordinateInput({ label, onChangeText, testID, value }: { label: string; onChangeText: (value: string) => void; testID: string; value: string }) {
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
   return (
     <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <TextInput accessibilityLabel={label} keyboardType="numbers-and-punctuation" onChangeText={onChangeText} selectTextOnFocus style={styles.input} testID={testID} value={value} />
+      <Text style={[styles.inputLabel, !isDark && { color: overlay.muted }]}>{label}</Text>
+      <TextInput accessibilityLabel={label} keyboardType="numbers-and-punctuation" onChangeText={onChangeText} selectTextOnFocus style={[styles.input, !isDark && { backgroundColor: overlay.card, borderColor: 'rgba(0,0,0,0.15)', color: overlay.text }]} testID={testID} value={value} />
     </View>
   );
 }
 
 function DirectionButton({ label, onPress }: { label: string; onPress: () => void }) {
-  return <Pressable accessibilityLabel={`${label}向微调`} accessibilityRole="button" onPress={onPress} style={styles.directionButton}><Text style={styles.directionText}>{label}</Text></Pressable>;
+  const { isDark, overlay } = useDeepSpaceOverlayTheme();
+  return <Pressable accessibilityLabel={translate('deep_space.telescope.nudge', { label })} accessibilityRole="button" onPress={onPress} style={[styles.directionButton, !isDark && { backgroundColor: overlay.card, borderColor: 'rgba(0,0,0,0.1)', borderWidth: 1 }]}><Text style={[styles.directionText, !isDark && { color: overlay.text }]}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({

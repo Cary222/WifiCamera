@@ -3,26 +3,30 @@ import { Redirect, SplashScreen, Tabs } from 'expo-router';
 import * as React from 'react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { Text } from 'react-native';
+import { useMMKVBoolean } from 'react-native-mmkv';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUniwind } from 'uniwind';
 
+import { useUniwind } from 'uniwind';
 import {
   HomeFilled,
   SettingsFilled,
   StarmapFilled,
 } from '@/components/ui/icons';
+import { SharedDeviceConnectionModal } from '@/features/home/components/device-connection-modal';
 import { useAppGate } from '@/lib/hooks/use-app-gate';
 import { translate } from '@/lib/i18n';
+import { storage } from '@/lib/storage';
+import { STORAGE_KEYS } from '@/lib/storage-keys';
 
 function renderTabBarLabel(label: string, isDark: boolean) {
   return ({ focused }: { focused: boolean }) => (
     <Text
       style={{
         color: isDark
-          ? (focused ? '#FFFFFF' : 'rgba(255, 255, 255, 0.55)')
-          : (focused ? '#0A0B0D' : 'rgba(10, 11, 13, 0.55)'),
+          ? (focused ? '#FFFFFF' : 'rgba(255, 255, 255, 0.65)')
+          : (focused ? '#0A0B0D' : '#687076'),
         fontSize: 12,
-        fontWeight: focused ? 'bold' : '100',
+        fontWeight: focused ? '600' : '500',
       }}
     >
       {label}
@@ -35,6 +39,7 @@ export default function TabLayout() {
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
   const insets = useSafeAreaInsets();
+  const [deepSpaceFullscreen] = useMMKVBoolean(STORAGE_KEYS.DEEP_SPACE_SETTINGS_FULLSCREEN, storage);
 
   const hideSplash = useCallback(async () => {
     await SplashScreen.hideAsync();
@@ -66,46 +71,49 @@ export default function TabLayout() {
   }
 
   return (
-    <Tabs screenOptions={screenOptions}>
-      <Tabs.Screen
-        name="(home)"
-        options={({ route }) => {
-          const routeName = getFocusedRouteNameFromRoute(route);
-          const hideTabs = routeName === 'camera' || routeName === 'album';
-          return {
-            title: translate('home.title'),
-            tabBarIcon: ({ focused }) => <HomeFilled focused={focused} />,
-            tabBarLabel: renderTabBarLabel(translate('home.title'), isDark),
-            tabBarButtonTestID: 'home-tab',
-            tabBarStyle: hideTabs ? { display: 'none' } : screenOptions.tabBarStyle,
-          };
-        }}
-      />
+    <>
+      <Tabs screenOptions={screenOptions}>
+        <Tabs.Screen
+          name="(home)"
+          options={({ route }) => {
+            const routeName = getFocusedRouteNameFromRoute(route);
+            const hideTabs = routeName === 'camera' || routeName === 'album';
+            return {
+              title: translate('home.title'),
+              tabBarIcon: ({ focused }) => <HomeFilled focused={focused} />,
+              tabBarLabel: renderTabBarLabel(translate('home.title'), isDark),
+              tabBarButtonTestID: 'home-tab',
+              tabBarStyle: hideTabs ? { display: 'none' } : screenOptions.tabBarStyle,
+            };
+          }}
+        />
 
-      <Tabs.Screen
-        name="(deep-space)"
-        options={({ route }) => {
-          const routeName = getFocusedRouteNameFromRoute(route);
-          const hideTabs = routeName === 'star-map';
-          return {
-            title: translate('deep_space.title'),
-            tabBarIcon: ({ focused }) => <StarmapFilled focused={focused} />,
-            tabBarLabel: renderTabBarLabel(translate('deep_space.title'), isDark),
-            tabBarButtonTestID: 'deep-space-tab',
-            tabBarStyle: hideTabs ? { display: 'none' } : screenOptions.tabBarStyle,
-          };
-        }}
-      />
+        <Tabs.Screen
+          name="(deep-space)"
+          options={({ route }) => {
+            const routeName = getFocusedRouteNameFromRoute(route);
+            const hideTabs = routeName === 'star-map' || Boolean(deepSpaceFullscreen);
+            return {
+              title: translate('deep_space.title'),
+              tabBarIcon: ({ focused }) => <StarmapFilled focused={focused} />,
+              tabBarLabel: renderTabBarLabel(translate('deep_space.title'), isDark),
+              tabBarButtonTestID: 'deep-space-tab',
+              tabBarStyle: hideTabs ? { display: 'none' } : screenOptions.tabBarStyle,
+            };
+          }}
+        />
 
-      <Tabs.Screen
-        name="(settings)"
-        options={{
-          title: translate('settings.title'),
-          tabBarIcon: ({ focused }) => <SettingsFilled focused={focused} />,
-          tabBarLabel: renderTabBarLabel(translate('settings.title'), isDark),
-          tabBarButtonTestID: 'settings-tab',
-        }}
-      />
-    </Tabs>
+        <Tabs.Screen
+          name="(settings)"
+          options={{
+            title: translate('settings.title'),
+            tabBarIcon: ({ focused }) => <SettingsFilled focused={focused} />,
+            tabBarLabel: renderTabBarLabel(translate('settings.title'), isDark),
+            tabBarButtonTestID: 'settings-tab',
+          }}
+        />
+      </Tabs>
+      <SharedDeviceConnectionModal />
+    </>
   );
 }

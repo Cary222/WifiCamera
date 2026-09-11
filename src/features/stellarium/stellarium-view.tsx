@@ -1,11 +1,11 @@
 import type { WebViewMessageEvent, WebViewProps } from 'react-native-webview';
-import type { SelectedCelestialObject, StellariumBridge } from './stellarium-service';
+import type { SelectedCelestialObject, StellariumBridge, StellariumViewState } from './stellarium-service';
 import * as React from 'react';
 import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Text } from '@/components/ui';
 import { getLanguage, translate } from '@/lib/i18n';
-import { createStellariumBridge } from './stellarium-service';
+import { createStellariumBridge, parseStellariumViewState } from './stellarium-service';
 
 const READY_TIMEOUT_MS = 15_000;
 // The engine resolves names during init, so the language must exist before the document runs.
@@ -26,6 +26,8 @@ export type StellariumViewProps = {
   onSelectionCleared?: () => void;
   onTargetFound?: () => void;
   onTargetNotFound?: () => void;
+  /** Reports the live camera angle so the map can archive it for the next visit. */
+  onViewStateChange?: (state: StellariumViewState) => void;
   style?: WebViewProps['style'];
 };
 
@@ -52,6 +54,7 @@ function useStellariumLifecycle({
   }, []);
 
   const reportError = React.useCallback((message: string) => {
+    console.error('[StellariumView Error]:', message);
     clearTimeout();
     bridge.current.setReady(false);
     setLoading(false);
@@ -106,6 +109,7 @@ export function StellariumView({
   onSelectionCleared,
   onTargetFound,
   onTargetNotFound,
+  onViewStateChange,
   ref,
   style,
 }: StellariumViewProps & { ref?: React.RefObject<StellariumViewHandle | null> }) {
@@ -132,13 +136,14 @@ export function StellariumView({
         onSelectionCleared,
         onTargetFound,
         onTargetNotFound,
+        onViewStateChange,
         reportError,
         resolveRequest: (requestId, payload) => bridge.current.resolveRequest(requestId, payload),
         wasReady: () => readyRef.current,
       });
     }
     catch { reportError('Received an unreadable Stellarium message.'); }
-  }, [bridge, markReady, onBearingChange, onCommandError, onObjectSelected, onSelectionCleared, onTargetFound, onTargetNotFound, readyRef, reportError]);
+  }, [bridge, markReady, onBearingChange, onCommandError, onObjectSelected, onSelectionCleared, onTargetFound, onTargetNotFound, onViewStateChange, readyRef, reportError]);
   return (
     <View style={styles.root}>
       <WebView
@@ -147,6 +152,13 @@ export function StellariumView({
         style={[styles.webView, style]}
         javaScriptEnabled
         domStorageEnabled
+        // iOS loads file://<bundle>/stellar/index.html: the '*' whitelist lets the file:// navigation
+        // through, and folder read access lets the engine fetch its js/wasm/data siblings.
+        originWhitelist={['*']}
+        allowingReadAccessToURL={Platform.OS === 'ios' ? 'stellar' : undefined}
+        allowFileAccess
+        allowFileAccessFromFileURLs
+        allowUniversalAccessFromFileURLs
         injectedJavaScriptBeforeContentLoaded={LANGUAGE_SCRIPT}
         scrollEnabled={false}
         bounces={false}
@@ -154,17 +166,15 @@ export function StellariumView({
         setBuiltInZoomControls={false}
         allowsBackForwardNavigationGestures={false}
         onLoadStart={beginLoading}
-        onLoad={markReady}
-        onLoadEnd={markReady}
-        onLoadProgress={({ nativeEvent }) => {
-          if (nativeEvent.progress >= 0.95)
-            markReady();
-        }}
         onMessage={onMessage}
-        onError={() => {
+        onError={(syntheticEvent) => {
+          console.error('[StellariumView onError]:', syntheticEvent.nativeEvent);
           // Sky-culture tiles 404 on demand; only a failure before ready means the map is dead.
           if (!readyRef.current)
-            reportError('WebView failed to load Stellarium.');
+            reportError(`WebView failed to load Stellarium: ${syntheticEvent.nativeEvent.description || 'unknown error'}`);
+        }}
+        onHttpError={(syntheticEvent) => {
+          console.error('[StellariumView onHttpError]:', syntheticEvent.nativeEvent.statusCode, syntheticEvent.nativeEvent.url);
         }}
       />
       {loading && <LoadingOverlay />}
@@ -181,6 +191,7 @@ type SceneMessageHandlers = {
   onSelectionCleared?: () => void;
   onTargetFound?: () => void;
   onTargetNotFound?: () => void;
+  onViewStateChange?: (state: StellariumViewState) => void;
   reportError: (message: string) => void;
   resolveRequest: (requestId: number, payload: unknown) => void;
   wasReady: () => boolean;
@@ -193,6 +204,14 @@ function dispatchSceneMessage(message: { type: string; [key: string]: unknown },
       return handlers.markReady();
     case 'view_bearing':
       return handlers.onBearingChange?.(message.azimuthDeg as number);
+    case 'view_state': {
+      // Illegal reports are dropped here so the archive can never hold a
+      // view the scene would refuse to restore.
+      const state = parseStellariumViewState(message.state);
+      if (state)
+        handlers.onViewStateChange?.(state);
+      return;
+    }
     case 'object_selected':
       return handlers.onObjectSelected?.(message.object as SelectedCelestialObject);
     case 'selection_cleared':
@@ -204,6 +223,13 @@ function dispatchSceneMessage(message: { type: string; [key: string]: unknown },
     case 'tonight':
     case 'events':
       return handlers.resolveRequest(message.requestId as number, message.payload);
+    case 'query_targets_result':
+      return handlers.resolveRequest(message.requestId as number, message.targets ?? message.payload);
+    case 'object_info_result':
+      return handlers.resolveRequest(message.requestId as number, message.object ?? null);
+    case 'focus_target_result':
+      return handlers.resolveRequest(message.requestId as number, message.object ?? message.payload
+        ?? (typeof message.reason === 'string' ? { unavailableReason: message.reason } : null));
     case 'error': {
       const errorMessage = (message.message as string) || 'Stellarium failed to start.';
       // Before ready the map is dead; afterwards only that one command failed.

@@ -4,6 +4,7 @@ import { Image } from 'expo-image';
 import { useCallback } from 'react';
 import { Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
 import { CameraModeSwitcher } from './camera-mode-switcher';
 
 const BRAND = '#CBFF3C';
@@ -48,6 +49,8 @@ export function CameraBottomBar({
   className = '',
 }: CameraBottomBarProps) {
   const insets = useSafeAreaInsets();
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
 
   const handleThumbnailPress = useCallback(() => {
     onThumbnailPress?.();
@@ -61,7 +64,9 @@ export function CameraBottomBar({
     <View
       className={`absolute inset-x-0 bottom-0 flex-row items-center justify-between px-5 ${className}`.trim()}
       style={{
-        backgroundColor: BOTTOM_BAR_BG,
+        backgroundColor: isDark ? BOTTOM_BAR_BG : '#FFFFFF',
+        borderTopColor: isDark ? 'transparent' : 'rgba(0, 0, 0, 0.08)',
+        borderTopWidth: isDark ? 0 : 0.5,
         paddingBottom: insets.bottom + 12,
         paddingTop: 12,
       }}
@@ -70,7 +75,7 @@ export function CameraBottomBar({
       <Pressable
         onPress={handleThumbnailPress}
         disabled={!onThumbnailPress}
-        className="size-[54px] items-center justify-center overflow-hidden rounded-full bg-white/10 active:opacity-70"
+        className={`size-[54px] items-center justify-center overflow-hidden rounded-full active:opacity-70 ${isDark ? 'bg-white/10' : 'bg-neutral-100'}`}
       >
         {thumbnailUri
           ? (
@@ -99,9 +104,9 @@ export function CameraBottomBar({
         <Pressable
           onPress={handleRightButtonPress}
           disabled={rightButtonDisabled}
-          className="size-[54px] items-center justify-center rounded-full active:opacity-70"
+          className={`size-[54px] items-center justify-center rounded-full active:opacity-70 ${isDark ? 'bg-transparent' : 'bg-neutral-100'}`}
           style={{
-            borderColor: rightButtonActive ? BRAND : 'rgba(255, 255, 255, 0.35)',
+            borderColor: rightButtonActive ? BRAND : (isDark ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.15)'),
             borderWidth: 1.6,
             opacity: rightButtonDisabled ? 0.45 : 1,
           }}
