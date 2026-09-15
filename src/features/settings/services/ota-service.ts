@@ -3,7 +3,7 @@
  *
  * Two HTTP targets:
  *   cameraClient  → camera device at 192.168.1.1:8999 (FileCopy, OTAUpdate, UploadFile)
- *   otaClient     → OTA backend  at 170.106.80.91:7788 (version query, device lock)
+ *   otaClient     → hjc's temporary reconstruction OTA backend at 139.196.14.90
  *
  * Downloads stream directly to a local file via Expo FileSystem; uploads use XHR.
  */
@@ -17,7 +17,9 @@ import { cameraClient } from '../../home/camera/client';
 import { getCameraBaseUrl } from '../../home/camera/config';
 
 export function getOtaBackendUrl() {
-  return process.env.EXPO_PUBLIC_OTA_BACKEND_URL ?? 'http://170.106.80.91:7788';
+  // hjc 的阿里云：临时给重构版测试 OTA 使用，HTTP 服务未设密码。
+  // 原公司 OTA：http://170.106.80.91:7788；可用环境变量切换回去。
+  return process.env.EXPO_PUBLIC_OTA_BACKEND_URL ?? 'http://139.196.14.90';
 }
 
 export const OTA_BACKEND_URL = getOtaBackendUrl();
