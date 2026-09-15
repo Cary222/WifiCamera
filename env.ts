@@ -69,10 +69,10 @@ const _env: z.infer<typeof envSchema> = {
   EXPO_PUBLIC_CAMERA_BASE_URL:
     process.env.EXPO_PUBLIC_CAMERA_BASE_URL ?? DEFAULT_CAMERA_BASE_URL,
   EXPO_PUBLIC_CAMERA_WHEP_URL: process.env.EXPO_PUBLIC_CAMERA_WHEP_URL,
-  // hjc 的阿里云：重构版临时 OTA 测试服务，HTTP 未设密码。
-  // 原公司 OTA：http://170.106.80.91:7788；仍可通过环境变量覆盖。
+  // 默认使用公司 OTA 服务器。
+  // hjc 临时测试服务：http://139.196.14.90（HTTP 未设密码），可通过环境变量覆盖。
   EXPO_PUBLIC_OTA_BACKEND_URL:
-    process.env.EXPO_PUBLIC_OTA_BACKEND_URL ?? 'http://139.196.14.90',
+    process.env.EXPO_PUBLIC_OTA_BACKEND_URL ?? 'http://170.106.80.91:7788',
   EXPO_PUBLIC_EAS_PROJECT_ID: process.env.EXPO_PUBLIC_EAS_PROJECT_ID ?? '13d38557-f618-4a12-812f-4505aea6929f',
   EXPO_PUBLIC_SLUG: process.env.EXPO_PUBLIC_SLUG ?? 'wificamera',
   EXPO_PUBLIC_ASSOCIATED_DOMAIN: process.env.EXPO_PUBLIC_ASSOCIATED_DOMAIN,
