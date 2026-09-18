@@ -164,7 +164,9 @@ describe('camera store', () => {
       landscapeManualExposure: 0.05,
       landscapeManualGain: 30,
     });
-    expect(socket.sent.slice(-2).map(message => JSON.parse(message))).toMatchObject([
+    expect(
+      socket.sent.slice(-2).map(message => JSON.parse(message)),
+    ).toMatchObject([
       { instruction: 'switch_auto_mode', params: [1] },
       { instruction: 'change_streaming_setting', params: [0.05, 30] },
     ]);
@@ -210,7 +212,9 @@ describe('camera store', () => {
     const capture = socket.sent
       .map(message => JSON.parse(message))
       .find(message => message.instruction === 'capture_stream_frame');
-    expect(capture.params[0]).toMatch(/^\/mnt\/sdcard\/Pictures\/stream_frame_\d+\.jpg$/);
+    expect(capture.params[0]).toMatch(
+      /^\/mnt\/sdcard\/Pictures\/stream_frame_\d+\.jpg$/,
+    );
     expect(useCameraStore.getState().landscapeCaptureState).toBe('capturing');
 
     socket.message({
@@ -246,9 +250,73 @@ describe('camera store', () => {
       landscapeManualExposure: 0.025,
       landscapeManualGain: 18,
     });
-    expect(socket.sent.slice(-2).map(message => JSON.parse(message))).toMatchObject([
+    expect(
+      socket.sent.slice(-2).map(message => JSON.parse(message)),
+    ).toMatchObject([
       { instruction: 'switch_auto_mode', params: [1] },
       { instruction: 'change_streaming_setting', params: [0.025, 18] },
     ]);
+  });
+
+  it('starts landscape repeat, sends capture command, and advances count', () => {
+    jest.useFakeTimers();
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    useCameraStore.getState().setLandscapeTimerPlan({ count: 2, interval: 1 });
+    useCameraStore.getState().startLandscapeRepeat();
+
+    expect(useCameraStore.getState().landscapeRepeatState).toBe('running');
+    const firstCapture = socket.sent
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'capture_stream_frame');
+    expect(firstCapture).toBeDefined();
+    expect(useCameraStore.getState().landscapeCaptureState).toBe('capturing');
+
+    // Complete step 1
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: {
+        streaming: true,
+        last_result: { jpg_path: firstCapture.params[0] },
+      },
+    });
+
+    expect(useCameraStore.getState().landscapeRepeatCurrent).toBe(1);
+    expect(useCameraStore.getState().landscapeRepeatState).toBe('running');
+
+    // Cancel repeat
+    useCameraStore.getState().cancelLandscapeRepeat();
+    expect(useCameraStore.getState().landscapeRepeatState).toBe('idle');
+  });
+
+  it('aborts capturing, recording, and repeat immediately when camera_state reports busy error', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    useCameraStore.setState({
+      landscapeCaptureState: 'capturing',
+      landscapeRepeatState: 'running',
+      landscapeRecordingState: 'recording',
+    });
+
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: {
+        busy: 'error',
+        streaming: false,
+      },
+    });
+
+    expect(useCameraStore.getState()).toMatchObject({
+      landscapeCaptureState: 'idle',
+      landscapeRepeatState: 'idle',
+      landscapeRecordingState: 'idle',
+      lastCommandError: '相机状态异常(error)，请重启相机',
+    });
   });
 });

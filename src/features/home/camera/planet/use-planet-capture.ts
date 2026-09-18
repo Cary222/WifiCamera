@@ -3,7 +3,10 @@
 import type { AspectRatio, SensorRoi } from './preview-layout';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCameraStore } from '../camera-store';
-import { getEffectiveSensorRoi, getSensorRoiCommandParams } from './preview-layout';
+import {
+  getEffectiveSensorRoi,
+  getSensorRoiCommandParams,
+} from './preview-layout';
 
 export type PlanetFormat = 'ser8' | 'ser12' | 'ser16' | 'mp4';
 
@@ -19,10 +22,46 @@ export type RoiPreset = SensorRoi & {
  * sensor clock out frames faster, which is what makes planetary capture usable.
  */
 export const PLANET_ROI_PRESETS: RoiPreset[] = [
-  { key: 'full120', label: '1920×1080', resolution: '1080P', fps: 120, x: 0, y: 0, width: 1920, height: 1080 },
-  { key: 'full60', label: '1920×1080', resolution: '1080P', fps: 60, x: 0, y: 0, width: 1920, height: 1080 },
-  { key: 'medium', label: '800×600', resolution: '800P', fps: 120, x: 560, y: 240, width: 800, height: 600 },
-  { key: 'deep', label: '640×480', resolution: '640P', fps: 200, x: 640, y: 300, width: 640, height: 480 },
+  {
+    key: 'full120',
+    label: '1920×1080',
+    resolution: '1080P',
+    fps: 120,
+    x: 0,
+    y: 0,
+    width: 1920,
+    height: 1080,
+  },
+  {
+    key: 'full60',
+    label: '1920×1080',
+    resolution: '1080P',
+    fps: 60,
+    x: 0,
+    y: 0,
+    width: 1920,
+    height: 1080,
+  },
+  {
+    key: 'medium',
+    label: '800×600',
+    resolution: '800P',
+    fps: 120,
+    x: 560,
+    y: 240,
+    width: 800,
+    height: 600,
+  },
+  {
+    key: 'deep',
+    label: '640×480',
+    resolution: '640P',
+    fps: 200,
+    x: 640,
+    y: 300,
+    width: 640,
+    height: 480,
+  },
 ];
 
 type Options = {
@@ -67,7 +106,13 @@ function sleep(ms: number): Promise<void> {
  * Owns the planetary capture side effects: streaming parameters, hardware ROI,
  * and the SER/MP4 recording lifecycle with its board status polling.
  */
-export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRatio }: Options) {
+export function usePlanetCapture({
+  exposure,
+  gain,
+  format,
+  roiPreset,
+  aspectRatio,
+}: Options) {
   const sendCommandWait = useCameraStore.use.sendCommandWait();
   const changeStreamingSetting = useCameraStore.use.changeStreamingSetting();
   const requestCameraState = useCameraStore.use.requestCameraState();
@@ -143,41 +188,50 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
       appliedRoiKeyRef.current = roiKey;
       return;
     }
-
     let active = true;
-    void Promise.resolve().then(async () => {
-      if (!active)
-        return;
-      setIsApplyingRoi(true);
-      setActionError(null);
-      useCameraStore.setState({ lastCommandError: null });
-      const result = await sendCommandWait(
-        'set_sensor_roi',
-        getSensorRoiCommandParams(effectiveRoi),
-        12_000,
-      );
-      if (!active)
-        return;
-      if (result.error)
-        throw new Error(result.error);
-      if (result.timeout)
-        throw new Error('切换画幅超时');
-      if (result.msg?.success === false)
-        throw new Error('板端拒绝了画幅设置');
-      appliedRoiKeyRef.current = roiKey;
-      // Hardware ROI rebuilds the stream pipeline. Keep capture controls locked
-      // until the WHEP source has had time to publish the new dimensions.
-      await sleep(700);
-    }).catch((error) => {
-      if (active)
-        reportActionError(error instanceof Error ? error.message : String(error));
-    }).finally(() => {
-      if (active)
-        setIsApplyingRoi(false);
-    });
+    const timer = setTimeout(() => {
+      void (async () => {
+        if (!active)
+          return;
+        setIsApplyingRoi(true);
+        setActionError(null);
+        useCameraStore.setState({ lastCommandError: null });
+        try {
+          const result = await sendCommandWait(
+            'set_sensor_roi',
+            getSensorRoiCommandParams(effectiveRoi),
+            12_000,
+          );
+          if (!active)
+            return;
+          if (result.error)
+            throw new Error(result.error);
+          if (result.timeout)
+            throw new Error('切换画幅超时');
+          if (result.msg?.success === false)
+            throw new Error('板端拒绝了画幅设置');
+          appliedRoiKeyRef.current = roiKey;
+          // Hardware ROI rebuilds the stream pipeline. Keep capture controls locked
+          // until the WHEP source has had time to publish the new dimensions.
+          await sleep(1500);
+        }
+        catch (error) {
+          if (active) {
+            reportActionError(
+              error instanceof Error ? error.message : String(error),
+            );
+          }
+        }
+        finally {
+          if (active)
+            setIsApplyingRoi(false);
+        }
+      })();
+    }, 600);
 
     return () => {
       active = false;
+      clearTimeout(timer);
     };
   }, [effectiveRoi, isConnected, reportActionError, sendCommandWait]);
 
@@ -190,19 +244,33 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
     statusPollRef.current = null;
   }, []);
 
-  useEffect(() => () => {
-    clearTimers();
-    if (isRecordingRef.current) {
-      // Safety stop on unmount so the board does not continue recording indefinitely.
-      const instruction = formatRef.current === 'mp4' ? 'streaming_stop_save' : 'stop_ser_record';
-      useCameraStore.getState().sendCommand({
-        device_name: 'main_camera',
-        instruction,
-        params: [],
-        id: `APP-PLANET-UNMOUNT-STOP-${Date.now().toString(36)}`,
-      });
-    }
-  }, [clearTimers]);
+  useEffect(
+    () => () => {
+      clearTimers();
+      if (isRecordingRef.current) {
+        // Safety stop on unmount so the board does not continue recording indefinitely.
+        const instruction
+          = formatRef.current === 'mp4'
+            ? 'streaming_stop_save'
+            : 'stop_ser_record';
+        useCameraStore.getState().sendCommand({
+          device_name: 'main_camera',
+          instruction,
+          params: [],
+          id: `APP-PLANET-UNMOUNT-STOP-${Date.now().toString(36)}`,
+        });
+      }
+      if (appliedRoiKeyRef.current && appliedRoiKeyRef.current !== '0/0/1920/1080') {
+        useCameraStore.getState().sendCommand({
+          device_name: 'main_camera',
+          instruction: 'set_sensor_roi',
+          params: [0, 0, 1920, 1080, 0],
+          id: `APP-PLANET-UNMOUNT-RESET-ROI-${Date.now().toString(36)}`,
+        });
+      }
+    },
+    [clearTimers],
+  );
 
   const capturePhoto = useCallback(() => {
     if (!isConnected || isCapturing || isRecording || isApplyingRoi)
@@ -213,7 +281,13 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
     // firmware completes through camera_state.last_result instead of replying
     // directly to capture_stream_frame, so sendCommandWait would time out.
     startLandscapeCapture();
-  }, [isConnected, isCapturing, isRecording, isApplyingRoi, startLandscapeCapture]);
+  }, [
+    isConnected,
+    isCapturing,
+    isRecording,
+    isApplyingRoi,
+    startLandscapeCapture,
+  ]);
 
   const pollSerStatus = useCallback(() => {
     statusPollRef.current = setInterval(() => {
@@ -229,44 +303,58 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
     }, 1500);
   }, [reportActionError, sendCommandWait]);
 
-  const readSerStatus = useCallback(async (): Promise<SerStatusPayload | null> => {
-    const result = await sendCommandWait('get_ser_status', [], 4500);
-    return readSerStatusPayload(result.msg?.data);
-  }, [sendCommandWait]);
+  const readSerStatus
+    = useCallback(async (): Promise<SerStatusPayload | null> => {
+      const result = await sendCommandWait('get_ser_status', [], 4500);
+      return readSerStatusPayload(result.msg?.data);
+    }, [sendCommandWait]);
 
   /**
    * Poll `get_ser_status` until the board agrees with the state we expect, the
    * same handshake the browser app performs via `waitForSerCondition`.
    */
-  const waitForSerCondition = useCallback(async (
-    predicate: (payload: SerStatusPayload) => boolean,
-    timeoutMs: number,
-  ): Promise<SerStatusPayload | null> => {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const payload = await readSerStatus();
-      if (payload && predicate(payload))
-        return payload;
-      await sleep(350);
-    }
-    return null;
-  }, [readSerStatus]);
+  const waitForSerCondition = useCallback(
+    async (
+      predicate: (payload: SerStatusPayload) => boolean,
+      timeoutMs: number,
+    ): Promise<SerStatusPayload | null> => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const payload = await readSerStatus();
+        if (payload && predicate(payload))
+          return payload;
+        await sleep(350);
+      }
+      return null;
+    },
+    [readSerStatus],
+  );
 
   /**
    * SER pulls RAW frames, so the board needs a stream whose exposure matches the
    * target frame rate before recording starts (browser: `ensureSerStreaming`).
    */
-  const ensureSerStreaming = useCallback(async (fps: number) => {
-    const exposureForFps = Math.max(0.001, Math.min(0.25, 1 / Math.max(fps, 0.1)));
-    const result = await sendCommandWait('start_streaming_exposure', [exposureForFps, -1], 22_000);
-    if (result.error)
-      throw new Error(result.error);
-    if (result.timeout)
-      throw new Error('启动 RAW 采集流超时');
-    if (result.msg?.success === false)
-      throw new Error('启动 RAW 采集流失败');
-    await sleep(700);
-  }, [sendCommandWait]);
+  const ensureSerStreaming = useCallback(
+    async (fps: number) => {
+      const exposureForFps = Math.max(
+        0.001,
+        Math.min(0.25, 1 / Math.max(fps, 0.1)),
+      );
+      const result = await sendCommandWait(
+        'start_streaming_exposure',
+        [exposureForFps, -1],
+        22_000,
+      );
+      if (result.error)
+        throw new Error(result.error);
+      if (result.timeout)
+        throw new Error('启动 RAW 采集流超时');
+      if (result.msg?.success === false)
+        throw new Error('启动 RAW 采集流失败');
+      await sleep(700);
+    },
+    [sendCommandWait],
+  );
 
   const startRecording = useCallback(async () => {
     if (!isConnected || isRecording || isApplyingRoi)
@@ -280,13 +368,22 @@ export function usePlanetCapture({ exposure, gain, format, roiPreset, aspectRati
       if (format !== 'mp4')
         await ensureSerStreaming(roiPreset.fps);
 
-      const result = format === 'mp4'
-        ? await sendCommandWait('streaming_start_save', [`planet_${Date.now()}`], 10_000)
-        : await sendCommandWait('start_ser_record', [
-            `/mnt/sdcard/Videos/planet_${Date.now()}.ser`,
-            bitDepth,
-            roiPreset.fps,
-          ], 10_000);
+      const result
+        = format === 'mp4'
+          ? await sendCommandWait(
+              'streaming_start_save',
+              [`planet_${Date.now()}`],
+              10_000,
+            )
+          : await sendCommandWait(
+              'start_ser_record',
+              [
+                `/mnt/sdcard/Videos/planet_${Date.now()}.ser`,
+                bitDepth,
+                roiPreset.fps,
+              ],
+              10_000,
+            );
 
       if (result.error)
         throw new Error(result.error);

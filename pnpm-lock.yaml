@@ -70,7 +70,7 @@ importers:
         version: 19.0.8(expo@54.0.32)
       expo-router:
         specifier: ~6.0.22
-        version: 6.0.22(46da08cdbd0adf777331a75ff4e209f1)
+        version: 6.0.22(4a6017a91b786242661fffb6a6a94848)
       expo-sharing:
         specifier: ~14.0.8
         version: 14.0.8(expo@54.0.32)
@@ -6464,11 +6464,6 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@3.3.12:
-    resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
   nanoid@3.3.16:
     resolution: {integrity: sha512-bzlKTyNJ7+LdGIIwy8ijFpIqEQIvafahV7eYykJ8Cvh42EdJeODoJ6gUJXpQJvej1BddH8OqTXZNE/KfbWAu8Q==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -11174,7 +11169,7 @@ snapshots:
       '@react-navigation/routers': 7.5.3
       escape-string-regexp: 4.0.0
       fast-deep-equal: 3.1.3
-      nanoid: 3.3.11
+      nanoid: 3.3.16
       query-string: 7.1.3
       react: 19.1.0
       react-is: 19.2.3
@@ -11210,14 +11205,14 @@ snapshots:
       '@react-navigation/core': 7.14.0(react@19.1.0)
       escape-string-regexp: 4.0.0
       fast-deep-equal: 3.1.3
-      nanoid: 3.3.11
+      nanoid: 3.3.16
       react: 19.1.0
       react-native: 0.81.5(@babel/core@7.28.6)(@types/react@19.1.17)(react@19.1.0)
       use-latest-callback: 0.2.6(react@19.1.0)
 
   '@react-navigation/routers@7.5.3':
     dependencies:
-      nanoid: 3.3.12
+      nanoid: 3.3.16
 
   '@rtsao/scc@1.1.0': {}
 
@@ -13648,7 +13643,7 @@ snapshots:
       expo-server: 1.0.5
       fast-deep-equal: 3.1.3
       invariant: 2.2.4
-      nanoid: 3.3.11
+      nanoid: 3.3.16
       query-string: 7.1.3
       react: 19.1.0
       react-fast-compare: 3.2.2
@@ -16097,8 +16092,6 @@ snapshots:
 
   nanoid@3.3.11: {}
 
-  nanoid@3.3.12: {}
-
   nanoid@3.3.16: {}
 
   napi-postinstall@0.3.4: {}
@@ -16559,7 +16552,7 @@ snapshots:
 
   postcss@8.4.49:
     dependencies:
-      nanoid: 3.3.11
+      nanoid: 3.3.16
       picocolors: 1.1.1
       source-map-js: 1.2.1
 

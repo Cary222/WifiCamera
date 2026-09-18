@@ -330,7 +330,7 @@ export function startWhepNegotiation(
           logStreamPoint('first_decoded_timeout');
           return;
         }
-        void peer.getStats().then((report) => {
+        void peer.getStats().then((report: any) => {
           if (closed || firstDecodedLogged)
             return;
           let decoded = 0;
@@ -411,6 +411,7 @@ export async function openWhepSession(
   return startWhepNegotiation(whepUrl, options).post();
 }
 
+// eslint-disable-next-line max-params
 async function postWhepOfferOnce(
   whepUrl: string,
   sdp: string,

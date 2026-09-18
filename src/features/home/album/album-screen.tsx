@@ -14,7 +14,10 @@ import { Image as NImage } from 'expo-image';
 import * as React from 'react';
 import { Platform, ScrollView, View } from 'react-native';
 
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import { useUniwind } from 'uniwind';
 import { FocusAwareStatusBar, Pressable, Text } from '@/components/ui';
 import { useCameraStore } from '@/features/home/camera';
@@ -50,7 +53,9 @@ function parseAlbumDate(pathOrName: string, mtime?: number): Date | null {
   const name = full.split(/[\\/]/).pop() || full;
 
   // 1. Millisecond timestamps in filenames (e.g. stream_frame_1786355122069, solve_..._1785836975474)
-  const msPrefixMatch = name.match(/(?:stream_frame_|solve[_-]|upload[_-]|synthetic[_-]|picture[_-]|big-)(\d{10,13})/i);
+  const msPrefixMatch = name.match(
+    /(?:stream_frame_|solve[_-]|upload[_-]|synthetic[_-]|picture[_-]|big-)(\d{10,13})/i,
+  );
   if (msPrefixMatch) {
     let ms = Number(msPrefixMatch[1]);
     if (msPrefixMatch[1].length <= 10)
@@ -69,7 +74,9 @@ function parseAlbumDate(pathOrName: string, mtime?: number): Date | null {
   }
 
   // 2. Full timestamp in filename/path: YYYY-MM-DD-HH-mm-ss or YYYY-MM-DD_HH-mm-ss
-  const fullDateMatch = full.match(/(20\d{2})-(\d{2})-(\d{2})[-_](\d{2})[-_](\d{2})[-_](\d{2})/);
+  const fullDateMatch = full.match(
+    /(20\d{2})-(\d{2})-(\d{2})[-_](\d{2})[-_](\d{2})[-_](\d{2})/,
+  );
   if (fullDateMatch) {
     const d = new Date(
       Number(fullDateMatch[1]),
@@ -84,17 +91,35 @@ function parseAlbumDate(pathOrName: string, mtime?: number): Date | null {
   }
 
   // 3. YYYY-MM-DD in path or filename
-  const isoDateMatch = full.match(/(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])/);
+  const isoDateMatch = full.match(
+    /(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])/,
+  );
   if (isoDateMatch) {
-    const d = new Date(Number(isoDateMatch[1]), Number(isoDateMatch[2]) - 1, Number(isoDateMatch[3]), 12, 0, 0);
+    const d = new Date(
+      Number(isoDateMatch[1]),
+      Number(isoDateMatch[2]) - 1,
+      Number(isoDateMatch[3]),
+      12,
+      0,
+      0,
+    );
     if (isPlausibleAlbumDate(d))
       return d;
   }
 
   // 4. Compact YYYYMMDD (strictly 20xx, month 01-12, day 01-31 with delimiters/word boundaries)
-  const compactMatch = name.match(/(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?:_|$|\.)/);
+  const compactMatch = name.match(
+    /(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?:_|$|\.)/,
+  );
   if (compactMatch) {
-    const d = new Date(Number(compactMatch[1]), Number(compactMatch[2]) - 1, Number(compactMatch[3]), 12, 0, 0);
+    const d = new Date(
+      Number(compactMatch[1]),
+      Number(compactMatch[2]) - 1,
+      Number(compactMatch[3]),
+      12,
+      0,
+      0,
+    );
     if (isPlausibleAlbumDate(d))
       return d;
   }
@@ -112,7 +137,11 @@ function parseAlbumDate(pathOrName: string, mtime?: number): Date | null {
   return null;
 }
 
-function parseDateFromFolder(f: { name: string; path?: string; mtime?: number }): { label: string; timestamp: string; sortKey: string } {
+function parseDateFromFolder(f: {
+  name: string;
+  path?: string;
+  mtime?: number;
+}): { label: string; timestamp: string; sortKey: string } {
   const d = parseAlbumDate(f.path || f.name, f.mtime);
   if (d) {
     const year = d.getFullYear();
@@ -152,11 +181,19 @@ function extractTargetName(name: string): string {
  * Returns an AlbumData-compatible structure ready for rendering.
  */
 function groupIntoAlbumData(
-  folders: Array<{ name: string; path?: string; size?: number; mtime?: number }>,
+  folders: Array<{
+    name: string;
+    path?: string;
+    size?: number;
+    mtime?: number;
+  }>,
 ): Pick<AlbumData, 'groups'> {
   const baseUrl = getAlbumBaseUrl();
 
-  const map = new Map<string, { label: string; sortKey: string; items: PhotoItem[] }>();
+  const map = new Map<
+    string,
+    { label: string; sortKey: string; items: PhotoItem[] }
+  >();
 
   for (const f of folders) {
     const { label, timestamp, sortKey } = parseDateFromFolder(f);
@@ -171,8 +208,12 @@ function groupIntoAlbumData(
     map.get(label)!.items.push({
       id: `${f.name}-${map.get(label)!.items.length}`,
       target: extractTargetName(f.name),
-      exposure: f.name.includes('LIGHT_') ? `${f.name.split('LIGHT_')[1]?.split('_')[0] ?? '-'}s` : '-',
-      gain: f.name.includes('LIGHT_') ? `G${f.name.split('LIGHT_')[1]?.split('_')[1] ?? '-'}` : '-',
+      exposure: f.name.includes('LIGHT_')
+        ? `${f.name.split('LIGHT_')[1]?.split('_')[0] ?? '-'}s`
+        : '-',
+      gain: f.name.includes('LIGHT_')
+        ? `G${f.name.split('LIGHT_')[1]?.split('_')[1] ?? '-'}`
+        : '-',
       timestamp,
       path: f.path,
       previewUrl,
@@ -180,7 +221,9 @@ function groupIntoAlbumData(
   }
 
   // Sort groups descending by date (latest first)
-  const sortedEntries = Array.from(map.values()).sort((a, b) => b.sortKey.localeCompare(a.sortKey));
+  const sortedEntries = Array.from(map.values()).sort((a, b) =>
+    b.sortKey.localeCompare(a.sortKey),
+  );
 
   const groups = sortedEntries.map((entry, i) => ({
     id: `g-${i}`,
@@ -201,11 +244,23 @@ function TitleBar({
   const navigation = useNavigation();
 
   return (
-    <View style={{ height: 44, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 }}>
+    <View
+      style={{
+        height: 44,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+      }}
+    >
       <Pressable
         hitSlop={10}
         onPress={() => navigation.goBack()}
-        style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' }}
+        style={{
+          width: 40,
+          height: 40,
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+        }}
       >
         <CameraBackButton isDark={isDark} onBack={() => navigation.goBack()} />
       </Pressable>
@@ -219,7 +274,12 @@ function TitleBar({
       <Pressable
         hitSlop={10}
         onPress={onRefreshPress}
-        style={{ width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-end' }}
+        style={{
+          width: 40,
+          height: 40,
+          justifyContent: 'center',
+          alignItems: 'flex-end',
+        }}
       >
         <NImage
           source={moreIcon}
@@ -264,10 +324,7 @@ function AlbumBody({
       showsVerticalScrollIndicator={false}
     >
       <View className="mx-4">
-        <StorageCard
-          storage={storage}
-          onFormatPress={onFormatPress}
-        />
+        <StorageCard storage={storage} onFormatPress={onFormatPress} />
       </View>
 
       {isMockMode && (
@@ -278,20 +335,32 @@ function AlbumBody({
         </View>
       )}
 
-      {data.groups.map((group) => {
-        const isCollapsed = collapsed[group.id] ?? false;
-        return (
-          <View key={group.id}>
-            <DateGroupHeader
-              dateLabel={group.dateLabel}
-              itemCount={group.items.length}
-              expanded={!isCollapsed}
-              onPress={() => toggleGroup(group.id)}
-            />
-            {!isCollapsed && <FolderGrid items={group.items} onItemPress={onItemPress} />}
-          </View>
-        );
-      })}
+      {data.groups.length === 0
+        ? (
+            <View className="flex-1 items-center justify-center py-20">
+              <Text className="text-[14px] text-neutral-400 dark:text-neutral-500">
+                {translate('album.empty')}
+              </Text>
+            </View>
+          )
+        : (
+            data.groups.map((group) => {
+              const isCollapsed = collapsed[group.id] ?? false;
+              return (
+                <View key={group.id}>
+                  <DateGroupHeader
+                    dateLabel={group.dateLabel}
+                    itemCount={group.items.length}
+                    expanded={!isCollapsed}
+                    onPress={() => toggleGroup(group.id)}
+                  />
+                  {!isCollapsed && (
+                    <FolderGrid items={group.items} onItemPress={onItemPress} />
+                  )}
+                </View>
+              );
+            })
+          )}
     </ScrollView>
   );
 }
@@ -308,7 +377,9 @@ export function AlbumScreen() {
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
   const [status, setStatus] = React.useState<Status>('loading');
   const [albumData, setAlbumData] = React.useState<AlbumData | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = React.useState<PhotoItem | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = React.useState<PhotoItem | null>(
+    null,
+  );
 
   const toggleGroup = React.useCallback((groupId: string) => {
     setCollapsed(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -352,8 +423,12 @@ export function AlbumScreen() {
   const renderContent = () => {
     if (status === 'loading') {
       return (
-        <View className={`flex-1 items-center justify-center ${isDark ? 'bg-[#090a0c]' : 'bg-white'}`}>
-          <Text className="text-[14px] text-black dark:text-white">{translate('album.loading')}</Text>
+        <View
+          className={`flex-1 items-center justify-center ${isDark ? 'bg-[#090a0c]' : 'bg-white'}`}
+        >
+          <Text className="text-[14px] text-black dark:text-white">
+            {translate('album.loading')}
+          </Text>
         </View>
       );
     }
@@ -385,7 +460,9 @@ export function AlbumScreen() {
   return (
     <>
       <FocusAwareStatusBar />
-      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#090a0c' : '#FFFFFF' }}>
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? '#090a0c' : '#FFFFFF' }}
+      >
         <TitleBar isDark={isDark} onRefreshPress={handleRefresh} />
         {renderContent()}
       </SafeAreaView>

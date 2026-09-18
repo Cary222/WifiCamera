@@ -48,6 +48,7 @@ export default antfu(
       'uniwind-types.d.ts',
       // Vendored Stellarium offline runtime (minified engine + data)
       'src/assets/stellar/**',
+      'scripts/build-skycultures.cjs',
     ],
   },
 
@@ -72,6 +73,7 @@ export default antfu(
             'README-project.md',
             'ISSUE_TEMPLATE.md',
             'PULL_REQUEST_TEMPLATE.md',
+            'AGENTS.md',
           ],
         },
       ],

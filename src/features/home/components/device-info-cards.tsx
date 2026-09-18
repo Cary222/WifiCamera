@@ -37,22 +37,26 @@ export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaini
       </View>
 
       <View className="mt-5 flex-row gap-3">
-        <View className="flex-1 rounded-[20px] border border-neutral-200 bg-transparent p-4 dark:border-[#48484880]">
-          <View className="flex-row items-center gap-3">
-            <View className="size-[52px] items-center justify-center rounded-[15px]">
+        <View className="flex-1 rounded-[20px] border border-neutral-200 bg-transparent p-3.5 dark:border-[#48484880]">
+          <View className="flex-row items-center gap-2.5">
+            <View className="size-[40px] items-center justify-center rounded-[12px]">
               <Image
                 source={powerIcon}
-                style={{ width: 28, height: 28 }}
+                style={{ width: 22, height: 22 }}
                 contentFit="contain"
                 tintColor="#c8e733"
               />
             </View>
-            <View className="flex-1">
-              <Text className="text-[22px] font-light text-black dark:text-white">
+            <View className="flex-1 justify-center">
+              <Text
+                className="text-[18px] font-normal text-black dark:text-white"
+                numberOfLines={1}
+              >
                 {batteryLevel === null ? '—' : `${Math.round(batteryLevel)}%`}
               </Text>
               <Text
-                className={`mt-1 text-[12px] font-light ${
+                numberOfLines={1}
+                className={`mt-0.5 text-[11px] font-light ${
                   inCharge ? 'text-[#c8e733]' : 'text-neutral-500 dark:text-white/50'
                 }`}
               >
@@ -64,21 +68,27 @@ export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaini
           </View>
         </View>
 
-        <View className="flex-1 rounded-[20px] border border-neutral-200 bg-transparent p-4 dark:border-[#48484880]">
-          <View className="flex-row items-center gap-3">
-            <View className="size-[52px] items-center justify-center rounded-[15px]">
+        <View className="flex-1 rounded-[20px] border border-neutral-200 bg-transparent p-3.5 dark:border-[#48484880]">
+          <View className="flex-row items-center gap-2.5">
+            <View className="size-[40px] items-center justify-center rounded-[12px]">
               <Image
                 source={cardIcon}
-                style={{ width: 28, height: 28 }}
+                style={{ width: 22, height: 22 }}
                 contentFit="contain"
                 tintColor={isDark ? undefined : '#222222'}
               />
             </View>
-            <View className="flex-1">
-              <Text className="text-[22px] font-light text-black dark:text-white">
+            <View className="flex-1 justify-center">
+              <Text
+                className="text-[18px] font-normal text-black dark:text-white"
+                numberOfLines={1}
+              >
                 {storageRemaining}
               </Text>
-              <Text className="mt-1 text-[12px] font-light text-neutral-500 dark:text-white/50">
+              <Text
+                numberOfLines={1}
+                className="mt-0.5 text-[11px] font-light text-neutral-500 dark:text-white/50"
+              >
                 {translate('home.storage_remaining')}
               </Text>
             </View>

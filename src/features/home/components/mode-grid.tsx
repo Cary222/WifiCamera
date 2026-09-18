@@ -22,17 +22,20 @@ function ModeCard({ icon, label, route, width }: ModeCardProps) {
     <Pressable
       onPress={() => router.push(route)}
       style={{ width }}
-      className="h-[139px] rounded-[17.069px] border-[0.569px] border-neutral-200 bg-neutral-50 p-5 active:opacity-70 dark:border-[#48484880] dark:bg-[#111213]"
+      className="min-h-[148px] justify-between rounded-[17px] border-[0.57px] border-neutral-200 bg-neutral-50 p-4 active:opacity-70 dark:border-[#48484880] dark:bg-[#111213]"
     >
-      <View className="size-[45px] items-center justify-center rounded-lg bg-neutral-200/50 dark:bg-transparent">
+      <View className="size-[42px] items-center justify-center rounded-lg bg-neutral-200/50 dark:bg-transparent">
         <Image
           source={icon}
-          style={{ width: 28, height: 28 }}
+          style={{ width: 26, height: 26 }}
           contentFit="contain"
           tintColor={isDark ? undefined : '#262626'}
         />
       </View>
-      <Text className="mt-6 text-[20px] font-normal text-black/80 dark:text-white/80">
+      <Text
+        className="mt-3 text-[17px] leading-tight font-normal text-black/80 dark:text-white/80"
+        numberOfLines={2}
+      >
         {label}
       </Text>
     </Pressable>

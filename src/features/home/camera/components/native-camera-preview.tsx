@@ -5,14 +5,27 @@ import type { MediaStream } from 'react-native-webrtc';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NativeModules, Platform, Pressable, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, {
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { Text } from '@/components/ui';
 import { appLogger } from '@/lib/app-logger';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
 import { getCameraWhepUrl } from '../config';
-import { logStreamPoint, markStreamStart } from '../services/stream-start-probe';
-import { openWhepSession, startWhepNegotiation } from '../services/whep-service';
+import {
+  logStreamPoint,
+  markStreamStart,
+} from '../services/stream-start-probe';
+import {
+  openWhepSession,
+  startWhepNegotiation,
+} from '../services/whep-service';
 
 const NativeWebRTC = NativeModules.WebRTCModule
   ? require('react-native-webrtc')
@@ -73,6 +86,10 @@ export function useLandscapeCameraPreview(
 
     let active = true;
     let connecting = false;
+    let reconnectAttempts = 0;
+    const MAX_RECONNECT_ATTEMPTS = 5;
+    const BASE_RECONNECT_DELAY_MS = 1000;
+    const MAX_RECONNECT_DELAY_MS = 8000;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let statsTimer: ReturnType<typeof setInterval> | null = null;
     let closeSession: (() => Promise<void>) | null = null;
@@ -92,14 +109,36 @@ export function useLandscapeCameraPreview(
     const scheduleReconnect = () => {
       if (!active || reconnectTimer)
         return;
+      const cameraBusy = useCameraStore.getState().cameraState?.busy;
+      if (cameraBusy === 'error') {
+        appLogger.warn('WHEP', '相机状态机处于 error 状态，停止自动重连');
+        setPreviewState('error');
+        return;
+      }
+      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        appLogger.warn(
+          'WHEP',
+          `视频流已达到最大重试次数(${MAX_RECONNECT_ATTEMPTS})，停止自动重试`,
+        );
+        setPreviewState('error');
+        return;
+      }
+      reconnectAttempts += 1;
+      const delay = Math.min(
+        MAX_RECONNECT_DELAY_MS,
+        BASE_RECONNECT_DELAY_MS * 1.5 ** (reconnectAttempts - 1),
+      );
       setStream(null);
       setPreviewState('connecting');
-      appLogger.info('WHEP', '视频流将在 600ms 后重连');
+      appLogger.info(
+        'WHEP',
+        `视频流将在 ${Math.round(delay)}ms 后第 ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} 次重连`,
+      );
       void releaseSession();
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         void connect();
-      }, 600);
+      }, delay);
     };
 
     const connect = async () => {
@@ -128,6 +167,7 @@ export function useLandscapeCameraPreview(
         closeSession = session.close;
         setStream(session.stream);
         setPreviewState('live');
+        reconnectAttempts = 0;
         // Periodic diagnostics: after 4 ticks (8s) drop to a slow cadence.
         let ticks = 0;
         statsTimer = setInterval(() => {
@@ -197,6 +237,7 @@ export function useLandscapeCameraPreview(
         closeSession = session.close;
         setStream(session.stream);
         setPreviewState('live');
+        reconnectAttempts = 0;
         let ticks = 0;
         statsTimer = setInterval(() => {
           ticks += 1;
@@ -251,85 +292,90 @@ export type PreviewSurfaceProps = {
  * Web surface: browsers have no RTCView, so the MediaStream is attached to a
  * plain <video> element. Never rendered on native.
  */
-const WebVideoSurface = memo(({
-  stream,
-  width = '100%',
-  height = '100%',
-  objectFit = 'cover',
-  rotation = 0,
-  scale = 1,
-}: {
-  stream: MediaStream | null;
-  width?: number | string;
-  height?: number | string;
-  objectFit?: 'cover' | 'contain';
-  rotation?: number;
-  scale?: number;
-}) => {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+const WebVideoSurface = memo(
+  ({
+    stream,
+    width = '100%',
+    height = '100%',
+    objectFit = 'cover',
+    rotation = 0,
+    scale = 1,
+  }: {
+    stream: MediaStream | null;
+    width?: number | string;
+    height?: number | string;
+    objectFit?: 'cover' | 'contain';
+    rotation?: number;
+    scale?: number;
+  }) => {
+    const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  const attachVideo = useCallback(
-    (node: HTMLVideoElement | null) => {
-      videoRef.current = node;
-      if (node) {
-        node.srcObject = stream as unknown as globalThis.MediaStream | null;
-        void node.play().catch(() => {});
+    const attachVideo = useCallback(
+      (node: HTMLVideoElement | null) => {
+        videoRef.current = node;
+        if (node) {
+          node.srcObject = stream as unknown as globalThis.MediaStream | null;
+          void node.play().catch(() => {});
+        }
+      },
+      [stream],
+    );
+
+    useEffect(() => {
+      const video = videoRef.current;
+      if (!video)
+        return;
+
+      if (!stream) {
+        video.srcObject = null;
+        return;
       }
-    },
-    [stream],
-  );
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video)
-      return;
-
-    if (!stream) {
-      video.srcObject = null;
-      return;
-    }
-
-    const nativeStream = stream as unknown as globalThis.MediaStream;
-    video.srcObject = nativeStream;
-    void video.play().catch(() => {});
-
-    const handleTrackEvent = () => {
-      if (video.srcObject !== nativeStream) {
-        video.srcObject = nativeStream;
-      }
+      const nativeStream = stream as unknown as globalThis.MediaStream;
+      video.srcObject = nativeStream;
       void video.play().catch(() => {});
-    };
 
-    nativeStream.addEventListener?.('addtrack', handleTrackEvent);
-    nativeStream.addEventListener?.('removetrack', handleTrackEvent);
+      const handleTrackEvent = () => {
+        if (video.srcObject !== nativeStream) {
+          video.srcObject = nativeStream;
+        }
+        void video.play().catch(() => {});
+      };
 
-    return () => {
-      nativeStream.removeEventListener?.('addtrack', handleTrackEvent);
-      nativeStream.removeEventListener?.('removetrack', handleTrackEvent);
-    };
-  }, [stream]);
+      nativeStream.addEventListener?.('addtrack', handleTrackEvent);
+      nativeStream.addEventListener?.('removetrack', handleTrackEvent);
 
-  const transformStyle = [
-    rotation ? `rotate(${rotation}deg)` : '',
-    scale !== 1 ? `scale(${scale})` : '',
-  ].filter(Boolean).join(' ') || undefined;
+      return () => {
+        nativeStream.removeEventListener?.('addtrack', handleTrackEvent);
+        nativeStream.removeEventListener?.('removetrack', handleTrackEvent);
+      };
+    }, [stream]);
 
-  return (
-    <video
-      ref={attachVideo}
-      autoPlay
-      playsInline
-      muted
-      style={{
-        width,
-        height,
-        objectFit,
-        transform: transformStyle,
-        background: '#0B0B0D',
-      }}
-    />
-  );
-});
+    const transformStyle
+      = [
+        rotation ? `rotate(${rotation}deg)` : '',
+        scale !== 1 ? `scale(${scale})` : '',
+      ]
+        .filter(Boolean)
+        .join(' ') || undefined;
+
+    return (
+      <video
+        ref={attachVideo}
+        autoPlay
+        playsInline
+        muted
+        style={{
+          width,
+          height,
+          objectFit,
+          transform: transformStyle,
+          background: '#0B0B0D',
+        }}
+      />
+    );
+  },
+);
 WebVideoSurface.displayName = 'WebVideoSurface';
 
 export const PreviewSurface = memo(
@@ -338,7 +384,7 @@ export const PreviewSurface = memo(
     previewState,
     width,
     height,
-    objectFit = 'cover',
+    objectFit = 'contain',
     rotation = 0,
     scale = 1,
     pinchZoomable = true,
@@ -372,7 +418,10 @@ export const PreviewSurface = memo(
         return null;
       return Gesture.Pinch()
         .onUpdate((event) => {
-          pinchScale.value = Math.min(Math.max(savedScale.value * event.scale, 1), 5);
+          pinchScale.value = Math.min(
+            Math.max(savedScale.value * event.scale, 1),
+            5,
+          );
         })
         .onEnd(() => {
           if (pinchScale.value < 1) {
@@ -436,6 +485,12 @@ export const PreviewSurface = memo(
           />
         );
       }
+      const cameraBusy = useCameraStore.getState().cameraState?.busy;
+      const errorText
+        = cameraBusy === 'error'
+          ? '相机服务异常，请重启相机'
+          : translate('landscape.preview_failed');
+
       return (
         <View
           className="flex-1 items-center justify-center bg-[#0B0B0D]"
@@ -443,7 +498,7 @@ export const PreviewSurface = memo(
         >
           <Text className="text-sm text-white/40">
             {previewState === 'error'
-              ? translate('landscape.preview_failed')
+              ? errorText
               : translate('landscape.preview_connecting')}
           </Text>
         </View>
@@ -456,7 +511,10 @@ export const PreviewSurface = memo(
           {renderSurface()}
         </Animated.View>
         {isZoomed && (
-          <View pointerEvents="box-none" className="absolute inset-x-0 bottom-4 items-center">
+          <View
+            pointerEvents="box-none"
+            className="absolute inset-x-0 bottom-4 items-center"
+          >
             <Pressable
               onPress={handleResetZoom}
               className="flex-row items-center rounded-full bg-black/75 px-3 py-1 active:opacity-70"
@@ -488,7 +546,7 @@ PreviewSurface.displayName = 'PreviewSurface';
  * placeholder content with the board's native WebRTC stream.
  */
 export function NativeCameraPreview({
-  objectFit = 'cover',
+  objectFit = 'contain',
   rotation = 0,
   scale = 1,
 }: {
@@ -515,7 +573,12 @@ export function NativeCameraPreview({
     <View className="flex-1 overflow-hidden rounded-2xl bg-neutral-900">
       {Platform.OS === 'web'
         ? (
-            <WebVideoSurface stream={stream} objectFit={objectFit} rotation={rotation} scale={scale} />
+            <WebVideoSurface
+              stream={stream}
+              objectFit={objectFit}
+              rotation={rotation}
+              scale={scale}
+            />
           )
         : (
             stream

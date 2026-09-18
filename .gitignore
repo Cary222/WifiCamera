@@ -13,6 +13,7 @@ web-build/
 yarn-error.log
 /coverage
 /logs
+/artifacts
 # macOS
 .DS_Store
 /ios

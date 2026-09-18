@@ -11,11 +11,11 @@ import { useUniwind } from 'uniwind';
 import { SegmentedControl, Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
-import { formatGainDb, formatGainDbNumber } from '../gain-code';
 import { CameraModeSwitcher } from '../components/camera-mode-switcher';
 import { CameraTopBar } from '../components/camera-top-bar';
 import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
 import { getCameraBaseUrl } from '../config';
+import { formatGainDb, formatGainDbNumber } from '../gain-code';
 import {
   CloseIcon,
   CountdownIcon,
@@ -278,6 +278,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
           previewState={previewState}
           width={width}
           height={Math.min(surfaceHeight, height - insets.top - 48 - (isPanelOpen ? 240 : 100))}
+          objectFit="contain"
         />
       </View>
 
@@ -558,7 +559,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                       width: isVideoRecording ? 28 : 62,
                       height: isVideoRecording ? 28 : 62,
                       borderRadius: isVideoRecording ? 6 : 31,
-                      backgroundColor: isVideoRecording ? '#FF3B30' : (isDark ? '#FFFFFF' : '#0A0B0D'),
+                      backgroundColor: isVideoRecording ? '#FF3B30' : '#FFFFFF',
                     }}
                   >
                     {countdownRemaining > 0 && (

@@ -10,6 +10,7 @@ import { useCameraStore } from '@/features/home/camera/camera-store';
 import { translate } from '@/lib/i18n';
 import { getItem, setItem, storage } from '@/lib/storage';
 import { STORAGE_KEYS } from '@/lib/storage-keys';
+import { useUniwind } from 'uniwind';
 
 const cameraEquipment = require('@/assets/icons/index/CameraEquipment.png');
 const powerIcon = require('@/assets/common/Power.png');
@@ -43,6 +44,8 @@ export function SharedDeviceConnectionModal() {
 
 export function DeviceConnectionModal({ visible, onClose }: Props) {
   const { ref, present, dismiss } = useModal();
+  const { theme } = useUniwind();
+  const isDark = theme === 'dark';
   const [connecting, setConnecting] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [availableDevices, setAvailableDevices] = useState<WifiDevice[]>([]);
@@ -204,14 +207,14 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
     >
       <ScrollView className="flex-1 px-5">
         <View className="py-4">
-          <Text className="mb-6 text-center text-[15px] text-white/50">
+          <Text className="mb-6 text-center text-[15px] text-neutral-500 dark:text-white/50">
             {translate('home.connect_hint')}
           </Text>
 
           {/* Link selection: pick USB / WiFi before anything else, since the
               fields below only matter for the WiFi path. */}
           <View className="mb-6">
-            <Text className="mb-2 text-[14px] text-white/70">
+            <Text className="mb-2 text-[14px] text-neutral-700 dark:text-white/70">
               {translate('settings.transport')}
             </Text>
             <TransportSelector standalone />
@@ -219,14 +222,14 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
 
           {/* WiFi Camera IP Input */}
           <View className="mb-6">
-            <Text className="mb-2 text-[14px] text-white/70">
+            <Text className="mb-2 text-[14px] text-neutral-700 dark:text-white/70">
               {translate('home.camera_ip')}
             </Text>
             <View className="flex-row items-center gap-2">
               <TextInput
-                className="flex-1 rounded-[12px] border border-neutral-200 bg-transparent px-4 py-3 text-[16px] text-white dark:border-[#48484880]"
+                className="flex-1 rounded-[12px] border border-neutral-300 bg-transparent px-4 py-3 text-[16px] text-black dark:border-[#48484880] dark:text-white"
                 placeholder="192.168.1.1"
-                placeholderTextColor="rgba(255,255,255,0.3)"
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.4)'}
                 value={cameraIp}
                 onChangeText={setCameraIp}
                 keyboardType="numbers-and-punctuation"
@@ -248,7 +251,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
               </Pressable>
             </View>
             {showIpInput && (
-              <Text className="mt-2 text-[12px] text-white/50">
+              <Text className="mt-2 text-[12px] text-neutral-500 dark:text-white/50">
                 {translate('home.camera_ip_hint')}
               </Text>
             )}
@@ -256,7 +259,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
 
           {/* WiFi Band Switcher */}
           <View className="mb-6">
-            <Text className="mb-2 text-[14px] text-white/70">
+            <Text className="mb-2 text-[14px] text-neutral-700 dark:text-white/70">
               {translate('settings.wifi_band')}
             </Text>
             <WifiBandSelector
@@ -269,7 +272,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
           {/* History Devices */}
           {historyDevices.length > 0 && !scanning && (
             <View className="mb-6">
-              <Text className="mb-3 text-[14px] text-white/70">
+              <Text className="mb-3 text-[14px] text-neutral-700 dark:text-white/70">
                 {translate('home.history_devices')}
               </Text>
               {historyDevices.map(device => (
@@ -277,7 +280,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
                   key={device.id}
                   onPress={() => handleConnect(device.id, device.name)}
                   disabled={connecting}
-                  className="mb-3 rounded-[20px] border border-neutral-200 bg-transparent p-5 active:bg-[#1A1A1A] disabled:opacity-50 dark:border-[#48484880]"
+                  className="mb-3 rounded-[20px] border border-neutral-200 bg-transparent p-5 active:bg-neutral-100 disabled:opacity-50 dark:border-[#48484880] dark:active:bg-[#1A1A1A]"
                 >
                   <View className="flex-row items-center gap-4">
                     <View className="size-[60px] items-center justify-center rounded-[18px] bg-transparent">
@@ -288,10 +291,10 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
                       />
                     </View>
                     <View className="flex-1">
-                      <Text className="text-[18px] font-semibold text-white">
+                      <Text className="text-[18px] font-semibold text-black dark:text-white">
                         {device.name}
                       </Text>
-                      <Text className="mt-1 text-[14px] text-white/50">
+                      <Text className="mt-1 text-[14px] text-neutral-500 dark:text-white/50">
                         {translate('home.last_connected')}
                       </Text>
                     </View>
@@ -313,7 +316,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
           {scanning && (
             <View className="items-center py-8">
               <ActivityIndicator size="large" color="#c8e733" />
-              <Text className="mt-4 text-[15px] text-white/70">
+              <Text className="mt-4 text-[15px] text-neutral-700 dark:text-white/70">
                 {translate('home.scanning_devices')}
               </Text>
             </View>
@@ -322,7 +325,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
           {/* Available Devices */}
           {!scanning && availableDevices.length > 0 && (
             <View className="mb-6">
-              <Text className="mb-3 text-[14px] text-white/70">
+              <Text className="mb-3 text-[14px] text-neutral-700 dark:text-white/70">
                 {translate('home.available_devices')}
               </Text>
               {availableDevices.map(device => (
@@ -330,7 +333,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
                   key={device.id}
                   onPress={() => handleConnect(device.id, device.name)}
                   disabled={connecting}
-                  className="mb-3 rounded-[20px] border border-neutral-200 bg-transparent p-5 active:bg-[#1A1A1A] disabled:opacity-50 dark:border-[#48484880]"
+                  className="mb-3 rounded-[20px] border border-neutral-200 bg-transparent p-5 active:bg-neutral-100 disabled:opacity-50 dark:border-[#48484880] dark:active:bg-[#1A1A1A]"
                 >
                   <View className="flex-row items-center gap-4">
                     <View className="size-[60px] items-center justify-center rounded-[18px] bg-transparent">
@@ -341,10 +344,10 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
                       />
                     </View>
                     <View className="flex-1">
-                      <Text className="text-[18px] font-semibold text-white">
+                      <Text className="text-[18px] font-semibold text-black dark:text-white">
                         {device.name}
                       </Text>
-                      <Text className="mt-1 text-[14px] text-white/50">
+                      <Text className="mt-1 text-[14px] text-neutral-500 dark:text-white/50">
                         {connecting ? translate('home.connecting') : translate('home.available')}
                       </Text>
                     </View>
@@ -365,7 +368,7 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
           {/* No Devices Found */}
           {!scanning && availableDevices.length === 0 && (
             <View className="items-center py-8">
-              <Text className="mb-4 text-[15px] text-white/50">
+              <Text className="mb-4 text-[15px] text-neutral-500 dark:text-white/50">
                 {translate('home.no_devices_found')}
               </Text>
               <Pressable
@@ -379,8 +382,8 @@ export function DeviceConnectionModal({ visible, onClose }: Props) {
             </View>
           )}
 
-          <View className="mt-4 rounded-[15px] border border-[rgba(255,229,98,0.2)] bg-[rgba(255,229,98,0.08)] p-4">
-            <Text className="text-[13px] text-[#FFE562]">
+          <View className="mt-4 rounded-[15px] border border-amber-300/40 bg-amber-50 p-4 dark:border-[rgba(255,229,98,0.2)] dark:bg-[rgba(255,229,98,0.08)]">
+            <Text className="text-[13px] text-amber-800 dark:text-[#FFE562]">
               {translate('home.connect_hint')}
             </Text>
           </View>

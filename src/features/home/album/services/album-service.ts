@@ -19,7 +19,6 @@ import {
   ALBUM_REQUEST_TIMEOUT_MS,
   getAlbumBaseUrl,
 } from '../config';
-import { MOCK_ALBUM_DATA } from '../mock-data';
 
 const albumClient = cameraClient;
 
@@ -53,7 +52,7 @@ export async function listPicFolders(): Promise<PicFolder[]> {
       timeout: ALBUM_REQUEST_TIMEOUT_MS,
     });
     const images = res.data?.images;
-    if (Array.isArray(images) && images.length > 0) {
+    if (Array.isArray(images)) {
       // Filter out raw FITS/xyls data files; keep renderable jpg/png images
       const displayable = images.filter((img) => {
         const isFits = img.kind === 'fits' || img.name.endsWith('.fits');
@@ -65,7 +64,7 @@ export async function listPicFolders(): Promise<PicFolder[]> {
         name: img.name,
         path: img.path,
         size: img.size ?? 0,
-        mtime: img.mtime ?? (Date.now() / 1000),
+        mtime: img.mtime ?? Date.now() / 1000,
       }));
     }
   }
@@ -82,7 +81,7 @@ export async function listPicFolders(): Promise<PicFolder[]> {
       timeout: ALBUM_REQUEST_TIMEOUT_MS,
     });
     const unwrapped = unwrapCamera(res.data, 'GET', legacyUrl);
-    if (Array.isArray(unwrapped.pic_folders) && unwrapped.pic_folders.length > 0) {
+    if (Array.isArray(unwrapped.pic_folders)) {
       return unwrapped.pic_folders;
     }
   }
@@ -90,16 +89,9 @@ export async function listPicFolders(): Promise<PicFolder[]> {
     console.warn('[album] legacy /FileCopy/list_pic_folders/ failed', error);
   }
 
-  // 3. Mock fallback
-  console.warn(`[album] both endpoints returned nothing at ${baseUrl} — showing mock data`);
-  return MOCK_ALBUM_DATA.groups.flatMap(group =>
-    group.items.map(item => ({
-      name: item.target,
-      size: 0,
-      mtime: Date.now() / 1000,
-      _mock: true,
-    })),
-  );
+  // 3. Return empty list when camera has no photos or both endpoints fail.
+  // Never show fake M33 mock data in production album.
+  return [];
 }
 
 export async function listPicFiles(sourceDir: string): Promise<PicFile[]> {

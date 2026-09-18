@@ -60,8 +60,10 @@ export function CameraTopBar({
           style={{ backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.08)' }}
           className="h-8 flex-row items-center gap-1.5 rounded-full px-3.5 active:opacity-70 disabled:opacity-40"
         >
-          <Text className={`text-[12px] font-medium ${isDark ? 'text-white' : 'text-black'}`}>{title}</Text>
-          {expanded ? <ChevronDownIcon color={isDark ? '#FFF' : '#000'} size={14} /> : <ChevronUpIcon color={isDark ? '#FFF' : '#000'} size={14} />}
+          <Text className={`text-[13px] font-medium ${isDark ? 'text-white' : 'text-black'}`}>{title}</Text>
+          {expanded
+            ? <ChevronDownIcon color={isDark ? '#FFF' : '#000'} size={14} />
+            : <ChevronUpIcon color={isDark ? '#FFF' : '#000'} size={14} />}
         </Pressable>
       </View>
 

@@ -44,7 +44,11 @@ export type LandscapeShutterMode = 'auto' | 'pro';
 export type LandscapeCaptureMode = 'photo' | 'video';
 export type LandscapeCaptureState = 'idle' | 'countdown' | 'capturing';
 export type LandscapeRepeatState = 'idle' | 'running' | 'cancelling';
-export type LandscapeRecordingState = 'idle' | 'starting' | 'recording' | 'processing';
+export type LandscapeRecordingState
+  = | 'idle'
+    | 'starting'
+    | 'recording'
+    | 'processing';
 export type LandscapeRatio = 'full' | '16:9' | '4:3';
 
 export type LandscapeTimerPlan = {
@@ -80,7 +84,9 @@ function clampExposure(value: number): number {
 
 /** Board 8999 gain is IMX662 analogue-gain code (0.3 dB/step), integers 0–200. */
 function clampGain(value: number): number {
-  return Number.isNaN(value) ? 0 : Math.min(200, Math.max(0, Math.round(value)));
+  return Number.isNaN(value)
+    ? 0
+    : Math.min(200, Math.max(0, Math.round(value)));
 }
 
 type CameraState = {
@@ -131,6 +137,7 @@ type CameraState = {
   landscapeEv: number;
   landscapeWatermark: boolean;
   landscapeRatio: LandscapeRatio;
+  landscapeApplyingRatio: boolean;
   landscapeTimerPlan: LandscapeTimerPlan;
   landscapeRepeatState: LandscapeRepeatState;
   landscapeRepeatCurrent: number;
@@ -148,8 +155,11 @@ type CameraState = {
   setLandscapeRatio: (ratio: LandscapeRatio) => void;
   setLandscapeSensorRatio: (ratio: Exclude<LandscapeRatio, 'full'>) => void;
   switchAutoMode: (auto: boolean) => void;
-  startStreaming: (mode: 'auto') => Promise<CommandWaitResult>;
-  startStreamingManual: (exposure: number, gain: number) => Promise<CommandWaitResult>;
+  startStreaming: (mode?: 'auto') => Promise<CommandWaitResult>;
+  startStreamingManual: (
+    exposure: number,
+    gain: number,
+  ) => Promise<CommandWaitResult>;
   stopStreaming: () => void;
   changeStreamingSetting: (exposure: number, gain: number) => void;
   changeWhiteBalance: (cct: number) => void;
@@ -262,7 +272,9 @@ let captureTimer: ReturnType<typeof setTimeout> | null = null;
 let captureStatePoll: ReturnType<typeof setInterval> | null = null;
 let countdownTimer: ReturnType<typeof setInterval> | null = null;
 let repeatTimer: ReturnType<typeof setTimeout> | null = null;
+let repeatSessionTimer: ReturnType<typeof setTimeout> | null = null;
 let recordingTimer: ReturnType<typeof setTimeout> | null = null;
+let sensorRatioTimer: ReturnType<typeof setTimeout> | null = null;
 let repeatCancelled = false;
 /** When the control channel last left `open`; null while connected. */
 let disconnectedSince: number | null = null;
@@ -287,8 +299,12 @@ function maybeFallbackTransport(): void {
     return;
   if (state.transportProbing)
     return;
-  if (disconnectedSince === null || Date.now() - disconnectedSince < TRANSPORT_FALLBACK_GRACE_MS)
+  if (
+    disconnectedSince === null
+    || Date.now() - disconnectedSince < TRANSPORT_FALLBACK_GRACE_MS
+  ) {
     return;
+  }
   if (Date.now() - lastProbeAt < TRANSPORT_PROBE_MIN_INTERVAL_MS)
     return;
 
@@ -297,7 +313,11 @@ function maybeFallbackTransport(): void {
   void probeTransports(state.transport)
     .then((reachable) => {
       if (reachable && reachable !== _useCameraStore.getState().transport) {
-        console.log('[CONN]', '当前通道故障断开，自动故障转移至可用通道:', reachable);
+        console.log(
+          '[CONN]',
+          '当前通道故障断开，自动故障转移至可用通道:',
+          reachable,
+        );
         applyTransport(reachable);
       }
     })
@@ -363,7 +383,10 @@ function clearCountdownTimer(): void {
 function clearRepeatTimer(): void {
   if (repeatTimer)
     clearTimeout(repeatTimer);
+  if (repeatSessionTimer)
+    clearTimeout(repeatSessionTimer);
   repeatTimer = null;
+  repeatSessionTimer = null;
 }
 
 function clearRecordingTimer(): void {
@@ -389,14 +412,23 @@ function scheduleStreamingSetting(): void {
 }
 
 /** Landscape actions are only safe while streaming and not already busy. */
-function canStartLandscapeAction(state: CameraState): boolean {
-  return state.connectionStatus === 'open'
+function canStartLandscapeAction(
+  state: CameraState,
+  allowRunningRepeat = false,
+): boolean {
+  return (
+    state.connectionStatus === 'open'
+    && !state.landscapeApplyingRatio
     && state.landscapeCaptureState === 'idle'
-    && state.landscapeRepeatState === 'idle'
+    && (allowRunningRepeat
+      ? state.landscapeRepeatState === 'running'
+      || state.landscapeRepeatState === 'idle'
+      : state.landscapeRepeatState === 'idle')
     && state.cameraStatus !== 'in_exposure'
     && state.cameraStatus !== 'in_repeat'
     && state.cameraStatus !== 'recording'
-    && state.cameraStatus !== 'stopping';
+    && state.cameraStatus !== 'stopping'
+  );
 }
 
 function finishLandscapeCapture(jpgPath: string | null): void {
@@ -407,8 +439,11 @@ function finishLandscapeCapture(jpgPath: string | null): void {
   _useCameraStore.setState({
     landscapeCaptureState: 'idle',
     landscapeCapturePendingId: null,
-    cameraStatus: state.cameraStatus === 'recording' ? 'recording' : 'in_streaming',
-    lastCommandError: jpgPath ? null : state.lastCommandError ?? '风景拍照失败',
+    cameraStatus:
+      state.cameraStatus === 'recording' ? 'recording' : 'in_streaming',
+    lastCommandError: jpgPath
+      ? null
+      : (state.lastCommandError ?? '风景拍照失败'),
   });
   if (_useCameraStore.getState().landscapeRepeatState === 'running') {
     advanceLandscapeRepeat();
@@ -419,7 +454,10 @@ function advanceLandscapeRepeat(): void {
   const state = _useCameraStore.getState();
   if (repeatCancelled) {
     clearRepeatTimer();
-    _useCameraStore.setState({ landscapeRepeatState: 'idle', landscapeRepeatCurrent: 0 });
+    _useCameraStore.setState({
+      landscapeRepeatState: 'idle',
+      landscapeRepeatCurrent: 0,
+    });
     return;
   }
   const next = state.landscapeRepeatCurrent + 1;
@@ -427,22 +465,34 @@ function advanceLandscapeRepeat(): void {
   const { count, interval } = state.landscapeTimerPlan;
   if (next >= count) {
     clearRepeatTimer();
-    _useCameraStore.setState({ landscapeRepeatState: 'idle', landscapeRepeatCurrent: 0 });
+    _useCameraStore.setState({
+      landscapeRepeatState: 'idle',
+      landscapeRepeatCurrent: 0,
+    });
     return;
   }
-  repeatTimer = setTimeout(runLandscapeRepeatStep, Math.max(0, interval) * 1000);
+  repeatTimer = setTimeout(
+    runLandscapeRepeatStep,
+    Math.max(0, interval) * 1000,
+  );
 }
 
 function runLandscapeRepeatStep(): void {
   const state = _useCameraStore.getState();
   if (repeatCancelled || state.landscapeRepeatState !== 'running') {
     clearRepeatTimer();
-    _useCameraStore.setState({ landscapeRepeatState: 'idle', landscapeRepeatCurrent: 0 });
+    _useCameraStore.setState({
+      landscapeRepeatState: 'idle',
+      landscapeRepeatCurrent: 0,
+    });
     return;
   }
   if (state.landscapeRepeatCurrent >= state.landscapeTimerPlan.count) {
     clearRepeatTimer();
-    _useCameraStore.setState({ landscapeRepeatState: 'idle', landscapeRepeatCurrent: 0 });
+    _useCameraStore.setState({
+      landscapeRepeatState: 'idle',
+      landscapeRepeatCurrent: 0,
+    });
     return;
   }
   state.startLandscapeCapture();
@@ -470,7 +520,10 @@ function finishRecording(videoName: string | null): void {
   if (state.landscapeRecordingState === 'idle')
     return;
   clearRecordingTimer();
-  const resolved = videoName || state.landscapeRecordingVideoName || state.landscapeLatestVideoName;
+  const resolved
+    = videoName
+      || state.landscapeRecordingVideoName
+      || state.landscapeLatestVideoName;
   _useCameraStore.setState({
     landscapeRecordingState: 'idle',
     landscapeRecordingBaseName: '',
@@ -534,6 +587,7 @@ const _useCameraStore = create<CameraState>(set => ({
   landscapeEv: 0,
   landscapeWatermark: true,
   landscapeRatio: 'full',
+  landscapeApplyingRatio: false,
   landscapeTimerPlan: DEFAULT_TIMER_PLAN,
   landscapeRepeatState: 'idle',
   landscapeRepeatCurrent: 0,
@@ -544,7 +598,10 @@ const _useCameraStore = create<CameraState>(set => ({
 
   connect: () => {
     const wsUrl = getCameraWebSocketUrl();
-    console.log('[CONN]', '=== connect 被调用 ===', { wsUrl, hasSocket: !!cameraWebSocket });
+    console.log('[CONN]', '=== connect 被调用 ===', {
+      wsUrl,
+      hasSocket: !!cameraWebSocket,
+    });
     if (!cameraWebSocket) {
       console.log('[CONN]', '创建新的 CameraWebSocketService', { wsUrl });
       cameraWebSocket = new CameraWebSocketService({
@@ -552,9 +609,11 @@ const _useCameraStore = create<CameraState>(set => ({
         retryForever: true,
         onStatusChange: (status) => {
           console.log('[CONN]', 'WebSocket 状态变化', { status });
-          set(status === 'open'
-            ? { connectionStatus: status, isMockMode: false }
-            : { connectionStatus: status });
+          set(
+            status === 'open'
+              ? { connectionStatus: status, isMockMode: false }
+              : { connectionStatus: status },
+          );
           if (status === 'open') {
             disconnectedSince = null;
             // The board boots at 2021 with no RTC, which corrupts capture
@@ -566,6 +625,19 @@ const _useCameraStore = create<CameraState>(set => ({
           }
           else {
             settlePendingCommands('设备连接已断开');
+            clearCountdownTimer();
+            clearRepeatTimer();
+            clearCaptureTimer();
+            if (sensorRatioTimer) {
+              clearTimeout(sensorRatioTimer);
+              sensorRatioTimer = null;
+            }
+            set({
+              landscapeCaptureState: 'idle',
+              landscapeRepeatState: 'idle',
+              landscapeRepeatCurrent: 0,
+              landscapeApplyingRatio: false,
+            });
             disconnectedSince ??= Date.now();
             maybeFallbackTransport();
           }
@@ -591,37 +663,67 @@ const _useCameraStore = create<CameraState>(set => ({
   },
   disconnect: () => {
     settlePendingCommands('设备连接已断开');
+    clearCountdownTimer();
+    clearRepeatTimer();
+    clearCaptureTimer();
+    if (sensorRatioTimer) {
+      clearTimeout(sensorRatioTimer);
+      sensorRatioTimer = null;
+    }
     cameraWebSocket?.close();
     cameraWebSocket = null;
-    set({ connectionStatus: 'closed', isMockMode: false });
+    set({
+      connectionStatus: 'closed',
+      isMockMode: false,
+      landscapeCaptureState: 'idle',
+      landscapeRepeatState: 'idle',
+      landscapeRepeatCurrent: 0,
+      landscapeApplyingRatio: false,
+    });
   },
   initTransport: () => {
     const preference = getTransportPreference();
     const activeTransport = getActiveTransport();
-    console.log('[CONN]', '=== initTransport 开始 ===', { preference, activeTransport, wsUrl: getCameraWebSocketUrl() });
+    console.log('[CONN]', '=== initTransport 开始 ===', {
+      preference,
+      activeTransport,
+      wsUrl: getCameraWebSocketUrl(),
+    });
     set({ transportPreference: preference, transport: activeTransport });
     if (preference !== 'auto') {
       setActiveTransport(preference);
       set({ transport: preference });
-      console.log('[CONN]', '非 auto 模式，直接连接', { transport: preference });
+      console.log('[CONN]', '非 auto 模式，直接连接', {
+        transport: preference,
+      });
       _useCameraStore.getState().connect();
       return;
     }
     lastProbeAt = Date.now();
     set({ transportProbing: true });
-    console.log('[CONN]', 'auto 模式，开始探测传输方式', { preferredTransport: activeTransport });
+    console.log('[CONN]', 'auto 模式，开始探测传输方式', {
+      preferredTransport: activeTransport,
+    });
     // Refresh the per-link view alongside the probe that picks the transport,
     // so the UI never shows reachability that contradicts the active link.
     void _useCameraStore.getState().refreshTransportReachability();
     void probeTransports(activeTransport)
       .then((reachable) => {
-        console.log('[CONN]', '探测结果', { reachable, currentTransport: _useCameraStore.getState().transport });
+        console.log('[CONN]', '探测结果', {
+          reachable,
+          currentTransport: _useCameraStore.getState().transport,
+        });
         if (reachable && reachable !== _useCameraStore.getState().transport) {
-          console.log('[CONN]', '传输方式改变，应用新传输', { from: _useCameraStore.getState().transport, to: reachable });
+          console.log('[CONN]', '传输方式改变，应用新传输', {
+            from: _useCameraStore.getState().transport,
+            to: reachable,
+          });
           applyTransport(reachable);
         }
         else {
-          console.log('[CONN]', '传输方式不变，连接', { transport: reachable ?? activeTransport });
+          console.log('[CONN]', '传输方式不变，连接', {
+            transport: reachable ?? activeTransport,
+          });
           _useCameraStore.getState().connect();
         }
       })
@@ -663,12 +765,20 @@ const _useCameraStore = create<CameraState>(set => ({
         resolve({ ...result, elapsedMs: Date.now() - startedAt });
       });
       try {
-        cameraWebSocket?.send({ device_name: 'main_camera', instruction, params, id });
+        cameraWebSocket?.send({
+          device_name: 'main_camera',
+          instruction,
+          params,
+          id,
+        });
       }
       catch (e) {
         pendingCommands.delete(id);
         clearTimeout(timer);
-        resolve({ error: e instanceof Error ? e.message : 'WebSocket 未处于就绪状态', elapsedMs: Date.now() - startedAt });
+        resolve({
+          error: e instanceof Error ? e.message : 'WebSocket 未处于就绪状态',
+          elapsedMs: Date.now() - startedAt,
+        });
       }
     });
   },
@@ -681,7 +791,8 @@ const _useCameraStore = create<CameraState>(set => ({
     });
   },
 
-  requestCameraState: () => _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.cameraState),
+  requestCameraState: () =>
+    _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.cameraState),
   setLandscapeShutterMode: (mode) => {
     _useCameraStore.getState().switchAutoMode(mode === 'auto');
   },
@@ -690,26 +801,43 @@ const _useCameraStore = create<CameraState>(set => ({
       set({ landscapeCaptureMode: mode });
     }
   },
-  setLandscapeTimerPlan: plan => set({
-    landscapeTimerPlan: {
-      count: Math.max(1, Math.min(64, Math.round(plan.count))),
-      interval: Math.max(0, Math.round(plan.interval)),
-    },
-  }),
+  setLandscapeTimerPlan: plan =>
+    set({
+      landscapeTimerPlan: {
+        count: Math.max(1, Math.min(64, Math.round(plan.count))),
+        interval: Math.max(0, Math.round(plan.interval)),
+      },
+    }),
   setLandscapeWatermark: landscapeWatermark => set({ landscapeWatermark }),
   setLandscapeRatio: landscapeRatio => set({ landscapeRatio }),
   setLandscapeSensorRatio: (landscapeRatio) => {
     const state = _useCameraStore.getState();
-    if (state.landscapeRatio === landscapeRatio)
+    if (state.landscapeRatio === landscapeRatio || state.landscapeApplyingRatio)
       return;
-    set({ landscapeRatio });
+    if (
+      state.landscapeCaptureState !== 'idle'
+      || state.landscapeRecordingState !== 'idle'
+      || state.landscapeRepeatState !== 'idle'
+    ) {
+      return;
+    }
+    set({ landscapeRatio, landscapeApplyingRatio: true });
     const roi = LANDSCAPE_RATIO_ROI[landscapeRatio];
     // Changing the sensor window tears down and rebuilds VI/VPSS/VENC, so the
     // preview drops for a moment before WHEP renegotiates on its own.
-    state.sendInstruction(
-      CAMERA_INSTRUCTIONS.setSensorRoi,
-      [roi.x, roi.y, roi.width, roi.height, 0],
-    );
+    state.sendInstruction(CAMERA_INSTRUCTIONS.setSensorRoi, [
+      roi.x,
+      roi.y,
+      roi.width,
+      roi.height,
+      0,
+    ]);
+    if (sensorRatioTimer)
+      clearTimeout(sensorRatioTimer);
+    sensorRatioTimer = setTimeout(() => {
+      sensorRatioTimer = null;
+      set({ landscapeApplyingRatio: false });
+    }, 1500);
   },
 
   switchAutoMode: (auto) => {
@@ -735,7 +863,10 @@ const _useCameraStore = create<CameraState>(set => ({
       landscapeManualGain: gain,
     });
     state.sendInstruction(CAMERA_INSTRUCTIONS.switchAutoMode, [1]);
-    state.sendInstruction(CAMERA_INSTRUCTIONS.changeStreamingSetting, [exposure, gain]);
+    state.sendInstruction(CAMERA_INSTRUCTIONS.changeStreamingSetting, [
+      exposure,
+      gain,
+    ]);
   },
 
   // The board's `start_streaming_exposure(exposure, gain)` takes gain as a
@@ -744,14 +875,12 @@ const _useCameraStore = create<CameraState>(set => ({
   // only ['auto'] makes the board raise a missing-argument TypeError.
   // Wait for the WS reply: that is after 554 is listening (InStreaming /
   // g_rtsplive). WHEP posted before this races MediaMTX on-demand pull.
-  startStreaming: (mode = 'auto') => {
-    return _useCameraStore.getState().sendCommandWait(
-      CAMERA_INSTRUCTIONS.startStreaming,
-      [mode, -1],
-      25_000,
-    );
+  startStreaming: (mode = 'auto'): Promise<CommandWaitResult> => {
+    return _useCameraStore
+      .getState()
+      .sendCommandWait(CAMERA_INSTRUCTIONS.startStreaming, [mode, -1], 25_000);
   },
-  startStreamingManual: (exposure, gain) => {
+  startStreamingManual: (exposure, gain): Promise<CommandWaitResult> => {
     set({
       landscapeManualExposure: clampExposure(exposure),
       landscapeManualGain: clampGain(gain),
@@ -763,7 +892,10 @@ const _useCameraStore = create<CameraState>(set => ({
       25_000,
     );
   },
-  stopStreaming: () => _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.stopStreaming),
+  stopStreaming: () =>
+    _useCameraStore
+      .getState()
+      .sendInstruction(CAMERA_INSTRUCTIONS.stopStreaming),
   changeStreamingSetting: (exposure, gain) => {
     set({
       landscapeManualExposure: clampExposure(exposure),
@@ -773,27 +905,37 @@ const _useCameraStore = create<CameraState>(set => ({
   },
   changeWhiteBalance: (cct) => {
     set({ landscapeWhiteBalance: cct });
-    _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.setWhiteBalance, [cct]);
+    _useCameraStore
+      .getState()
+      .sendInstruction(CAMERA_INSTRUCTIONS.setWhiteBalance, [cct]);
   },
   changeEv: (ev) => {
     set({ landscapeEv: ev });
     _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.setEv, [ev]);
   },
   captureStreamFrame: (path) => {
-    _useCameraStore.getState().sendInstruction(
-      CAMERA_INSTRUCTIONS.captureStreamFrame,
-      path ? [path] : [],
-    );
+    _useCameraStore
+      .getState()
+      .sendInstruction(
+        CAMERA_INSTRUCTIONS.captureStreamFrame,
+        path ? [path] : [],
+      );
   },
-  startRecording: baseName => _useCameraStore.getState().sendInstruction(
-    CAMERA_INSTRUCTIONS.startRecording,
-    [baseName || `record_${Date.now()}`],
-  ),
-  stopRecording: () => _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.stopRecording),
+  startRecording: baseName =>
+    _useCameraStore
+      .getState()
+      .sendInstruction(CAMERA_INSTRUCTIONS.startRecording, [
+        baseName || `record_${Date.now()}`,
+      ]),
+  stopRecording: () =>
+    _useCameraStore
+      .getState()
+      .sendInstruction(CAMERA_INSTRUCTIONS.stopRecording),
 
   startLandscapeCapture: () => {
     const state = _useCameraStore.getState();
-    if (!canStartLandscapeAction(state))
+    const isRepeatRunning = state.landscapeRepeatState === 'running';
+    if (!canStartLandscapeAction(state, isRepeatRunning))
       return;
     const path = `/mnt/sdcard/Pictures/stream_frame_${Date.now()}.jpg`;
     set({
@@ -808,14 +950,20 @@ const _useCameraStore = create<CameraState>(set => ({
     captureStatePoll = setInterval(() => {
       _useCameraStore.getState().requestCameraState();
     }, 300);
-    captureTimer = setTimeout(() => finishLandscapeCapture(null), LANDSCAPE_CAPTURE_TIMEOUT_MS);
+    captureTimer = setTimeout(
+      () => finishLandscapeCapture(null),
+      LANDSCAPE_CAPTURE_TIMEOUT_MS,
+    );
     state.captureStreamFrame(path);
   },
   startLandscapeCountdown: (seconds) => {
     if (!canStartLandscapeAction(_useCameraStore.getState()))
       return;
     clearCountdownTimer();
-    set({ landscapeCaptureState: 'countdown', landscapeCountdownRemaining: seconds });
+    set({
+      landscapeCaptureState: 'countdown',
+      landscapeCountdownRemaining: seconds,
+    });
     countdownTimer = setInterval(() => {
       const remaining = _useCameraStore.getState().landscapeCountdownRemaining;
       if (remaining <= 1) {
@@ -833,21 +981,53 @@ const _useCameraStore = create<CameraState>(set => ({
   },
   startLandscapeRepeat: () => {
     const state = _useCameraStore.getState();
-    if (!canStartLandscapeAction(state) || state.landscapeRepeatState !== 'idle')
+    if (
+      !canStartLandscapeAction(state)
+      || state.landscapeRepeatState !== 'idle'
+    ) {
       return;
+    }
     repeatCancelled = false;
-    set({ landscapeRepeatState: 'running', landscapeRepeatCurrent: 0 });
+    clearRepeatTimer();
+    const { count, interval } = state.landscapeTimerPlan;
+    const maxSessionDurationMs
+      = count * (LANDSCAPE_CAPTURE_TIMEOUT_MS + Math.max(0, interval) * 1000)
+        + 10_000;
+    repeatSessionTimer = setTimeout(() => {
+      if (_useCameraStore.getState().landscapeRepeatState === 'running') {
+        clearRepeatTimer();
+        set({
+          landscapeRepeatState: 'idle',
+          lastCommandError: '连拍超时已停止',
+        });
+      }
+    }, maxSessionDurationMs);
+    set({
+      landscapeRepeatState: 'running',
+      landscapeRepeatCurrent: 0,
+      lastCommandError: null,
+    });
     runLandscapeRepeatStep();
   },
   cancelLandscapeRepeat: () => {
     repeatCancelled = true;
     clearRepeatTimer();
-    set({ landscapeRepeatState: 'cancelling' });
+    const state = _useCameraStore.getState();
+    if (state.landscapeCaptureState === 'idle') {
+      set({ landscapeRepeatState: 'idle', landscapeRepeatCurrent: 0 });
+    }
+    else {
+      set({ landscapeRepeatState: 'cancelling' });
+    }
   },
   startLandscapeRecording: () => {
     const state = _useCameraStore.getState();
-    if (state.landscapeRecordingState !== 'idle' || state.landscapeRepeatState !== 'idle')
+    if (
+      state.landscapeRecordingState !== 'idle'
+      || state.landscapeRepeatState !== 'idle'
+    ) {
       return;
+    }
     const baseName = formatRecordingBaseName();
     clearRecordingTimer();
     recordingTimer = setTimeout(() => {
@@ -873,7 +1053,10 @@ const _useCameraStore = create<CameraState>(set => ({
     clearRecordingTimer();
     recordingTimer = setTimeout(() => {
       if (_useCameraStore.getState().landscapeRecordingState === 'processing') {
-        set({ landscapeRecordingState: 'idle', lastCommandError: '停止录像超时' });
+        set({
+          landscapeRecordingState: 'idle',
+          lastCommandError: '停止录像超时',
+        });
       }
     }, RECORDING_COMMAND_TIMEOUT_MS);
     set({ landscapeRecordingState: 'processing', lastCommandError: null });
@@ -893,7 +1076,12 @@ const _useCameraStore = create<CameraState>(set => ({
   setStretch: enabled => sendCameraCommand('set_stretch', [enabled]),
   startExposure: () => {
     const { currentExposureConfig } = _useCameraStore.getState();
-    sendCameraCommand('start_exposure', [currentExposureConfig.exposure_time, true, '', 'SINGLE']);
+    sendCameraCommand('start_exposure', [
+      currentExposureConfig.exposure_time,
+      true,
+      '',
+      'SINGLE',
+    ]);
   },
   startRepeatExposure: (repeat) => {
     const { currentExposureConfig } = _useCameraStore.getState();
@@ -909,10 +1097,11 @@ const _useCameraStore = create<CameraState>(set => ({
   stopRepeatExposure: () => sendCameraCommand('stop_exposure_repeat', []),
   setCameraStatus: cameraStatus => set({ cameraStatus }),
   setConnectionStatus: connectionStatus => set({ connectionStatus }),
-  setPower: (power, charging) => set({
-    powerLevel: power < 0 ? null : power,
-    inCharge: charging === 1,
-  }),
+  setPower: (power, charging) =>
+    set({
+      powerLevel: power < 0 ? null : power,
+      inCharge: charging === 1,
+    }),
   setDisk: (usedSpace, allSpace) => set({ usedSpace, allSpace }),
   setSerial: serial => set({ serial }),
   setVersion: version => set({ version }),
@@ -920,27 +1109,39 @@ const _useCameraStore = create<CameraState>(set => ({
   setNewestStreamJpgUrl: newestStreamJpgUrl => set({ newestStreamJpgUrl }),
   setWifiBand: wifiBand => set({ wifiBand }),
   setShowConnectionModal: show => set({ showConnectionModal: show }),
-  setCurrentExposureConfig: currentExposureConfig => set({ currentExposureConfig }),
+  setCurrentExposureConfig: currentExposureConfig =>
+    set({ currentExposureConfig }),
   addExposureConfig: (config) => {
-    const nextId = Math.max(0, ..._useCameraStore.getState().exposureConfigs.map(item => item.id)) + 1;
+    const nextId
+      = Math.max(
+        0,
+        ..._useCameraStore.getState().exposureConfigs.map(item => item.id),
+      ) + 1;
     const next = { ...config, id: nextId };
     set(state => ({
       exposureConfigs: [...state.exposureConfigs, next],
       currentExposureConfig: next,
     }));
   },
-  updateExposureConfig: config => set(state => ({
-    exposureConfigs: state.exposureConfigs.map(item => item.id === config.id ? config : item),
-    currentExposureConfig: config,
-  })),
-  deleteExposureConfig: id => set((state) => {
-    const exposureConfigs = state.exposureConfigs.filter(item => item.id !== id);
-    const currentExposureConfig = state.currentExposureConfig.id === id
-      ? (exposureConfigs[0] ?? DEFAULT_CURRENT_CONFIG)
-      : state.currentExposureConfig;
+  updateExposureConfig: config =>
+    set(state => ({
+      exposureConfigs: state.exposureConfigs.map(item =>
+        item.id === config.id ? config : item,
+      ),
+      currentExposureConfig: config,
+    })),
+  deleteExposureConfig: id =>
+    set((state) => {
+      const exposureConfigs = state.exposureConfigs.filter(
+        item => item.id !== id,
+      );
+      const currentExposureConfig
+        = state.currentExposureConfig.id === id
+          ? (exposureConfigs[0] ?? DEFAULT_CURRENT_CONFIG)
+          : state.currentExposureConfig;
 
-    return { exposureConfigs, currentExposureConfig };
-  }),
+      return { exposureConfigs, currentExposureConfig };
+    }),
 }));
 
 export const useCameraStore = createSelectors(_useCameraStore);
@@ -981,7 +1182,10 @@ function handleCameraMessage(
   // otherwise the UI stays stuck in "capturing" / "recording" forever.
   if ((message as { success?: boolean }).success === false) {
     const failure = message as { error?: string; message?: string };
-    set({ lastCommandError: failure.error ?? failure.message ?? 'Camera command failed' });
+    set({
+      lastCommandError:
+        failure.error ?? failure.message ?? 'Camera command failed',
+    });
     if (message.instruction === CAMERA_INSTRUCTIONS.captureStreamFrame) {
       finishLandscapeCapture(null);
     }
@@ -1001,13 +1205,16 @@ function handleCameraMessage(
         break;
       const state = message.data as BoardCameraState;
       const busy = state.busy;
-      const cameraStatus: CameraStatus = state.recording || busy === 'recording'
-        ? 'recording'
-        : state.streaming || busy === 'streaming'
-          ? 'in_streaming'
-          : busy === 'repeating'
-            ? 'in_repeat'
-            : busy === 'exposing' ? 'in_exposure' : 'idle';
+      const cameraStatus: CameraStatus
+        = state.recording || busy === 'recording'
+          ? 'recording'
+          : state.streaming || busy === 'streaming'
+            ? 'in_streaming'
+            : busy === 'repeating'
+              ? 'in_repeat'
+              : busy === 'exposing'
+                ? 'in_exposure'
+                : 'idle';
       const update: Partial<CameraState> = {
         cameraState: state,
         cameraStatus,
@@ -1024,19 +1231,49 @@ function handleCameraMessage(
         update.landscapeLatestVideoName = videoName;
       }
       set(update);
+      if (busy === 'error') {
+        const current = _useCameraStore.getState();
+        if (current.landscapeCaptureState === 'capturing') {
+          finishLandscapeCapture(null);
+        }
+        if (current.landscapeRecordingState !== 'idle') {
+          clearRecordingTimer();
+          set({
+            landscapeRecordingState: 'idle',
+            landscapeRecordingBaseName: '',
+          });
+        }
+        if (current.landscapeRepeatState !== 'idle') {
+          clearRepeatTimer();
+          set({ landscapeRepeatState: 'idle', landscapeRepeatCurrent: 0 });
+        }
+        set({ lastCommandError: '相机状态异常(error)，请重启相机' });
+      }
       // `capture_stream_frame` reports completion through camera_state on this
       // firmware, not necessarily through its own instruction response.
-      if (typeof jpgPath === 'string' && _useCameraStore.getState().landscapeCaptureState === 'capturing') {
+      if (
+        typeof jpgPath === 'string'
+        && _useCameraStore.getState().landscapeCaptureState === 'capturing'
+      ) {
         finishLandscapeCapture(jpgPath);
       }
       if (state.recording || busy === 'recording') {
         const current = _useCameraStore.getState();
-        if (current.landscapeRecordingState === 'starting' || current.landscapeRecordingState === 'idle') {
+        if (
+          current.landscapeRecordingState === 'starting'
+          || current.landscapeRecordingState === 'idle'
+        ) {
           clearRecordingTimer();
-          set({ landscapeRecordingState: 'recording', cameraStatus: 'recording' });
+          set({
+            landscapeRecordingState: 'recording',
+            cameraStatus: 'recording',
+          });
         }
       }
-      else if (_useCameraStore.getState().landscapeRecordingState === 'recording' && state.streaming) {
+      else if (
+        _useCameraStore.getState().landscapeRecordingState === 'recording'
+        && state.streaming
+      ) {
         finishRecording(extractVideoName(state.last_result));
       }
       break;
@@ -1045,9 +1282,12 @@ function handleCameraMessage(
       break;
     case CAMERA_INSTRUCTIONS.captureStreamFrame: {
       const data = message.data as Record<string, unknown> | undefined;
-      const jpgPath = typeof data?.jpg_path === 'string'
-        ? data.jpg_path
-        : typeof data?.path === 'string' ? data.path : null;
+      const jpgPath
+        = typeof data?.jpg_path === 'string'
+          ? data.jpg_path
+          : typeof data?.path === 'string'
+            ? data.path
+            : null;
       if (jpgPath) {
         set({ newestStreamJpgUrl: jpgPath, newestCameraJpgUrl: jpgPath });
       }
@@ -1057,7 +1297,10 @@ function handleCameraMessage(
     case CAMERA_INSTRUCTIONS.startRecording:
       if (_useCameraStore.getState().landscapeRecordingState === 'starting') {
         clearRecordingTimer();
-        set({ landscapeRecordingState: 'recording', cameraStatus: 'recording' });
+        set({
+          landscapeRecordingState: 'recording',
+          cameraStatus: 'recording',
+        });
       }
       break;
     case CAMERA_INSTRUCTIONS.stopRecording:
@@ -1078,8 +1321,15 @@ function handleCameraMessage(
       }
       break;
     case 'disk':
-      if (typeof message.used_space === 'number' && typeof message.all_space === 'number') {
-        console.log('[WS] 收到磁盘信息:', message.used_space, message.all_space);
+      if (
+        typeof message.used_space === 'number'
+        && typeof message.all_space === 'number'
+      ) {
+        console.log(
+          '[WS] 收到磁盘信息:',
+          message.used_space,
+          message.all_space,
+        );
         set({ usedSpace: message.used_space, allSpace: message.all_space });
       }
       break;
@@ -1104,8 +1354,10 @@ function handleCameraMessage(
 }
 
 function isCameraStatus(value: unknown): value is CameraStatus {
-  return value === 'idle'
+  return (
+    value === 'idle'
     || value === 'in_repeat'
     || value === 'in_streaming'
-    || value === 'in_exposure';
+    || value === 'in_exposure'
+  );
 }

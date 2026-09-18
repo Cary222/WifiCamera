@@ -10,12 +10,12 @@ import { useUniwind } from 'uniwind';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
-import { formatGainDb, formatGainDbNumber } from '../gain-code';
 import { AspectRatioButton, ToolCard, useAspectRatioAnimation } from '../components';
 import { CameraBottomBar } from '../components/camera-bottom-bar';
 import { CameraTopBar } from '../components/camera-top-bar';
 import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
 import { getCameraBaseUrl } from '../config';
+import { formatGainDb, formatGainDbNumber } from '../gain-code';
 import {
   CloseIcon,
   CountdownIcon,
@@ -217,7 +217,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
           height={surfaceHeight}
           rotation={rotation}
           scale={scale}
-          objectFit="cover"
+          objectFit="contain"
         />
         {watermark && (
           <View className="absolute top-4 left-5">
@@ -230,7 +230,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
         title={translate('nebula.mode_title')}
         onBack={onBack}
         onTitlePress={() => setSheetTarget(value => value === 'manual' ? 'tools' : 'manual')}
-        expanded={sheetTarget !== 'manual'}
+        expanded={sheetTarget === 'manual'}
         isDark={isDark}
         style={topBarStyle as any}
         rightContent={(
@@ -314,7 +314,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                 width: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner,
                 height: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner,
                 borderRadius: captureMode === 'video' && isRecording ? 8 : shutterInner / 2,
-                backgroundColor: captureMode === 'video' && isRecording ? '#FF3B30' : (isDark ? '#FFFFFF' : '#0A0B0D'),
+                backgroundColor: captureMode === 'video' && isRecording ? '#FF3B30' : (isDark ? '#FFFFFF' : '#FFFFFF'),
               }}
             />
           </Pressable>

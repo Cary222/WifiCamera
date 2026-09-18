@@ -9,11 +9,18 @@ import { useUniwind } from 'uniwind';
 import { Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
-import { formatGainDb, formatGainDbNumber } from '../gain-code';
-import { AspectRatioButton, ToolCard, useAspectRatioAnimation } from '../components';
+import {
+  AspectRatioButton,
+  ToolCard,
+  useAspectRatioAnimation,
+} from '../components';
 import { CameraBottomBar } from '../components/camera-bottom-bar';
 import { CameraTopBar } from '../components/camera-top-bar';
-import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
+import {
+  PreviewSurface,
+  useLandscapeCameraPreview,
+} from '../components/native-camera-preview';
+import { formatGainDb, formatGainDbNumber } from '../gain-code';
 import { getImage } from '../services/file-service';
 
 import {
@@ -96,8 +103,16 @@ function ParamCard({ title, value, active, onPress }: ParamCardProps) {
       style={{ backgroundColor: active ? BRAND : cardBg }}
       className="h-[80px] flex-1 items-center justify-center gap-1 rounded-2xl active:opacity-80"
     >
-      <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-neutral-500 dark:text-white/60'}`}>{title}</Text>
-      <Text className={`text-[17px] ${active ? 'font-medium text-black dark:text-black' : 'text-black dark:text-white'}`}>{value}</Text>
+      <Text
+        className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-neutral-500 dark:text-white/60'}`}
+      >
+        {title}
+      </Text>
+      <Text
+        className={`text-[17px] ${active ? 'font-medium text-black dark:text-black' : 'text-black dark:text-white'}`}
+      >
+        {value}
+      </Text>
     </Pressable>
   );
 }
@@ -124,6 +139,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const ev = useCameraStore.use.landscapeEv();
   const watermark = useCameraStore.use.landscapeWatermark();
   const ratio = useCameraStore.use.landscapeRatio();
+  const isApplyingRatio = useCameraStore.use.landscapeApplyingRatio();
   const timerPlan = useCameraStore.use.landscapeTimerPlan();
   const repeatState = useCameraStore.use.landscapeRepeatState();
   const repeatCurrent = useCameraStore.use.landscapeRepeatCurrent();
@@ -139,17 +155,28 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const changeEv = useCameraStore.use.changeEv();
   const startLandscapeCapture = useCameraStore.use.startLandscapeCapture();
   const startLandscapeCountdown = useCameraStore.use.startLandscapeCountdown();
-  const cancelLandscapeTimerCapture = useCameraStore.use.cancelLandscapeTimerCapture();
+  const cancelLandscapeTimerCapture
+    = useCameraStore.use.cancelLandscapeTimerCapture();
   const startLandscapeRepeat = useCameraStore.use.startLandscapeRepeat();
   const cancelLandscapeRepeat = useCameraStore.use.cancelLandscapeRepeat();
   const startLandscapeRecording = useCameraStore.use.startLandscapeRecording();
   const stopLandscapeRecording = useCameraStore.use.stopLandscapeRecording();
 
   // Use the shared aspect ratio animation hook
-  const { previewStyle, topBarStyle, surfaceHeight, surfaceWidth, rotation, scale } = useAspectRatioAnimation(ratio, 220, 12);
+  const {
+    previewStyle,
+    topBarStyle,
+    surfaceHeight,
+    surfaceWidth,
+    rotation,
+    scale,
+  } = useAspectRatioAnimation(ratio, 220, 12);
 
   const shutterSize = Math.round(screenWidth * SHUTTER_SIZE_RATIO);
-  const shutterBorder = Math.max(3, Math.round(shutterSize * SHUTTER_BORDER_RATIO));
+  const shutterBorder = Math.max(
+    3,
+    Math.round(shutterSize * SHUTTER_BORDER_RATIO),
+  );
   const shutterInner = shutterSize - 2 * shutterBorder - 2;
 
   const [sheetTarget, setSheetTarget] = useState<'tools' | 'manual'>('tools');
@@ -173,7 +200,8 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const isCountingDown = captureState === 'countdown';
   const isRepeating = repeatState !== 'idle';
   const isRecording = recordingState === 'recording';
-  const isRecordingBusy = recordingState === 'starting' || recordingState === 'processing';
+  const isRecordingBusy
+    = recordingState === 'starting' || recordingState === 'processing';
   const latestJpgPath = newestStreamJpgUrl || newestCameraJpgUrl;
 
   useEffect(() => {
@@ -188,12 +216,15 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
     };
   }, [latestJpgPath]);
 
-  const paramValues = useMemo(() => ({
-    wb: whiteBalance === 0 ? 'AUTO' : `${whiteBalance}K`,
-    shutter: formatShutter(manualExposure),
-    gain: formatGainDb(manualGain),
-    ev: `${ev}`,
-  }), [whiteBalance, ev, manualExposure, manualGain]);
+  const paramValues = useMemo(
+    () => ({
+      wb: whiteBalance === 0 ? 'AUTO' : `${whiteBalance}K`,
+      shutter: formatShutter(manualExposure),
+      gain: formatGainDb(manualGain),
+      ev: `${ev}`,
+    }),
+    [whiteBalance, ev, manualExposure, manualGain],
+  );
 
   const handleShutterPress = useCallback(() => {
     if (isCountingDown)
@@ -235,13 +266,20 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
 
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
-  const shutterDisabled = isCapturing || isRepeating || isRecordingBusy;
+  const shutterDisabled
+    = isCapturing || isRepeating || isRecordingBusy || isApplyingRatio;
 
   return (
-    <View className="flex-1" style={{ backgroundColor: isDark ? '#000' : '#F9FAFB' }}>
+    <View
+      className="flex-1"
+      style={{ backgroundColor: isDark ? '#000' : '#F9FAFB' }}
+    >
       <Animated.View
         className="absolute items-center justify-center overflow-hidden"
-        style={[previewStyle as any, { backgroundColor: isDark ? '#000' : '#F9FAFB' }]}
+        style={[
+          previewStyle as any,
+          { backgroundColor: isDark ? '#000' : '#F9FAFB' },
+        ]}
       >
         <PreviewSurface
           stream={stream}
@@ -250,11 +288,13 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
           height={surfaceHeight}
           rotation={rotation}
           scale={scale}
-          objectFit="cover"
+          objectFit="contain"
         />
         {watermark && (
           <View className="absolute top-4 left-5">
-            <Text className="text-base font-semibold text-white/85">SVBONY</Text>
+            <Text className="text-base font-semibold text-white/85">
+              SVBONY
+            </Text>
           </View>
         )}
       </Animated.View>
@@ -262,7 +302,10 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
       <CameraTopBar
         title={translate('landscape.title')}
         onBack={onBack}
-        onTitlePress={() => setSheetTarget(current => (current === 'tools' ? 'manual' : 'tools'))}
+        onTitlePress={() =>
+          setSheetTarget(current =>
+            current === 'tools' ? 'manual' : 'tools',
+          )}
         expanded={sheetTarget === 'tools'}
         isDark={isDark}
         style={topBarStyle as any}
@@ -275,16 +318,33 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                 setSheetOpen(false);
             }}
             disabled={shutterDisabled}
-            style={{ backgroundColor: isDark ? 'rgba(34,42,54,0.72)' : 'rgba(0, 0, 0, 0.08)' }}
+            style={{
+              backgroundColor: isDark
+                ? 'rgba(34,42,54,0.72)'
+                : 'rgba(0, 0, 0, 0.08)',
+            }}
             className="h-[30px] min-w-[62px] items-center justify-center rounded-full px-3 active:opacity-80"
           >
-            <Text className={`text-[13px] ${isDark ? 'text-white' : 'text-black'}`}>{isPro ? 'M' : 'AUTO'}</Text>
+            <Text
+              className={`text-[13px] ${isDark ? 'text-white' : 'text-black'}`}
+            >
+              {isPro ? 'M' : 'AUTO'}
+            </Text>
           </Pressable>
         )}
       />
 
-      {(isCapturing || isCountingDown || isRepeating || isRecording || isRecordingBusy || !isConnected) && (
-        <View className="absolute inset-x-0 items-center" style={{ top: insets.top + 56, zIndex: 10, elevation: 10 }}>
+      {(isCapturing
+        || isCountingDown
+        || isRepeating
+        || isRecording
+        || isRecordingBusy
+        || isApplyingRatio
+        || !isConnected) && (
+        <View
+          className="absolute inset-x-0 items-center"
+          style={{ top: insets.top + 56, zIndex: 10, elevation: 10 }}
+        >
           <View className="rounded-full bg-black/70 px-4 py-1.5">
             <Text className="text-xs text-white">
               {isConnected
@@ -292,7 +352,9 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                   ? `${translate('landscape.repeat_progress')} ${repeatCurrent}/${timerPlan.count}`
                   : isCountingDown
                     ? `${countdownRemaining}s`
-                    : translate('landscape.capturing')
+                    : isApplyingRatio
+                      ? '切换画幅中…'
+                      : translate('landscape.capturing')
                 : translate('landscape.connecting')}
             </Text>
           </View>
@@ -301,14 +363,18 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
 
       {isCountingDown && (
         <View className="absolute inset-0 items-center justify-center">
-          <Text className="text-[88px] font-light text-white">{countdownRemaining}</Text>
+          <Text className="text-[88px] font-light text-white">
+            {countdownRemaining}
+          </Text>
         </View>
       )}
 
       {!sheetOpen && (
         <View
           className="absolute inset-x-0 items-center"
-          style={{ bottom: insets.bottom + BOTTOM_BAR_HEIGHT + SHUTTER_BOTTOM_GAP }}
+          style={{
+            bottom: insets.bottom + BOTTOM_BAR_HEIGHT + SHUTTER_BOTTOM_GAP,
+          }}
         >
           <Pressable
             onPress={handleShutterPress}
@@ -325,12 +391,24 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
             <View
               className="rounded-full"
               style={{
-                width: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner,
-                height: captureMode === 'video' && isRecording ? shutterInner * 0.46 : shutterInner,
-                borderRadius: captureMode === 'video' && isRecording ? 8 : shutterInner / 2,
-                backgroundColor: captureMode === 'video' && isRecording
-                  ? '#FF3B30'
-                  : shutterDisabled ? (isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.3)') : (isDark ? '#FFFFFF' : '#0A0B0D'),
+                width:
+                  captureMode === 'video' && isRecording
+                    ? shutterInner * 0.46
+                    : shutterInner,
+                height:
+                  captureMode === 'video' && isRecording
+                    ? shutterInner * 0.46
+                    : shutterInner,
+                borderRadius:
+                  captureMode === 'video' && isRecording ? 8 : shutterInner / 2,
+                backgroundColor:
+                  captureMode === 'video' && isRecording
+                    ? '#FF3B30'
+                    : shutterDisabled
+                      ? isDark
+                        ? 'rgba(255,255,255,0.6)'
+                        : 'rgba(0,0,0,0.3)'
+                      : '#FFFFFF',
               }}
             />
           </Pressable>
@@ -340,33 +418,57 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
       {sheetOpen && (
         <View
           className="absolute inset-x-0 rounded-t-[26px]"
-          style={{ bottom: insets.bottom + 96, backgroundColor: isDark ? SHEET_BG : '#FFFFFF', borderTopWidth: isDark ? 0 : 1, borderTopColor: 'rgba(0, 0, 0, 0.08)' }}
+          style={{
+            bottom: insets.bottom + 96,
+            backgroundColor: isDark ? SHEET_BG : '#FFFFFF',
+            borderTopWidth: isDark ? 0 : 1,
+            borderTopColor: 'rgba(0, 0, 0, 0.08)',
+          }}
         >
           {sheetTarget === 'tools' && !burstOpen && (
             <View className="flex-row gap-3 p-4">
               <ToolCard
-                icon={<StopwatchIcon color={timedShootOn ? '#111' : (isDark ? '#FFF' : '#222')} disabled={!timedShootOn} />}
+                icon={(
+                  <StopwatchIcon
+                    color={timedShootOn ? '#111' : isDark ? '#FFF' : '#222'}
+                    disabled={!timedShootOn}
+                  />
+                )}
                 label={translate('landscape.timed_shoot')}
                 active={timedShootOn}
                 cardBg={isDark ? CARD_BG : '#F4F4F5'}
                 onPress={() => {
-                  setTimedShootOn(value => !value);
+                  setTimedShootOn(true);
                   setBurstOpen(true);
                 }}
               />
               <ToolCard
-                icon={<CountdownIcon color={countdownOn ? '#111' : (isDark ? '#FFF' : '#222')} disabled={!countdownOn} />}
+                icon={(
+                  <CountdownIcon
+                    color={countdownOn ? '#111' : isDark ? '#FFF' : '#222'}
+                    disabled={!countdownOn}
+                  />
+                )}
                 label={translate('landscape.countdown')}
                 active={countdownOn}
                 cardBg={isDark ? CARD_BG : '#F4F4F5'}
                 onPress={() => {
-                  setCountdownOn(value => !value);
+                  setCountdownOn(true);
                   setBurstOpen(true);
                 }}
               />
-              <AspectRatioButton ratio={ratio} onPress={handleRatioPress} cardBg={isDark ? CARD_BG : '#F4F4F5'} />
+              <AspectRatioButton
+                ratio={ratio}
+                onPress={handleRatioPress}
+                cardBg={isDark ? CARD_BG : '#F4F4F5'}
+              />
               <ToolCard
-                icon={<WatermarkFlaskIcon color={watermark ? '#111' : (isDark ? '#FFF' : '#222')} disabled={!watermark} />}
+                icon={(
+                  <WatermarkFlaskIcon
+                    color={watermark ? '#111' : isDark ? '#FFF' : '#222'}
+                    disabled={!watermark}
+                  />
+                )}
                 label={translate('landscape.watermark')}
                 cardBg={isDark ? CARD_BG : '#F4F4F5'}
                 active={watermark}
@@ -411,8 +513,10 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     values={SHUTTER_VALUES}
                     value={manualExposure}
                     formatValue={value => `${formatShutter(value)} s`}
-                    formatTick={(value, index) => (index % 5 === 0 ? formatShutter(value) : null)}
-                    onChange={value => changeStreamingSetting(value, manualGain)}
+                    formatTick={(value, index) =>
+                      index % 5 === 0 ? formatShutter(value) : null}
+                    onChange={value =>
+                      changeStreamingSetting(value, manualGain)}
                   />
                 )}
                 {activeParam === 'gain' && (
@@ -421,8 +525,10 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     values={GAIN_VALUES}
                     value={manualGain}
                     formatValue={formatGainDb}
-                    formatTick={(value, index) => (index % 5 === 0 ? formatGainDbNumber(value) : null)}
-                    onChange={value => changeStreamingSetting(manualExposure, value)}
+                    formatTick={(value, index) =>
+                      index % 5 === 0 ? formatGainDbNumber(value) : null}
+                    onChange={value =>
+                      changeStreamingSetting(manualExposure, value)}
                   />
                 )}
                 {activeParam === 'wb' && (
@@ -430,8 +536,14 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     label=""
                     values={WB_VALUES}
                     value={whiteBalance}
-                    formatValue={value => (value === 0 ? 'AUTO' : `${value}K`)}
-                    formatTick={(value, index) => (index % 2 === 0 ? (value === 0 ? 'A' : `${value / 1000}K`) : null)}
+                    formatValue={value =>
+                      value === 0 ? 'AUTO' : `${value}K`}
+                    formatTick={(value, index) =>
+                      index % 2 === 0
+                        ? value === 0
+                          ? 'A'
+                          : `${value / 1000}K`
+                        : null}
                     onChange={changeWhiteBalance}
                   />
                 )}
@@ -441,7 +553,8 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     values={EV_VALUES}
                     value={ev}
                     formatValue={value => `${value}`}
-                    formatTick={(value, index) => (index % 2 === 0 ? `${value}` : null)}
+                    formatTick={(value, index) =>
+                      index % 2 === 0 ? `${value}` : null}
                     onChange={changeEv}
                   />
                 )}
@@ -454,18 +567,26 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
               <View className="flex-row items-center justify-between">
                 <Pressable
                   onPress={() => setBurstOpen(false)}
-                  style={{ backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.06)' }}
+                  style={{
+                    backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.06)',
+                  }}
                   className="size-11 items-center justify-center rounded-full active:opacity-70"
                 >
                   <CloseIcon color={isDark ? undefined : '#0A0B0D'} />
                 </Pressable>
-                <Text className={`text-[16px] ${isDark ? 'text-white' : 'text-black'}`}>{translate('landscape.timed_repeat')}</Text>
+                <Text
+                  className={`text-[16px] ${isDark ? 'text-white' : 'text-black'}`}
+                >
+                  {translate('landscape.timed_repeat')}
+                </Text>
                 <Pressable
                   onPress={() => {
                     setTimerPlan({ count: 3, interval: 3 });
                     setCountdownSeconds(3);
                   }}
-                  style={{ backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.06)' }}
+                  style={{
+                    backgroundColor: isDark ? PILL_BG : 'rgba(0, 0, 0, 0.06)',
+                  }}
                   className="size-11 items-center justify-center rounded-full active:opacity-70"
                 >
                   <ResetIcon color={isDark ? undefined : '#0A0B0D'} />
@@ -473,33 +594,37 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
               </View>
 
               <View className="mt-4 gap-4">
-                {timedShootOn && (
-                  <>
-                    <LandscapeRuler
-                      label={translate('landscape.count')}
-                      values={COUNT_VALUES}
-                      value={timerPlan.count}
-                      formatValue={value => `${value}${translate('landscape.count_unit')}`}
-                      onChange={value => setTimerPlan({ ...timerPlan, count: value })}
-                    />
-                    <LandscapeRuler
-                      label={translate('landscape.interval')}
-                      values={INTERVAL_VALUES}
-                      value={timerPlan.interval}
-                      formatValue={value => `${value}s`}
-                      onChange={value => setTimerPlan({ ...timerPlan, interval: value })}
-                    />
-                  </>
-                )}
-                {countdownOn && (
-                  <LandscapeRuler
-                    label={translate('landscape.countdown')}
-                    values={COUNTDOWN_VALUES}
-                    value={countdownSeconds}
-                    formatValue={value => `${value}s`}
-                    onChange={setCountdownSeconds}
-                  />
-                )}
+                <LandscapeRuler
+                  label={translate('landscape.count')}
+                  values={COUNT_VALUES}
+                  value={timerPlan.count}
+                  formatValue={value =>
+                    `${value}${translate('landscape.count_unit')}`}
+                  onChange={(value) => {
+                    setTimedShootOn(true);
+                    setTimerPlan({ ...timerPlan, count: value });
+                  }}
+                />
+                <LandscapeRuler
+                  label={translate('landscape.interval')}
+                  values={INTERVAL_VALUES}
+                  value={timerPlan.interval}
+                  formatValue={value => `${value}s`}
+                  onChange={(value) => {
+                    setTimedShootOn(true);
+                    setTimerPlan({ ...timerPlan, interval: value });
+                  }}
+                />
+                <LandscapeRuler
+                  label={translate('landscape.countdown')}
+                  values={COUNTDOWN_VALUES}
+                  value={countdownSeconds}
+                  formatValue={value => `${value}s`}
+                  onChange={(value) => {
+                    setCountdownOn(true);
+                    setCountdownSeconds(value);
+                  }}
+                />
               </View>
             </View>
           )}
@@ -512,19 +637,35 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
         thumbnailUri={thumbnailUri}
         onThumbnailPress={() => router.push('/album' as never)}
         isRecording={isRecording}
-        rightButton={<SheetMenuIcon color={sheetOpen && isPro ? BRAND : (isDark ? '#FFFFFF' : '#0A0B0D')} />}
+        rightButton={(
+          <SheetMenuIcon
+            color={sheetOpen && isPro ? BRAND : isDark ? '#FFFFFF' : '#0A0B0D'}
+          />
+        )}
         rightButtonActive={sheetOpen && isPro}
-        onRightButtonPress={() => setSheetOpen((open) => {
-          if (open)
-            return false;
-          setBurstOpen(false);
-          return true;
-        })}
-        rightButtonDisabled={!isPro}
+        onRightButtonPress={() => {
+          if (!isPro) {
+            setShutterMode('pro');
+            setSheetTarget('manual');
+            setSheetOpen(true);
+            setBurstOpen(false);
+            return;
+          }
+          setSheetOpen((open) => {
+            if (open)
+              return false;
+            setBurstOpen(false);
+            return true;
+          });
+        }}
+        rightButtonDisabled={false}
       />
 
       {lastCommandError && (
-        <View className="absolute inset-x-0 items-center" style={{ bottom: insets.bottom + 220 }}>
+        <View
+          className="absolute inset-x-0 items-center"
+          style={{ bottom: insets.bottom + 220 }}
+        >
           <View className="rounded-full bg-black/70 px-4 py-1.5">
             <Text className="text-xs text-red-300">{lastCommandError}</Text>
           </View>
