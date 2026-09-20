@@ -15,7 +15,7 @@ import { CameraBottomBar } from '../components/camera-bottom-bar';
 import { CameraTopBar } from '../components/camera-top-bar';
 import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
 import { getCameraBaseUrl } from '../config';
-import { formatGainDb, formatGainDbNumber } from '../gain-code';
+import { formatGain } from '../gain-code';
 import {
   CloseIcon,
   CountdownIcon,
@@ -37,7 +37,7 @@ const SHUTTER_SIZE_RATIO = 0.1890547263681592;
 const SHUTTER_BORDER_RATIO = 0.043478260869565216;
 
 const SHUTTER_VALUES = [0.001, 0.00125, 0.0016, 0.002, 0.0025, 0.0033, 0.004, 0.005, 0.0067, 0.008, 0.01, 0.0125, 0.0167, 0.02, 0.025, 0.033, 0.04, 0.05, 0.067, 0.08, 0.1, 0.125, 0.167, 0.2, 0.25, 0.33, 0.5, 0.67, 1];
-const GAIN_VALUES = Array.from({ length: 41 }, (_, index) => index * 3);
+const GAIN_VALUES = Array.from({ length: 101 }, (_, index) => index);
 const EV_VALUES = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
 const WB_VALUES = [0, 2800, 3200, 3800, 4500, 5200, 5800, 6500, 7200, 8000];
 const COUNT_VALUES = Array.from({ length: 50 }, (_, index) => index + 1);
@@ -103,7 +103,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const [burstOpen, setBurstOpen] = useState(false);
   const [activeParam, setActiveParam] = useState<'wb' | 'shutter' | 'gain' | 'ev'>('shutter');
   const [exposure, setExposure] = useState(0.008);
-  const [gain, setGain] = useState(6);
+  const [gain, setGain] = useState(10);
   const [whiteBalance, setWhiteBalance] = useState(0);
   const [ev, setEv] = useState(0);
   const [autoStretch, setAutoStretch] = useState(true);
@@ -119,7 +119,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const paramValues = useMemo(() => ({
     wb: whiteBalance === 0 ? 'AUTO' : `${whiteBalance}K`,
     shutter: formatShutter(exposure),
-    gain: formatGainDb(gain),
+    gain: formatGain(gain),
     ev: `${ev}`,
   }), [whiteBalance, exposure, gain, ev]);
 
@@ -372,8 +372,8 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                         label=""
                         values={GAIN_VALUES}
                         value={gain}
-                        formatValue={formatGainDb}
-                        formatTick={(value, index) => (index % 5 === 0 ? formatGainDbNumber(value) : null)}
+                        formatValue={formatGain}
+                        formatTick={(value, index) => (index % 10 === 0 ? String(value) : null)}
                         onChange={(value) => {
                           setGain(value);
                           changeStreamingSetting(exposure, value);

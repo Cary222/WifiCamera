@@ -173,7 +173,7 @@ describe('camera store', () => {
       socket.sent.slice(-2).map(message => JSON.parse(message)),
     ).toMatchObject([
       { instruction: 'switch_auto_mode', params: [1] },
-      { instruction: 'change_streaming_setting', params: [0.05, 30] },
+      { instruction: 'change_streaming_setting', params: [0.05, 30], gain_unit: 'percent' },
     ]);
   });
 
@@ -188,7 +188,8 @@ describe('camera store', () => {
       .find(message => message.instruction === 'start_streaming_exposure');
     expect(sent).toMatchObject({
       instruction: 'start_streaming_exposure',
-      params: ['auto', -1],
+      params: ['auto', null],
+      gain_unit: 'percent',
     });
     expect(typeof sent.id).toBe('string');
 
@@ -263,7 +264,7 @@ describe('camera store', () => {
       socket.sent.slice(-2).map(message => JSON.parse(message)),
     ).toMatchObject([
       { instruction: 'switch_auto_mode', params: [1] },
-      { instruction: 'change_streaming_setting', params: [0.025, 18] },
+      { instruction: 'change_streaming_setting', params: [0.025, 18], gain_unit: 'percent' },
     ]);
   });
 
@@ -448,5 +449,62 @@ describe('camera store', () => {
     // Checks that camera_state was requested to refresh authoritative state
     const lastSent = socket.sent.map(m => JSON.parse(m)).pop();
     expect(lastSent.instruction).toBe('camera_state');
+  });
+
+  it('attaches gain_unit percent and validates integer 0~100 range', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    useCameraStore.getState().setGain(50);
+    const lastSent = socket.sent.map(m => JSON.parse(m)).pop();
+    expect(lastSent).toMatchObject({
+      instruction: 'set_gain',
+      params: [50],
+      gain_unit: 'percent',
+    });
+  });
+
+  it('rejects illegal gain values such as negative or decimals', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    const sentCountBefore = socket.sent.length;
+
+    // Negative value
+    useCameraStore.getState().setGain(-5 as any);
+    expect(socket.sent.length).toBe(sentCountBefore);
+    expect(useCameraStore.getState().lastCommandError).toBe('set_gain 增益值必须为 0~100 的整数');
+
+    // Decimal value
+    useCameraStore.getState().setGain(25.5 as any);
+    expect(socket.sent.length).toBe(sentCountBefore);
+    expect(useCameraStore.getState().lastCommandError).toBe('set_gain 增益值必须为 0~100 的整数');
+  });
+
+  it('parses target_gain_percent from camera_state and static capabilities', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    // Static info capability check
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'get_static_info',
+      data: {
+        capabilities: { gain_percent_v1: true },
+      },
+    });
+    expect(useCameraStore.getState().gainPercentSupported).toBe(true);
+
+    // Preview target_gain_percent update
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: {
+        preview: { target_gain_percent: 75 },
+      },
+    });
+    expect(useCameraStore.getState().landscapeManualGain).toBe(75);
   });
 });

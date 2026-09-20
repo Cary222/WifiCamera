@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCameraStore } from '../camera-store';
+import { clampGain } from '../gain-code';
 
 const NEBULA_CAPTURE = 'nebula_capture';
 
@@ -92,7 +93,7 @@ export function useNebulaCapture({ exposure, gain }: Options) {
     sendCommand({
       device_name: 'main_camera',
       instruction: NEBULA_CAPTURE,
-      params: [exposure, gain, count, interval],
+      params: [exposure, clampGain(gain), count, interval],
       id: `APP-NEB-${Date.now().toString(36)}`,
     });
     timeoutRef.current = setTimeout(finish, waitMs(exposure, count, interval));

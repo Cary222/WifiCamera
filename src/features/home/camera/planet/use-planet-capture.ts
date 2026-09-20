@@ -3,6 +3,7 @@
 import type { AspectRatio, SensorRoi } from './preview-layout';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useCameraStore } from '../camera-store';
+import { clampGain } from '../gain-code';
 import {
   getEffectiveSensorRoi,
   getSensorRoiCommandParams,
@@ -342,7 +343,7 @@ export function usePlanetCapture({
       );
       const result = await sendCommandWait(
         'start_streaming_exposure',
-        [exposureForFps, -1],
+        [exposureForFps, clampGain(gain)],
         22_000,
       );
       if (result.error)
@@ -353,7 +354,7 @@ export function usePlanetCapture({
         throw new Error('启动 RAW 采集流失败');
       await sleep(700);
     },
-    [sendCommandWait],
+    [gain, sendCommandWait],
   );
 
   const startRecording = useCallback(async () => {

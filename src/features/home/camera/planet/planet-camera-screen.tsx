@@ -15,7 +15,7 @@ import { CameraModeSwitcher } from '../components/camera-mode-switcher';
 import { CameraTopBar } from '../components/camera-top-bar';
 import { PreviewSurface, useLandscapeCameraPreview } from '../components/native-camera-preview';
 import { getCameraBaseUrl } from '../config';
-import { formatGainDb, formatGainDbNumber } from '../gain-code';
+import { formatGain } from '../gain-code';
 import {
   CloseIcon,
   CountdownIcon,
@@ -67,7 +67,7 @@ const EXPOSURE_VALUES = [
   0.67,
   1,
 ];
-const GAIN_VALUES = Array.from({ length: 81 }, (_, index) => index * 3);
+const GAIN_VALUES = Array.from({ length: 101 }, (_, index) => index);
 
 function formatExposure(value: number): string {
   if (value < 0.01)
@@ -142,7 +142,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   // Fig 2 state (Param Controls)
   const [activeParamCard, setActiveParamCard] = useState<ActiveParamCard>('gain');
   const [exposure, setExposure] = useState(0.008);
-  const [gain, setGain] = useState(6);
+  const [gain, setGain] = useState(10);
   const [containerFormat, setContainerFormat] = useState<ContainerFormat>('ser');
   const [bitDepth, setBitDepth] = useState<BitDepth>('8-bit');
 
@@ -344,7 +344,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                         />
                         <ParamCard
                           label={translate('planet.gain')}
-                          value={formatGainDb(gain)}
+                          value={formatGain(gain)}
                           active={activeParamCard === 'gain'}
                           disabled={settingsDisabled}
                           onPress={() => setActiveParamCard('gain')}
@@ -421,8 +421,8 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                               label={translate('planet.gain')}
                               values={GAIN_VALUES}
                               value={gain}
-                              formatValue={formatGainDb}
-                              formatTick={(value, index) => (index % 5 === 0 ? formatGainDbNumber(value) : null)}
+                              formatValue={formatGain}
+                              formatTick={(value, index) => (index % 10 === 0 ? String(value) : null)}
                               onChange={(value) => {
                                 if (!settingsDisabled)
                                   setGain(value);

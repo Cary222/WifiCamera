@@ -1,18 +1,32 @@
 /**
- * Board 8999 `change_streaming_setting` gain is IMX662 analogue-gain code.
- * One code step is 0.3 dB. The App still sends the integer code; UI shows real dB.
+ * Camera Gain is unified to integer 0~100 across all modes with step 1.
+ * dB and register mappings are entirely handled by the board firmware.
+ * UI displays unitless Gain 0~100 without percent or dB suffix.
  */
-export const GAIN_DB_PER_CODE = 0.3;
+export const GAIN_MIN = 0;
+export const GAIN_MAX = 100;
+export const GAIN_STEP = 1;
 
-export function gainCodeToDb(code: number): number {
-  return Math.round(code * 3) / 10;
+export function clampGain(value: number): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return GAIN_MIN;
+  }
+  return Math.min(GAIN_MAX, Math.max(GAIN_MIN, Math.round(value)));
 }
 
+export function formatGain(gain: number): string {
+  return String(clampGain(gain));
+}
+
+// Backward-compatibility aliases (unitless display per 2026-09-20 spec)
 export function formatGainDbNumber(code: number): string {
-  const db = gainCodeToDb(code);
-  return Number.isInteger(db) ? String(db) : db.toFixed(1);
+  return String(clampGain(code));
 }
 
 export function formatGainDb(code: number): string {
-  return `${formatGainDbNumber(code)} dB`;
+  return String(clampGain(code));
+}
+
+export function gainCodeToDb(code: number): number {
+  return clampGain(code);
 }

@@ -75,7 +75,16 @@ export type BoardCameraState = {
   recording?: boolean;
   fault_active?: boolean;
   last_error?: CameraErrorPayload | null;
-  preview?: { exposure_s?: number; gain?: number };
+  preview?: {
+    exposure_s?: number;
+    gain?: number;
+    target_gain_percent?: number | null;
+    actual_gain_percent?: number | null;
+    gain_mode?: string;
+  };
+  job?: {
+    target_gain_percent?: number | null;
+  };
   last_result?: { jpg_path?: string; video_name?: string | null };
 };
 
@@ -203,11 +212,11 @@ function clampExposure(value: number): number {
   return Number.isNaN(value) ? 0.001 : Math.min(1, Math.max(0.001, value));
 }
 
-/** Board 8999 gain is IMX662 analogue-gain code (0.3 dB/step), integers 0–200. */
-function clampGain(value: number): number {
+/** Camera Gain is unified to integer 0~100 with step 1 per 2026-09-20 spec. */
+export function clampGain(value: number): number {
   return Number.isNaN(value)
     ? 0
-    : Math.min(200, Math.max(0, Math.round(value)));
+    : Math.min(100, Math.max(0, Math.round(value)));
 }
 
 type CameraState = {
@@ -230,6 +239,7 @@ type CameraState = {
   remainingExposureTime: number;
   lastCommandError: string | null;
   cameraState: BoardCameraState | null;
+  gainPercentSupported: boolean | null;
   /** Current Wi-Fi band: true = 5GHz, false = 2.4GHz. Null when unknown / disconnected. */
   wifiBand: boolean | null;
   /** When true, show the device connection modal on home screen after Wi-Fi switch. */
@@ -364,6 +374,65 @@ const CAMERA_INSTRUCTIONS = {
   switchWifiBand: 'switch_wifi_band',
   setSensorRoi: 'set_sensor_roi',
 } as const;
+
+export const GAIN_PERCENT_COMMANDS = new Set([
+  'set_gain',
+  'change_streaming_setting',
+  'start_streaming_exposure',
+  'start_streaming_exposure_and_save',
+  'nebula_capture',
+  'change_set_params',
+]);
+
+export function normalizeCameraCommand(
+  message: CameraJsonMessage,
+): { valid: boolean; message: CameraJsonMessage; error?: string } {
+  const instruction = typeof message.instruction === 'string' ? message.instruction : '';
+  if (!GAIN_PERCENT_COMMANDS.has(instruction)) {
+    return { valid: true, message };
+  }
+
+  const copy: CameraJsonMessage = { ...message, gain_unit: 'percent' };
+  const params = Array.isArray(copy.params) ? [...copy.params] : [];
+
+  const isValidGain = (g: unknown) =>
+    typeof g === 'number' && !Number.isNaN(g) && Number.isInteger(g) && g >= 0 && g <= 100;
+
+  if (instruction === 'set_gain') {
+    const gain = params[0];
+    if (!isValidGain(gain)) {
+      return { valid: false, message, error: 'set_gain 增益值必须为 0~100 的整数' };
+    }
+    copy.params = [gain];
+  }
+  else if (
+    instruction === 'change_streaming_setting'
+    || instruction === 'start_streaming_exposure'
+    || instruction === 'start_streaming_exposure_and_save'
+  ) {
+    const gain = params[1];
+    if (gain !== null && gain !== undefined) {
+      if (!isValidGain(gain)) {
+        return {
+          valid: false,
+          message,
+          error: `${instruction} 增益值必须为 0~100 的整数或 null`,
+        };
+      }
+      params[1] = gain;
+    }
+    copy.params = params;
+  }
+  else if (instruction === 'nebula_capture') {
+    const gain = params[1];
+    if (!isValidGain(gain)) {
+      return { valid: false, message, error: 'nebula_capture 增益值必须为 0~100 的整数' };
+    }
+    copy.params = params;
+  }
+
+  return { valid: true, message: copy };
+}
 
 /**
  * Sensor crop windows backing the landscape ratio switch. The board rebuilds the
@@ -701,10 +770,10 @@ const _useCameraStore = create<CameraState>(set => ({
   landscapeCountdownRemaining: 0,
   landscapeCapturePendingId: null,
   landscapeAutoMode: true,
-  // Indoor AUTO (2026-09-02 remeasure): camera_state 0.080s, V4L2 analogue_gain 23.
-  // Snap gain to ruler step 24 (0.3 dB/code → 7.2 dB).
+  // Default manual gain 10 on the unified 0~100 scale.
   landscapeManualExposure: 0.08,
-  landscapeManualGain: 24,
+  landscapeManualGain: 10,
+  gainPercentSupported: null,
   landscapeWhiteBalance: 0,
   landscapeEv: 0,
   landscapeWatermark: true,
@@ -751,6 +820,7 @@ const _useCameraStore = create<CameraState>(set => ({
             // Fire-and-forget: syncBoardTime never rejects.
             void syncBoardTime();
             _useCameraStore.getState().requestCameraState();
+            _useCameraStore.getState().sendInstruction('get_static_info', []);
           }
           else {
             resetStatusTracking();
@@ -883,7 +953,18 @@ const _useCameraStore = create<CameraState>(set => ({
       applyTransport(preference);
   },
   sendCommand: (message) => {
-    cameraWebSocket?.send(message);
+    try {
+      const norm = normalizeCameraCommand(message);
+      if (!norm.valid) {
+        console.warn('[CameraWS] 命令校验失败，拒绝发送:', norm.error);
+        _useCameraStore.setState({ lastCommandError: norm.error });
+        return;
+      }
+      cameraWebSocket?.send(norm.message);
+    }
+    catch {
+      // ignore
+    }
   },
   sendCommandWait: (instruction, params = [], timeoutMs = 30_000) => {
     const startedAt = Date.now();
@@ -891,6 +972,17 @@ const _useCameraStore = create<CameraState>(set => ({
       return Promise.resolve({ error: '设备未连接', elapsedMs: 0 });
     }
     const id = nextCommandId();
+    const norm = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction,
+      params,
+      id,
+    });
+    if (!norm.valid) {
+      console.warn('[CameraWS] 命令校验失败，拒绝发送:', norm.error);
+      _useCameraStore.setState({ lastCommandError: norm.error });
+      return Promise.resolve({ error: norm.error, elapsedMs: 0 });
+    }
     return new Promise<CommandWaitResult>((resolve) => {
       const timer = setTimeout(() => {
         pendingCommands.delete(id);
@@ -901,12 +993,7 @@ const _useCameraStore = create<CameraState>(set => ({
         resolve({ ...result, elapsedMs: Date.now() - startedAt });
       });
       try {
-        cameraWebSocket?.send({
-          device_name: 'main_camera',
-          instruction,
-          params,
-          id,
-        });
+        cameraWebSocket?.send(norm.message);
       }
       catch (e) {
         pendingCommands.delete(id);
@@ -1014,7 +1101,7 @@ const _useCameraStore = create<CameraState>(set => ({
   startStreaming: (mode = 'auto'): Promise<CommandWaitResult> => {
     return _useCameraStore
       .getState()
-      .sendCommandWait(CAMERA_INSTRUCTIONS.startStreaming, [mode, -1], 25_000);
+      .sendCommandWait(CAMERA_INSTRUCTIONS.startStreaming, [mode, null], 25_000);
   },
   startStreamingManual: (exposure, gain): Promise<CommandWaitResult> => {
     set({
@@ -1283,12 +1370,19 @@ const _useCameraStore = create<CameraState>(set => ({
 export const useCameraStore = createSelectors(_useCameraStore);
 
 function sendCameraCommand(instruction: string, params: unknown[]): void {
-  cameraWebSocket?.send({
+  const norm = normalizeCameraCommand({
     device_name: 'main_camera',
     instruction,
     params,
     id: 'CAMERA',
   });
+  if (norm.valid) {
+    cameraWebSocket?.send(norm.message);
+  }
+  else {
+    console.warn('[CameraWS] sendCameraCommand 校验失败:', norm.error);
+    _useCameraStore.setState({ lastCommandError: norm.error });
+  }
 }
 
 function handleCameraMessage(
@@ -1434,6 +1528,9 @@ function handleCameraMessage(
         streamingInProgress: state.streaming === true,
         lastCommandError,
       };
+      if (typeof state.preview?.target_gain_percent === 'number') {
+        update.landscapeManualGain = clampGain(state.preview.target_gain_percent);
+      }
 
       const jpgPath = state.last_result?.jpg_path;
       if (typeof jpgPath === 'string') {
@@ -1500,6 +1597,27 @@ function handleCameraMessage(
     case CAMERA_INSTRUCTIONS.stopRecording:
       finishRecording(extractVideoName(message.data));
       break;
+    case 'get_static_info': {
+      if (typeof message.data === 'object' && message.data !== null) {
+        const data = message.data as Record<string, unknown>;
+        const capabilities = data.capabilities as Record<string, unknown> | undefined;
+        const supported = capabilities?.gain_percent_v1 === true;
+        set({ gainPercentSupported: supported });
+        if (!supported && capabilities?.gain_db_v1) {
+          set({ lastCommandError: '固件版本过低，请升级固件以支持增益设置' });
+        }
+      }
+      break;
+    }
+    case 'get_streaming_setting': {
+      if (typeof message.data === 'object' && message.data !== null) {
+        const data = message.data as Record<string, unknown>;
+        if (typeof data.target_gain_percent === 'number') {
+          set({ landscapeManualGain: clampGain(data.target_gain_percent) });
+        }
+      }
+      break;
+    }
     case 'get_camera_status':
       if (!detailedStatusSupported) {
         set({ cameraStatus: mapLegacyStatusToCameraStatus(message.data) });

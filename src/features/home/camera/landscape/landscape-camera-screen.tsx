@@ -20,7 +20,7 @@ import {
   PreviewSurface,
   useLandscapeCameraPreview,
 } from '../components/native-camera-preview';
-import { formatGainDb, formatGainDbNumber } from '../gain-code';
+import { formatGain } from '../gain-code';
 import { getImage } from '../services/file-service';
 
 import {
@@ -74,7 +74,7 @@ const SHUTTER_VALUES = [
   0.67,
   1,
 ];
-const GAIN_VALUES = Array.from({ length: 41 }, (_, index) => index * 3);
+const GAIN_VALUES = Array.from({ length: 101 }, (_, index) => index);
 const EV_VALUES = [-3, -2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3];
 const WB_VALUES = [0, 2800, 3200, 3800, 4500, 5200, 5800, 6500, 7200, 8000];
 const COUNT_VALUES = Array.from({ length: 50 }, (_, index) => index + 1);
@@ -221,7 +221,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
     () => ({
       wb: whiteBalance === 0 ? 'AUTO' : `${whiteBalance}K`,
       shutter: formatShutter(manualExposure),
-      gain: formatGainDb(manualGain),
+      gain: formatGain(manualGain),
       ev: `${ev}`,
     }),
     [whiteBalance, ev, manualExposure, manualGain],
@@ -542,9 +542,9 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     label=""
                     values={GAIN_VALUES}
                     value={manualGain}
-                    formatValue={formatGainDb}
+                    formatValue={formatGain}
                     formatTick={(value, index) =>
-                      index % 5 === 0 ? formatGainDbNumber(value) : null}
+                      index % 10 === 0 ? String(value) : null}
                     onChange={value =>
                       changeStreamingSetting(manualExposure, value)}
                   />

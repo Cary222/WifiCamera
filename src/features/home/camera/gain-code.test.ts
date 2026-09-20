@@ -1,16 +1,19 @@
-import { formatGainDb, formatGainDbNumber, gainCodeToDb } from './gain-code';
+import { clampGain, formatGain, formatGainDb, formatGainDbNumber, GAIN_MAX, GAIN_MIN } from './gain-code';
 
-describe('gain-code', () => {
-  it('maps analogue-gain code to real dB (0.3 dB/step)', () => {
-    expect(gainCodeToDb(0)).toBe(0);
-    expect(gainCodeToDb(21)).toBe(6.3);
-    expect(gainCodeToDb(30)).toBe(9);
+describe('gain-code (unified Gain 0~100)', () => {
+  it('clamps gain to integer 0~100 range', () => {
+    expect(clampGain(-5)).toBe(GAIN_MIN);
+    expect(clampGain(0)).toBe(0);
+    expect(clampGain(25.4)).toBe(25);
+    expect(clampGain(50)).toBe(50);
+    expect(clampGain(120)).toBe(GAIN_MAX);
   });
 
-  it('formats UI labels without claiming the code is dB', () => {
-    expect(formatGainDb(0)).toBe('0 dB');
-    expect(formatGainDb(24)).toBe('7.2 dB');
-    expect(formatGainDb(30)).toBe('9 dB');
-    expect(formatGainDbNumber(15)).toBe('4.5');
+  it('formats UI labels unitless without dB or percent suffix', () => {
+    expect(formatGain(0)).toBe('0');
+    expect(formatGain(25)).toBe('25');
+    expect(formatGain(100)).toBe('100');
+    expect(formatGainDb(50)).toBe('50');
+    expect(formatGainDbNumber(50)).toBe('50');
   });
 });
