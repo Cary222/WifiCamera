@@ -179,6 +179,7 @@
 | **#29 拍摄文案规范** | 检查菜单与面板内文案 | **菜单项规范显示为“连拍设置”、“延时自拍”，面板内为“连拍间隔”，彻底消除歧义。** | `artifacts/ios_test_burst_panel.png` |
 | **#18 浅色主题连接弹窗** | 切换浅色主题 ☀️，进入“设置” → 点击“连接设置” | **弹窗正文、分组标题（“传输方式”、“相机IP”、“历史设备”）、设备名清晰呈现高对比度黑字/深灰字，输入框占位符适配为深灰，白底白字彻底解决！** | `artifacts/ios_test_light_connection_modal.png` |
 | **#26 浅色主题快门按钮** | 浅色主题下进入相机拍摄页面 | **快门按钮由原先突兀的大黑底适配为白圈浅底，整体界面视觉一致。** | `artifacts/ios_test_light_shutter_and_preview.png` |
+| **#24 统一 Gain 0~100 刻度** | 切换到 M 挡，打开曝光参数面板并选中“增益”卡片 | **三模式统一展示为无单位的 Gain 0～100 整数刻度，步长 1；标尺显示纯数字无 dB/% 假单位；发包顶层固定携带 gain_unit: "percent"，读回支持 target_gain_percent。** | `artifacts/ios_test_gain_100_scale.png` |
 
 ---
 
