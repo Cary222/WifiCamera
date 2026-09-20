@@ -190,7 +190,6 @@ export type ObjectInfoSheetProps = {
   object: SelectedCelestialObject;
   onCenter: (object: SelectedCelestialObject) => void;
   onClose: () => void;
-  onGoto?: (raHours: number, decDeg: number) => void;
   onZoomIn: (object: SelectedCelestialObject) => void;
   onZoomOut?: (object: SelectedCelestialObject) => void;
 };

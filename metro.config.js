@@ -351,8 +351,9 @@ function createCameraHttpProxyMiddleware() {
   };
 }
 
-// Start WebSocket proxy server immediately when this config is loaded
-createCameraWsProxy();
+// Standalone exports must not bind ports or interfere with the running dev server.
+if (process.env.WIFICAMERA_STANDALONE_BUILD !== '1')
+  createCameraWsProxy();
 
 const config = getDefaultConfig(__dirname);
 

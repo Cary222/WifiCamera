@@ -22,6 +22,7 @@ jest.mock('@/lib/storage', () => {
 jest.mock('env', () => ({ default: {}, __esModule: true }));
 
 const storage = (jest.requireMock('@/lib/storage') as { __store: Map<string, unknown> }).__store;
+const environment = jest.requireMock('env').default as { EXPO_PUBLIC_APP_ENV?: string };
 
 type TransportModule = typeof TransportModuleType;
 
@@ -55,6 +56,7 @@ function mockReachableLinks(reachable: { usb?: boolean; wifi?: boolean }) {
 
 beforeEach(() => {
   storage.clear();
+  delete environment.EXPO_PUBLIC_APP_ENV;
   jest.clearAllMocks();
 });
 
@@ -64,6 +66,23 @@ afterEach(() => {
 });
 
 describe('stored transport preference', () => {
+  it('starts a fresh preview install on direct WiFi, with auto probing still available', () => {
+    environment.EXPO_PUBLIC_APP_ENV = 'preview';
+    const transport = loadTransport();
+    expect(transport.getTransportPreference()).toBe('auto');
+    expect(transport.getActiveTransport()).toBe('wifi');
+    expect(transport.getTransportEndpoints('wifi')).toEqual({
+      base: 'http://192.168.1.1:8999',
+      whep: 'http://192.168.1.1:8889/cam0/whep',
+    });
+  });
+
+  it('preserves an explicitly saved USB preference in preview builds', () => {
+    environment.EXPO_PUBLIC_APP_ENV = 'preview';
+    storage.set(STORED_PREFERENCE_KEY, 'usb');
+    expect(loadTransport().getActiveTransport()).toBe('usb');
+  });
+
   it('defaults to auto so a fresh install can discover the reachable link', async () => {
     const { getTransportPreference, getActiveTransport } = await loadTransport();
     expect(getTransportPreference()).toBe('auto');

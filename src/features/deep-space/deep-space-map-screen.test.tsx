@@ -804,18 +804,24 @@ describe('deep space quick detail sheets', () => {
     expect(mockSetSkyLayers).toHaveBeenNthCalledWith(3, { constellationOnlyPointed: true });
   });
 
-  it('opens atmosphere controls with the fog switch on long pressing atmosphere button', async () => {
+  it('starts atmosphere and fog disabled and allows each switch to be enabled independently', async () => {
     const { user } = setup(<DeepSpaceMapScreen />);
+    expect(mockSetSkyLayers).toHaveBeenCalledWith(expect.objectContaining({ atmosphere: false }));
+    expect(mockSetEnvironment).toHaveBeenCalledWith(expect.objectContaining({ fog: false }));
     await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
     await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
 
     expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
     expect(screen.getByText('大气层与空气质量设置')).toBeOnTheScreen();
-    expect(screen.getByText('大气散射与消光')).toBeOnTheScreen();
-    expect(screen.getByTestId('deep-space-quick-detail-toggle-fog')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-atmosphere').props.accessibilityState.checked).toBe(false);
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-fog').props.accessibilityState.checked).toBe(false);
 
     await user.press(screen.getByTestId('deep-space-quick-detail-toggle-fog'));
-    expect(mockSetEnvironment).toHaveBeenLastCalledWith({ fog: false });
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith({ fog: true });
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-atmosphere').props.accessibilityState.checked).toBe(false);
+    await user.press(screen.getByTestId('deep-space-quick-detail-toggle-atmosphere'));
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ atmosphere: true });
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-fog').props.accessibilityState.checked).toBe(true);
   });
 });
 
@@ -880,21 +886,32 @@ describe('deep space labels detail sheet', () => {
     });
   });
 
-  it('resets atmosphere and air quality from quick detail reset button', async () => {
+  it('resets enabled atmosphere and fog to off without changing the other saved layers', async () => {
+    const map = installArchivedStorage();
+    const archived = JSON.parse(archivedPreferencesJson());
+    archived.environment.fog = true;
+    map.set(STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES, JSON.stringify(archived));
     const { user } = setup(<DeepSpaceMapScreen />);
     await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
     await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
 
-    expect(screen.getByTestId('deep-space-quick-detail-sheet')).toBeOnTheScreen();
-    expect(screen.getByTestId('deep-space-quick-detail-reset')).toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-atmosphere').props.accessibilityState.checked).toBe(true);
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-fog').props.accessibilityState.checked).toBe(true);
     expect(screen.getByText('重置大气与空气质量')).toBeOnTheScreen();
 
     await user.press(screen.getByTestId('deep-space-quick-detail-reset'));
-    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ atmosphere: true });
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith({ atmosphere: false });
     expect(mockSetEnvironment).toHaveBeenLastCalledWith({
       bortleIndex: 1,
       fog: false,
       turbidity: 0.96,
+    });
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-atmosphere').props.accessibilityState.checked).toBe(false);
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-fog').props.accessibilityState.checked).toBe(false);
+    expect(storedJson(map, STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES)).toMatchObject({
+      environment: { cardinals: false, fog: false },
+      landscapeId: 'ocean',
+      skyLayers: { atmosphere: false, landscape: false, starLabels: false },
     });
   });
 });
@@ -1492,7 +1509,7 @@ describe('deep space air quality integration', () => {
     expect(mockSetEnvironment).toHaveBeenCalledWith({
       bortleIndex: 1,
       cardinals: true,
-      fog: true,
+      fog: false,
       turbidity: 0.96,
     });
 
@@ -1613,15 +1630,17 @@ describe('deep space celestial object info integration', () => {
     expect(mockPointAndLock).toHaveBeenCalledWith('NAME Great Orion Nebula');
   });
 
-  it('opens telescope controls with a clear connection-status cue from object actions', async () => {
-    const { user } = setup(<DeepSpaceMapScreen />);
+  it('does not offer unsupported telescope pointing in the selected object sheet', async () => {
+    setup(<DeepSpaceMapScreen />);
 
     act(() => mockOnObjectSelected?.(MOCK_TARGET));
-    await user.press(await screen.findByTestId('deep-space-object-goto-btn'));
-
-    expect(mockGotoRaDec).toHaveBeenLastCalledWith(5.58 * 15, -5.38);
-    expect(mockShowDeepSpaceFeedback).toHaveBeenCalledWith({ message: '已打开望远镜控制，可检查连接后发送 GOTO', tone: 'success' });
-    expect(screen.getByTestId('deep-space-tools-panel')).toBeOnTheScreen();
+    expect(await screen.findByTestId('deep-space-object-info-sheet')).toBeOnTheScreen();
+    expect(screen.queryByTestId('deep-space-object-goto-btn')).not.toBeOnTheScreen();
+    expect(screen.queryByText('指向望远镜')).not.toBeOnTheScreen();
+    expect(screen.getByTestId('deep-space-object-center-btn')).toBeEnabled();
+    expect(screen.getByTestId('deep-space-object-like-btn')).toBeEnabled();
+    expect(mockGotoRaDec).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('deep-space-tools-panel')).not.toBeOnTheScreen();
   });
 
   it('dismisses info sheet and clears engine selection on close button tap', async () => {
@@ -1692,6 +1711,25 @@ describe('deep space compass and azimuth controls', () => {
 });
 
 describe('deep space view preference archive', () => {
+  it.each([true, false])('keeps explicitly saved atmosphere and fog values %s when reopening', async (enabled) => {
+    const map = installArchivedStorage();
+    const archived = JSON.parse(archivedPreferencesJson());
+    archived.skyLayers.atmosphere = enabled;
+    archived.environment.fog = enabled;
+    const saved = JSON.stringify(archived);
+    map.set(STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES, saved);
+    const { user } = setup(<DeepSpaceMapScreen />);
+
+    await user.press(screen.getByTestId('deep-space-grid-quick-toggle'));
+    await user.longPress(screen.getByTestId('deep-space-grid-quick-atmosphere'));
+
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-atmosphere').props.accessibilityState.checked).toBe(enabled);
+    expect(screen.getByTestId('deep-space-quick-detail-toggle-fog').props.accessibilityState.checked).toBe(enabled);
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith(expect.objectContaining({ atmosphere: enabled }));
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({ fog: enabled }));
+    expect(map.get(STORAGE_KEYS.DEEP_SPACE_VIEW_PREFERENCES)).toBe(saved);
+  });
+
   it('restores the archived switches and camera view when the map is reopened', () => {
     const map = installArchivedStorage();
     const archived = archivedPreferencesJson();
@@ -1809,6 +1847,8 @@ describe('deep space camera view archive', () => {
     expect(mockSetSkyCulture).toHaveBeenLastCalledWith('western');
     expect(mockSetLandscape).toHaveBeenLastCalledWith('guereins');
     expect(mockSetGridLines).toHaveBeenLastCalledWith(expect.objectContaining({ meridian: false }));
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith(expect.objectContaining({ atmosphere: false }));
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({ fog: false }));
 
     unmount();
     setup(<DeepSpaceMapScreen />);
@@ -1817,6 +1857,8 @@ describe('deep space camera view archive', () => {
     expect(mockRestoreView).toHaveBeenLastCalledWith(null);
     expect(mockSetSkyCulture).toHaveBeenLastCalledWith('western');
     expect(mockSetLandscape).toHaveBeenLastCalledWith('guereins');
+    expect(mockSetSkyLayers).toHaveBeenLastCalledWith(expect.objectContaining({ atmosphere: false }));
+    expect(mockSetEnvironment).toHaveBeenLastCalledWith(expect.objectContaining({ fog: false }));
   });
 });
 

@@ -42,6 +42,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   userInterfaceStyle: 'automatic',
   newArchEnabled: true,
   updates: {
+    enabled: Env.EXPO_PUBLIC_APP_ENV !== 'preview',
     url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
     fallbackToCacheTimeout: 0,
   },

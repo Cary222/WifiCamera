@@ -286,25 +286,14 @@ function ObjectActionPills({
   object,
   onCenter,
   onClose,
-  onGoto,
   onToggleLike,
 }: {
   liked: boolean;
   object: ObjectInfoSheetProps['object'];
   onCenter: (object: ObjectInfoSheetProps['object']) => void;
   onClose: () => void;
-  onGoto?: (raHours: number, decDeg: number) => void;
   onToggleLike: () => void;
 }) {
-  const useJ2000 = object.coordinateFrame === 'CIRS';
-  const raHours = useJ2000 ? object.raJ2000Hours : object.raHours;
-  const decDeg = useJ2000 ? object.decJ2000Deg : object.decDeg;
-  const handleGoto = onGoto
-    && typeof raHours === 'number' && Number.isFinite(raHours)
-    && typeof decDeg === 'number' && Number.isFinite(decDeg) && Math.abs(decDeg) <= 90
-    ? () => onGoto(raHours, decDeg)
-    : undefined;
-
   return (
     <View style={styles.actionPillsRow}>
       <Pressable
@@ -353,18 +342,6 @@ function ObjectActionPills({
         </Svg>
       </Pressable>
 
-      {handleGoto && (
-        <Pressable
-          accessibilityLabel={translate('deep_space.object.telescope')}
-          accessibilityRole="button"
-          onPress={handleGoto}
-          style={styles.gotoPillButton}
-          testID="deep-space-object-goto-btn"
-        >
-          <Text style={styles.gotoPillButtonText}>{translate('deep_space.object.goto_telescope')}</Text>
-        </Pressable>
-      )}
-
       <Pressable
         accessibilityLabel={translate('deep_space.object.close')}
         accessibilityRole="button"
@@ -383,7 +360,6 @@ export function ObjectInfoSheet({
   object,
   onCenter,
   onClose,
-  onGoto,
   onZoomIn,
   onZoomOut,
 }: ObjectInfoSheetProps): React.ReactElement {
@@ -427,7 +403,6 @@ export function ObjectInfoSheet({
           object={object}
           onCenter={onCenter}
           onClose={onClose}
-          onGoto={onGoto}
           onToggleLike={handleToggleLike}
         />
         <View style={styles.divider} />
@@ -523,27 +498,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
     height: StyleSheet.hairlineWidth,
     marginVertical: 12,
-  },
-  gotoPillButton: {
-    alignItems: 'center',
-    backgroundColor: '#2563EB',
-    borderColor: '#60A5FA',
-    borderRadius: 18,
-    borderWidth: 1,
-    elevation: 4,
-    height: 36,
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    shadowColor: '#3B82F6',
-    shadowOffset: { height: 2, width: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 6,
-  },
-  gotoPillButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 0.2,
   },
   handleBar: {
     alignSelf: 'center',
