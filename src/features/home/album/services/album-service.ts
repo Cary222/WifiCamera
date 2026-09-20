@@ -110,18 +110,58 @@ export async function listPicFiles(sourceDir: string): Promise<PicFile[]> {
   }
 }
 
-export async function deletePicFile(mp4Name: string): Promise<void> {
-  const url = `${getAlbumBaseUrl()}${ALBUM_ENDPOINTS.delPic}`;
-  const res = await albumClient.post<DeleteResponse>(url, {
-    mp4_name: mp4Name,
+export async function deletePicFile(filePath: string): Promise<void> {
+  const baseUrl = getAlbumBaseUrl();
+  // 1. Try modern C-stack GET /delete?path=... first
+  try {
+    const url = `${baseUrl}${ALBUM_ENDPOINTS.delete}`;
+    const res = await albumClient.get<{ ok?: boolean; deleted?: string[] }>(
+      url,
+      {
+        params: { path: filePath },
+        timeout: ALBUM_REQUEST_TIMEOUT_MS,
+      },
+    );
+    if (res.data?.ok) {
+      return;
+    }
+  }
+  catch {
+    // Fall through to legacy delete endpoint
+  }
+
+  // 2. Legacy fallback
+  const legacyUrl = `${baseUrl}${ALBUM_ENDPOINTS.delPic}`;
+  const res = await albumClient.post<DeleteResponse>(legacyUrl, {
+    mp4_name: filePath,
   });
-  unwrapCamera(res.data, 'POST', url);
+  unwrapCamera(res.data, 'POST', legacyUrl);
 }
 
 export async function deletePicFolder(sourceDir: string): Promise<void> {
-  const url = `${getAlbumBaseUrl()}${ALBUM_ENDPOINTS.delDir}`;
-  const res = await albumClient.post<DeleteResponse>(url, {
+  const baseUrl = getAlbumBaseUrl();
+  // 1. Try modern C-stack GET /delete?path=... first
+  try {
+    const url = `${baseUrl}${ALBUM_ENDPOINTS.delete}`;
+    const res = await albumClient.get<{ ok?: boolean; deleted?: string[] }>(
+      url,
+      {
+        params: { path: sourceDir },
+        timeout: ALBUM_REQUEST_TIMEOUT_MS,
+      },
+    );
+    if (res.data?.ok) {
+      return;
+    }
+  }
+  catch {
+    // Fall through to legacy delete endpoint
+  }
+
+  // 2. Legacy fallback
+  const legacyUrl = `${baseUrl}${ALBUM_ENDPOINTS.delDir}`;
+  const res = await albumClient.post<DeleteResponse>(legacyUrl, {
     source_dir: sourceDir,
   });
-  unwrapCamera(res.data, 'POST', url);
+  unwrapCamera(res.data, 'POST', legacyUrl);
 }

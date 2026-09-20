@@ -11,15 +11,32 @@ type Props = {
   onStop: () => void;
 };
 
-export function CaptureControls({ cameraStatus, connected, onCapture, onRepeat, onStop }: Props) {
-  const active = cameraStatus !== 'idle';
+export function CaptureControls({
+  cameraStatus,
+  connected,
+  onCapture,
+  onRepeat,
+  onStop,
+}: Props) {
+  const isBusy
+    = cameraStatus === 'in_repeat'
+      || cameraStatus === 'in_exposure'
+      || cameraStatus === 'recording'
+      || cameraStatus === 'stopping';
+  const canCapture
+    = connected && (cameraStatus === 'idle' || cameraStatus === 'in_streaming');
   return (
     <View className="gap-3">
       <View className="flex-row items-center justify-between">
-        <Text tx="camera.status_label" className="text-sm text-neutral-500 dark:text-neutral-400" />
-        <Text className="font-semibold text-black dark:text-white">{cameraStatus}</Text>
+        <Text
+          tx="camera.status_label"
+          className="text-sm text-neutral-500 dark:text-neutral-400"
+        />
+        <Text className="font-semibold text-black dark:text-white">
+          {cameraStatus}
+        </Text>
       </View>
-      {active
+      {isBusy
         ? (
             <Button
               label={translate('camera.stop')}
@@ -34,14 +51,14 @@ export function CaptureControls({ cameraStatus, connected, onCapture, onRepeat, 
               <Button
                 label={translate('camera.capture')}
                 size="lg"
-                disabled={!connected}
+                disabled={!canCapture}
                 onPress={onCapture}
                 testID="camera-capture"
               />
               <Button
                 label={translate('camera.repeat')}
                 variant="outline"
-                disabled={!connected}
+                disabled={!canCapture}
                 onPress={onRepeat}
                 testID="camera-repeat"
               />

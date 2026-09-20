@@ -124,6 +124,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
 
+  const cameraStatus = useCameraStore.use.cameraStatus();
   const connectionStatus = useCameraStore.use.connectionStatus();
   const lastCommandError = useCameraStore.use.lastCommandError();
   const newestCameraJpgUrl = useCameraStore.use.newestCameraJpgUrl();
@@ -267,7 +268,15 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
   const shutterDisabled
-    = isCapturing || isRepeating || isRecordingBusy || isApplyingRatio;
+    = isCapturing
+      || isRepeating
+      || isRecordingBusy
+      || isApplyingRatio
+      || cameraStatus === 'error'
+      || cameraStatus === 'unknown'
+      || cameraStatus === 'closed'
+      || cameraStatus === 'starting'
+      || cameraStatus === 'stopping';
 
   return (
     <View
@@ -340,7 +349,10 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
         || isRecording
         || isRecordingBusy
         || isApplyingRatio
-        || !isConnected) && (
+        || !isConnected
+        || cameraStatus === 'error'
+        || cameraStatus === 'starting'
+        || cameraStatus === 'stopping') && (
         <View
           className="absolute inset-x-0 items-center"
           style={{ top: insets.top + 56, zIndex: 10, elevation: 10 }}
@@ -354,7 +366,13 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
                     ? `${countdownRemaining}s`
                     : isApplyingRatio
                       ? '切换画幅中…'
-                      : translate('landscape.capturing')
+                      : cameraStatus === 'error'
+                        ? '相机异常'
+                        : cameraStatus === 'starting'
+                          ? '启动中…'
+                          : cameraStatus === 'stopping'
+                            ? '停止中…'
+                            : translate('landscape.capturing')
                 : translate('landscape.connecting')}
             </Text>
           </View>

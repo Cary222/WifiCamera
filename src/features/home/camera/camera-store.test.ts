@@ -1,6 +1,11 @@
 /* eslint-disable max-lines-per-function */
 
-import { useCameraStore } from './camera-store';
+import {
+  formatCameraErrorMessage,
+  mapBoardStateToCameraStatus,
+  mapLegacyStatusToCameraStatus,
+  useCameraStore,
+} from './camera-store';
 
 type Listener = ((event?: { data?: string }) => void) | null;
 
@@ -206,7 +211,11 @@ describe('camera store', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
-
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { busy: 'streaming', streaming: true },
+    });
     useCameraStore.getState().startLandscapeCapture();
 
     const capture = socket.sent
@@ -263,7 +272,11 @@ describe('camera store', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
-
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { busy: 'streaming', streaming: true },
+    });
     useCameraStore.getState().setLandscapeTimerPlan({ count: 2, interval: 1 });
     useCameraStore.getState().startLandscapeRepeat();
 
@@ -318,5 +331,122 @@ describe('camera store', () => {
       landscapeRecordingState: 'idle',
       lastCommandError: '相机状态异常(error)，请重启相机',
     });
+  });
+
+  it('maps board states and legacy status according to protocol table', () => {
+    expect(mapBoardStateToCameraStatus({ busy: 'idle' })).toBe('idle');
+    expect(mapBoardStateToCameraStatus({ busy: 'streaming' })).toBe(
+      'in_streaming',
+    );
+    expect(mapBoardStateToCameraStatus({ busy: 'recording' })).toBe(
+      'recording',
+    );
+    expect(mapBoardStateToCameraStatus({ busy: 'repeating' })).toBe(
+      'in_repeat',
+    );
+    expect(mapBoardStateToCameraStatus({ busy: 'exposing' })).toBe(
+      'in_exposure',
+    );
+    expect(mapBoardStateToCameraStatus({ busy: 'starting' })).toBe('starting');
+    expect(mapBoardStateToCameraStatus({ busy: 'stopping' })).toBe('stopping');
+    expect(mapBoardStateToCameraStatus({ busy: 'closed' })).toBe('closed');
+    expect(mapBoardStateToCameraStatus({ busy: 'error' })).toBe('error');
+    expect(
+      mapBoardStateToCameraStatus({ fault_active: true, busy: 'streaming' }),
+    ).toBe('error');
+    expect(mapBoardStateToCameraStatus({ busy: 'other_unknown' })).toBe(
+      'unknown',
+    );
+    expect(mapBoardStateToCameraStatus(null)).toBe('unknown');
+
+    expect(mapLegacyStatusToCameraStatus('idle')).toBe('idle');
+    expect(mapLegacyStatusToCameraStatus('in_streaming')).toBe('in_streaming');
+    expect(mapLegacyStatusToCameraStatus('error')).toBe('error');
+    expect(mapLegacyStatusToCameraStatus('invalid')).toBe('unknown');
+  });
+
+  it('formats structured error responses and ignores see data placeholders', () => {
+    const structured = formatCameraErrorMessage({
+      error: { code: -7, name: 'ADAPTER', operation: 'record_stop' },
+      message: 'see data',
+    });
+    expect(structured).toBe('record_stop: ADAPTER(-7)');
+
+    const plainErr = formatCameraErrorMessage({
+      error: 'NOT_READY',
+      message: 'see data',
+    });
+    expect(plainErr).toBe('NOT_READY');
+
+    const seeDataOnly = formatCameraErrorMessage({ message: 'see data' });
+    expect(seeDataOnly).toBe('操作失败');
+  });
+
+  it('drops stale snapshots based on seq within connection', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { seq: 10, busy: 'streaming', streaming: true },
+    });
+    expect(useCameraStore.getState().cameraStatus).toBe('in_streaming');
+
+    // Stale snapshot with smaller seq must be ignored
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { seq: 9, busy: 'idle', streaming: false },
+    });
+    expect(useCameraStore.getState().cameraStatus).toBe('in_streaming');
+  });
+
+  it('prioritizes detailed camera_state and ignores legacy get_camera_status overwrites', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { seq: 1, busy: 'recording', recording: true },
+    });
+    expect(useCameraStore.getState().cameraStatus).toBe('recording');
+
+    // Legacy response arrives late — must NOT overwrite detailed cameraStatus
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'get_camera_status',
+      data: 'idle',
+    });
+    expect(useCameraStore.getState().cameraStatus).toBe('recording');
+  });
+
+  it('handles command failure without forcing in_streaming and formats error', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    useCameraStore.setState({ landscapeRecordingState: 'recording' });
+
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'streaming_stop_save',
+      success: false,
+      message: 'see data',
+      error: { code: -7, name: 'ADAPTER', operation: 'record_stop' },
+    });
+
+    expect(useCameraStore.getState().lastCommandError).toBe(
+      'record_stop: ADAPTER(-7)',
+    );
+    expect(useCameraStore.getState().landscapeRecordingState).toBe('idle');
+    // cameraStatus was NOT falsely set to in_streaming
+    expect(useCameraStore.getState().cameraStatus).not.toBe('in_streaming');
+
+    // Checks that camera_state was requested to refresh authoritative state
+    const lastSent = socket.sent.map(m => JSON.parse(m)).pop();
+    expect(lastSent.instruction).toBe('camera_state');
   });
 });

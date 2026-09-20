@@ -1,5 +1,9 @@
 import { cameraClient } from '../../camera/client';
-import { listPicFolders } from './album-service';
+import {
+  deletePicFile,
+  deletePicFolder,
+  listPicFolders,
+} from './album-service';
 
 jest.mock('../../camera/client', () => ({
   cameraClient: {
@@ -66,4 +70,34 @@ describe('album-service', () => {
     expect(result).toEqual([]);
     expect(result.some(item => item.name === 'M33')).toBe(false);
   });
+});
+
+it('deletePicFile calls GET /delete?path=... first', async () => {
+  (cameraClient.get as jest.Mock).mockResolvedValueOnce({
+    data: { ok: true, deleted: ['/mnt/sdcard/Pictures/test.jpg'] },
+  });
+
+  await deletePicFile('/mnt/sdcard/Pictures/test.jpg');
+  expect(cameraClient.get).toHaveBeenCalledWith(
+    expect.stringContaining('/delete'),
+    expect.objectContaining({
+      params: { path: '/mnt/sdcard/Pictures/test.jpg' },
+    }),
+  );
+  expect(cameraClient.post).not.toHaveBeenCalled();
+});
+
+it('deletePicFolder calls GET /delete?path=... first', async () => {
+  (cameraClient.get as jest.Mock).mockResolvedValueOnce({
+    data: { ok: true, deleted: ['/mnt/sdcard/Pictures/2026-09-18'] },
+  });
+
+  await deletePicFolder('/mnt/sdcard/Pictures/2026-09-18');
+  expect(cameraClient.get).toHaveBeenCalledWith(
+    expect.stringContaining('/delete'),
+    expect.objectContaining({
+      params: { path: '/mnt/sdcard/Pictures/2026-09-18' },
+    }),
+  );
+  expect(cameraClient.post).not.toHaveBeenCalled();
 });
