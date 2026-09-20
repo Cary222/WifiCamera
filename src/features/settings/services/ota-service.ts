@@ -3,7 +3,7 @@
  *
  * Two HTTP targets:
  *   cameraClient  → camera device at 192.168.1.1:8999 (FileCopy, OTAUpdate, UploadFile)
- *   otaClient     → OTA backend  at 170.106.80.91:7788 (version query, device lock)
+ *   otaClient     → company OTA backend at 170.106.80.91:7788
  *
  * Downloads stream directly to a local file via Expo FileSystem; uploads use XHR.
  */
@@ -17,6 +17,8 @@ import { cameraClient } from '../../home/camera/client';
 import { getCameraBaseUrl } from '../../home/camera/config';
 
 export function getOtaBackendUrl() {
+  // 默认使用公司 OTA 服务器。
+  // hjc 临时重构测试服务：http://139.196.14.90（HTTP 未设密码），需要时用环境变量覆盖。
   return process.env.EXPO_PUBLIC_OTA_BACKEND_URL ?? 'http://170.106.80.91:7788';
 }
 
