@@ -5,7 +5,7 @@ import {
   mapBoardStateToCameraStatus,
   mapLegacyStatusToCameraStatus,
   useCameraStore,
-} from "./camera-store";
+} from './camera-store';
 
 type Listener = ((event?: { data?: string }) => void) | null;
 
@@ -47,20 +47,20 @@ class MockWebSocket {
 
 const OriginalWebSocket = globalThis.WebSocket;
 
-describe("camera store", () => {
+describe('camera store', () => {
   beforeEach(() => {
     useCameraStore.getState().disconnect();
     MockWebSocket.instances = [];
     globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
     useCameraStore.setState({
-      cameraStatus: "idle",
-      connectionStatus: "idle",
+      cameraStatus: 'idle',
+      connectionStatus: 'idle',
       exposureConfigs: [
-        { id: 2, name: "Full Moon", exposure_time: 0.003, gain: 1 },
+        { id: 2, name: 'Full Moon', exposure_time: 0.003, gain: 1 },
       ],
       currentExposureConfig: {
         id: 2,
-        name: "Full Moon",
+        name: 'Full Moon',
         exposure_time: 0.003,
         gain: 1,
       },
@@ -71,14 +71,14 @@ describe("camera store", () => {
       allSpace: null,
       serial: null,
       version: null,
-      newestCameraJpgUrl: "",
-      newestStreamJpgUrl: "",
+      newestCameraJpgUrl: '',
+      newestStreamJpgUrl: '',
       remainingExposureTime: 0,
       landscapeAutoMode: true,
-      landscapeShutterMode: "auto",
+      landscapeShutterMode: 'auto',
       landscapeManualExposure: 0.08,
       landscapeManualGain: 24,
-      landscapeCaptureState: "idle",
+      landscapeCaptureState: 'idle',
       landscapeCapturePendingId: null,
       lastCommandError: null,
     });
@@ -93,13 +93,13 @@ describe("camera store", () => {
     globalThis.WebSocket = OriginalWebSocket;
   });
 
-  it("updates camera status and hardware status", () => {
-    useCameraStore.getState().setCameraStatus("in_exposure");
+  it('updates camera status and hardware status', () => {
+    useCameraStore.getState().setCameraStatus('in_exposure');
     useCameraStore.getState().setPower(3.85, 1);
     useCameraStore.getState().setDisk(20, 100);
 
     expect(useCameraStore.getState()).toMatchObject({
-      cameraStatus: "in_exposure",
+      cameraStatus: 'in_exposure',
       powerLevel: 3.85,
       inCharge: true,
       usedSpace: 20,
@@ -107,15 +107,15 @@ describe("camera store", () => {
     });
   });
 
-  it("adds, updates, selects, and deletes exposure configs", () => {
+  it('adds, updates, selects, and deletes exposure configs', () => {
     useCameraStore.getState().addExposureConfig({
-      name: "Test",
+      name: 'Test',
       exposure_time: 1,
       gain: 20,
     });
     const added = useCameraStore.getState().currentExposureConfig;
 
-    expect(added).toMatchObject({ name: "Test", exposure_time: 1, gain: 20 });
+    expect(added).toMatchObject({ name: 'Test', exposure_time: 1, gain: 20 });
     expect(useCameraStore.getState().exposureConfigs).toContainEqual(added);
 
     useCameraStore.getState().updateExposureConfig({ ...added, gain: 30 });
@@ -127,13 +127,13 @@ describe("camera store", () => {
     );
   });
 
-  it("preserves user configured manual exposure and gain across auto mode switches", () => {
+  it('preserves user configured manual exposure and gain across auto mode switches', () => {
     jest.useFakeTimers();
     useCameraStore.setState({
       landscapeManualExposure: 0.05,
       landscapeManualGain: 30,
       landscapeAutoMode: false,
-      landscapeShutterMode: "pro",
+      landscapeShutterMode: 'pro',
     });
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
@@ -143,15 +143,15 @@ describe("camera store", () => {
     useCameraStore.getState().switchAutoMode(true);
     expect(useCameraStore.getState()).toMatchObject({
       landscapeAutoMode: true,
-      landscapeShutterMode: "auto",
+      landscapeShutterMode: 'auto',
       landscapeManualExposure: 0.05,
       landscapeManualGain: 30,
     });
 
     // Board reports AE values while in auto mode; user's manual settings must NOT be overwritten
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
+      device_name: 'main_camera',
+      instruction: 'camera_state',
       data: { preview: { exposure_s: 0.0075, gain: 6.4 } },
     });
 
@@ -165,41 +165,41 @@ describe("camera store", () => {
 
     expect(useCameraStore.getState()).toMatchObject({
       landscapeAutoMode: false,
-      landscapeShutterMode: "pro",
+      landscapeShutterMode: 'pro',
       landscapeManualExposure: 0.05,
       landscapeManualGain: 30,
     });
     expect(
-      socket.sent.slice(-2).map((message) => JSON.parse(message)),
+      socket.sent.slice(-2).map(message => JSON.parse(message)),
     ).toMatchObject([
-      { instruction: "switch_auto_mode", params: [1] },
+      { instruction: 'switch_auto_mode', params: [1] },
       {
-        instruction: "change_streaming_setting",
+        instruction: 'change_streaming_setting',
         params: [0.05, 30],
-        gain_unit: "percent",
+        gain_unit: 'percent',
       },
     ]);
   });
 
-  it("waits for start_streaming_exposure before resolving", async () => {
+  it('waits for start_streaming_exposure before resolving', async () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
 
-    const pending = useCameraStore.getState().startStreaming("auto");
+    const pending = useCameraStore.getState().startStreaming('auto');
     const sent = socket.sent
-      .map((message) => JSON.parse(message))
-      .find((message) => message.instruction === "start_streaming_exposure");
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'start_streaming_exposure');
     expect(sent).toMatchObject({
-      instruction: "start_streaming_exposure",
-      params: ["auto", null],
-      gain_unit: "percent",
+      instruction: 'start_streaming_exposure',
+      params: ['auto', null],
+      gain_unit: 'percent',
     });
-    expect(typeof sent.id).toBe("string");
+    expect(typeof sent.id).toBe('string');
 
     socket.message({
-      device_name: "main_camera",
-      instruction: "start_streaming_exposure",
+      device_name: 'main_camera',
+      instruction: 'start_streaming_exposure',
       id: sent.id,
       success: true,
       data: true,
@@ -211,29 +211,29 @@ describe("camera store", () => {
     expect(result.msg).toMatchObject({ success: true });
   });
 
-  it("completes stream-frame capture from camera_state last_result", () => {
+  it('completes stream-frame capture from camera_state last_result', () => {
     jest.useFakeTimers();
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
-      data: { busy: "streaming", streaming: true },
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { busy: 'streaming', streaming: true },
     });
     useCameraStore.getState().startLandscapeCapture();
 
     const capture = socket.sent
-      .map((message) => JSON.parse(message))
-      .find((message) => message.instruction === "capture_stream_frame");
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'capture_stream_frame');
     expect(capture.params[0]).toMatch(
       /^\/mnt\/sdcard\/Pictures\/stream_frame_\d+\.jpg$/,
     );
-    expect(useCameraStore.getState().landscapeCaptureState).toBe("capturing");
+    expect(useCameraStore.getState().landscapeCaptureState).toBe('capturing');
 
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
+      device_name: 'main_camera',
+      instruction: 'camera_state',
       data: {
         streaming: true,
         last_result: { jpg_path: capture.params[0] },
@@ -241,14 +241,14 @@ describe("camera store", () => {
     });
 
     expect(useCameraStore.getState()).toMatchObject({
-      landscapeCaptureState: "idle",
+      landscapeCaptureState: 'idle',
       newestCameraJpgUrl: capture.params[0],
       newestStreamJpgUrl: capture.params[0],
       lastCommandError: null,
     });
   });
 
-  it("immediately applies manual settings and switches mode without waiting", () => {
+  it('immediately applies manual settings and switches mode without waiting', () => {
     useCameraStore.setState({
       landscapeManualExposure: 0.025,
       landscapeManualGain: 18,
@@ -265,41 +265,41 @@ describe("camera store", () => {
       landscapeManualGain: 18,
     });
     expect(
-      socket.sent.slice(-2).map((message) => JSON.parse(message)),
+      socket.sent.slice(-2).map(message => JSON.parse(message)),
     ).toMatchObject([
-      { instruction: "switch_auto_mode", params: [1] },
+      { instruction: 'switch_auto_mode', params: [1] },
       {
-        instruction: "change_streaming_setting",
+        instruction: 'change_streaming_setting',
         params: [0.025, 18],
-        gain_unit: "percent",
+        gain_unit: 'percent',
       },
     ]);
   });
 
-  it("starts landscape repeat, sends capture command, and advances count", () => {
+  it('starts landscape repeat, sends capture command, and advances count', () => {
     jest.useFakeTimers();
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
-      data: { busy: "streaming", streaming: true },
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { busy: 'streaming', streaming: true },
     });
     useCameraStore.getState().setLandscapeTimerPlan({ count: 2, interval: 1 });
     useCameraStore.getState().startLandscapeRepeat();
 
-    expect(useCameraStore.getState().landscapeRepeatState).toBe("running");
+    expect(useCameraStore.getState().landscapeRepeatState).toBe('running');
     const firstCapture = socket.sent
-      .map((message) => JSON.parse(message))
-      .find((message) => message.instruction === "capture_stream_frame");
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'capture_stream_frame');
     expect(firstCapture).toBeDefined();
-    expect(useCameraStore.getState().landscapeCaptureState).toBe("capturing");
+    expect(useCameraStore.getState().landscapeCaptureState).toBe('capturing');
 
     // Complete step 1
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
+      device_name: 'main_camera',
+      instruction: 'camera_state',
       data: {
         streaming: true,
         last_result: { jpg_path: firstCapture.params[0] },
@@ -307,173 +307,231 @@ describe("camera store", () => {
     });
 
     expect(useCameraStore.getState().landscapeRepeatCurrent).toBe(1);
-    expect(useCameraStore.getState().landscapeRepeatState).toBe("running");
+    expect(useCameraStore.getState().landscapeRepeatState).toBe('running');
 
     // Cancel repeat
     useCameraStore.getState().cancelLandscapeRepeat();
-    expect(useCameraStore.getState().landscapeRepeatState).toBe("idle");
+    expect(useCameraStore.getState().landscapeRepeatState).toBe('idle');
   });
 
-  it("aborts capturing, recording, and repeat immediately when camera_state reports busy error", () => {
+  it('sends start_exposure when manual shutter is set to long exposure (30s)', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { busy: 'streaming', streaming: true },
+    });
+
+    useCameraStore.setState({
+      landscapeAutoMode: false,
+      landscapeManualExposure: 30,
+    });
+
+    useCameraStore.getState().startLandscapeCapture();
+
+    const exposureCmd = socket.sent
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'start_exposure');
+    expect(exposureCmd).toBeDefined();
+    expect(exposureCmd.params).toEqual([30, true, '', 'LANDSCAPE_SINGLE']);
+    expect(useCameraStore.getState().landscapeCaptureState).toBe('capturing');
+  });
+
+  it('sends start_exposure_repeat when manual shutter is set to long exposure (60s) repeat', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { busy: 'streaming', streaming: true },
+    });
+
+    useCameraStore.setState({
+      landscapeAutoMode: false,
+      landscapeManualExposure: 60,
+    });
+    useCameraStore.getState().setLandscapeTimerPlan({ count: 5, interval: 3 });
+
+    useCameraStore.getState().startLandscapeRepeat();
+
+    const repeatCmd = socket.sent
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'start_exposure_repeat');
+    expect(repeatCmd).toBeDefined();
+    expect(repeatCmd.params).toEqual([60, 5, true, '', 'LANDSCAPE_REPEAT']);
+    expect(useCameraStore.getState().landscapeRepeatState).toBe('running');
+
+    useCameraStore.getState().cancelLandscapeRepeat();
+    expect(useCameraStore.getState().landscapeRepeatState).toBe('cancelling');
+    const stopCmd = socket.sent
+      .map(message => JSON.parse(message))
+      .find(message => message.instruction === 'stop_exposure_repeat');
+    expect(stopCmd).toBeDefined();
+  });
+
+  it('aborts capturing, recording, and repeat immediately when camera_state reports busy error', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
 
     useCameraStore.setState({
-      landscapeCaptureState: "capturing",
-      landscapeRepeatState: "running",
-      landscapeRecordingState: "recording",
+      landscapeCaptureState: 'capturing',
+      landscapeRepeatState: 'running',
+      landscapeRecordingState: 'recording',
     });
 
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
+      device_name: 'main_camera',
+      instruction: 'camera_state',
       data: {
-        busy: "error",
+        busy: 'error',
         streaming: false,
       },
     });
 
     expect(useCameraStore.getState()).toMatchObject({
-      landscapeCaptureState: "idle",
-      landscapeRepeatState: "idle",
-      landscapeRecordingState: "idle",
-      lastCommandError: "相机状态异常(error)，请重启相机",
+      landscapeCaptureState: 'idle',
+      landscapeRepeatState: 'idle',
+      landscapeRecordingState: 'idle',
+      lastCommandError: '相机状态异常(error)，请重启相机',
     });
   });
 
-  it("maps board states and legacy status according to protocol table", () => {
-    expect(mapBoardStateToCameraStatus({ busy: "idle" })).toBe("idle");
-    expect(mapBoardStateToCameraStatus({ busy: "streaming" })).toBe(
-      "in_streaming",
+  it('maps board states and legacy status according to protocol table', () => {
+    expect(mapBoardStateToCameraStatus({ busy: 'idle' })).toBe('idle');
+    expect(mapBoardStateToCameraStatus({ busy: 'streaming' })).toBe(
+      'in_streaming',
     );
-    expect(mapBoardStateToCameraStatus({ busy: "recording" })).toBe(
-      "recording",
+    expect(mapBoardStateToCameraStatus({ busy: 'recording' })).toBe(
+      'recording',
     );
-    expect(mapBoardStateToCameraStatus({ busy: "repeating" })).toBe(
-      "in_repeat",
+    expect(mapBoardStateToCameraStatus({ busy: 'repeating' })).toBe(
+      'in_repeat',
     );
-    expect(mapBoardStateToCameraStatus({ busy: "exposing" })).toBe(
-      "in_exposure",
+    expect(mapBoardStateToCameraStatus({ busy: 'exposing' })).toBe(
+      'in_exposure',
     );
-    expect(mapBoardStateToCameraStatus({ busy: "starting" })).toBe("starting");
-    expect(mapBoardStateToCameraStatus({ busy: "stopping" })).toBe("stopping");
-    expect(mapBoardStateToCameraStatus({ busy: "closed" })).toBe("closed");
-    expect(mapBoardStateToCameraStatus({ busy: "error" })).toBe("error");
+    expect(mapBoardStateToCameraStatus({ busy: 'starting' })).toBe('starting');
+    expect(mapBoardStateToCameraStatus({ busy: 'stopping' })).toBe('stopping');
+    expect(mapBoardStateToCameraStatus({ busy: 'closed' })).toBe('closed');
+    expect(mapBoardStateToCameraStatus({ busy: 'error' })).toBe('error');
     expect(
-      mapBoardStateToCameraStatus({ fault_active: true, busy: "streaming" }),
-    ).toBe("error");
-    expect(mapBoardStateToCameraStatus({ busy: "other_unknown" })).toBe(
-      "unknown",
+      mapBoardStateToCameraStatus({ fault_active: true, busy: 'streaming' }),
+    ).toBe('error');
+    expect(mapBoardStateToCameraStatus({ busy: 'other_unknown' })).toBe(
+      'unknown',
     );
-    expect(mapBoardStateToCameraStatus(null)).toBe("unknown");
+    expect(mapBoardStateToCameraStatus(null)).toBe('unknown');
 
-    expect(mapLegacyStatusToCameraStatus("idle")).toBe("idle");
-    expect(mapLegacyStatusToCameraStatus("in_streaming")).toBe("in_streaming");
-    expect(mapLegacyStatusToCameraStatus("error")).toBe("error");
-    expect(mapLegacyStatusToCameraStatus("invalid")).toBe("unknown");
+    expect(mapLegacyStatusToCameraStatus('idle')).toBe('idle');
+    expect(mapLegacyStatusToCameraStatus('in_streaming')).toBe('in_streaming');
+    expect(mapLegacyStatusToCameraStatus('error')).toBe('error');
+    expect(mapLegacyStatusToCameraStatus('invalid')).toBe('unknown');
   });
 
-  it("formats structured error responses and ignores see data placeholders", () => {
+  it('formats structured error responses and ignores see data placeholders', () => {
     const structured = formatCameraErrorMessage({
-      error: { code: -7, name: "ADAPTER", operation: "record_stop" },
-      message: "see data",
+      error: { code: -7, name: 'ADAPTER', operation: 'record_stop' },
+      message: 'see data',
     });
-    expect(structured).toBe("record_stop: ADAPTER(-7)");
+    expect(structured).toBe('record_stop: ADAPTER(-7)');
 
     const plainErr = formatCameraErrorMessage({
-      error: "NOT_READY",
-      message: "see data",
+      error: 'NOT_READY',
+      message: 'see data',
     });
-    expect(plainErr).toBe("NOT_READY");
+    expect(plainErr).toBe('NOT_READY');
 
-    const seeDataOnly = formatCameraErrorMessage({ message: "see data" });
-    expect(seeDataOnly).toBe("操作失败");
+    const seeDataOnly = formatCameraErrorMessage({ message: 'see data' });
+    expect(seeDataOnly).toBe('操作失败');
   });
 
-  it("drops stale snapshots based on seq within connection", () => {
+  it('drops stale snapshots based on seq within connection', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
 
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
-      data: { seq: 10, busy: "streaming", streaming: true },
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { seq: 10, busy: 'streaming', streaming: true },
     });
-    expect(useCameraStore.getState().cameraStatus).toBe("in_streaming");
+    expect(useCameraStore.getState().cameraStatus).toBe('in_streaming');
 
     // Stale snapshot with smaller seq must be ignored
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
-      data: { seq: 9, busy: "idle", streaming: false },
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { seq: 9, busy: 'idle', streaming: false },
     });
-    expect(useCameraStore.getState().cameraStatus).toBe("in_streaming");
+    expect(useCameraStore.getState().cameraStatus).toBe('in_streaming');
   });
 
-  it("prioritizes detailed camera_state and ignores legacy get_camera_status overwrites", () => {
+  it('prioritizes detailed camera_state and ignores legacy get_camera_status overwrites', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
 
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
-      data: { seq: 1, busy: "recording", recording: true },
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: { seq: 1, busy: 'recording', recording: true },
     });
-    expect(useCameraStore.getState().cameraStatus).toBe("recording");
+    expect(useCameraStore.getState().cameraStatus).toBe('recording');
 
     // Legacy response arrives late — must NOT overwrite detailed cameraStatus
     socket.message({
-      device_name: "main_camera",
-      instruction: "get_camera_status",
-      data: "idle",
+      device_name: 'main_camera',
+      instruction: 'get_camera_status',
+      data: 'idle',
     });
-    expect(useCameraStore.getState().cameraStatus).toBe("recording");
+    expect(useCameraStore.getState().cameraStatus).toBe('recording');
   });
 
-  it("handles command failure without forcing in_streaming and formats error", () => {
+  it('handles command failure without forcing in_streaming and formats error', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
-    useCameraStore.setState({ landscapeRecordingState: "recording" });
+    useCameraStore.setState({ landscapeRecordingState: 'recording' });
 
     socket.message({
-      device_name: "main_camera",
-      instruction: "streaming_stop_save",
+      device_name: 'main_camera',
+      instruction: 'streaming_stop_save',
       success: false,
-      message: "see data",
-      error: { code: -7, name: "ADAPTER", operation: "record_stop" },
+      message: 'see data',
+      error: { code: -7, name: 'ADAPTER', operation: 'record_stop' },
     });
 
     expect(useCameraStore.getState().lastCommandError).toBe(
-      "record_stop: ADAPTER(-7)",
+      'record_stop: ADAPTER(-7)',
     );
-    expect(useCameraStore.getState().landscapeRecordingState).toBe("idle");
+    expect(useCameraStore.getState().landscapeRecordingState).toBe('idle');
     // cameraStatus was NOT falsely set to in_streaming
-    expect(useCameraStore.getState().cameraStatus).not.toBe("in_streaming");
+    expect(useCameraStore.getState().cameraStatus).not.toBe('in_streaming');
 
     // Checks that camera_state was requested to refresh authoritative state
-    const lastSent = socket.sent.map((m) => JSON.parse(m)).pop();
-    expect(lastSent.instruction).toBe("camera_state");
+    const lastSent = socket.sent.map(m => JSON.parse(m)).pop();
+    expect(lastSent.instruction).toBe('camera_state');
   });
 
-  it("attaches gain_unit percent and validates integer 0~100 range", () => {
+  it('attaches gain_unit percent and validates integer 0~100 range', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
 
     useCameraStore.getState().setGain(50);
-    const lastSent = socket.sent.map((m) => JSON.parse(m)).pop();
+    const lastSent = socket.sent.map(m => JSON.parse(m)).pop();
     expect(lastSent).toMatchObject({
-      instruction: "set_gain",
+      instruction: 'set_gain',
       params: [50],
-      gain_unit: "percent",
+      gain_unit: 'percent',
     });
   });
 
-  it("rejects illegal gain values such as negative or decimals", () => {
+  it('rejects illegal gain values such as negative or decimals', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
@@ -483,26 +541,26 @@ describe("camera store", () => {
     useCameraStore.getState().setGain(-5 as any);
     expect(socket.sent.length).toBe(sentCountBefore);
     expect(useCameraStore.getState().lastCommandError).toBe(
-      "set_gain 增益值必须为 0~100 的整数",
+      'set_gain 增益值必须为 0~100 的整数',
     );
 
     // Decimal value
     useCameraStore.getState().setGain(25.5 as any);
     expect(socket.sent.length).toBe(sentCountBefore);
     expect(useCameraStore.getState().lastCommandError).toBe(
-      "set_gain 增益值必须为 0~100 的整数",
+      'set_gain 增益值必须为 0~100 的整数',
     );
   });
 
-  it("parses target_gain_percent from camera_state and static capabilities", () => {
+  it('parses target_gain_percent from camera_state and static capabilities', () => {
     useCameraStore.getState().connect();
     const socket = MockWebSocket.instances[0];
     socket.open();
 
     // Static info capability check
     socket.message({
-      device_name: "main_camera",
-      instruction: "get_static_info",
+      device_name: 'main_camera',
+      instruction: 'get_static_info',
       data: {
         capabilities: { gain_percent_v1: true },
       },
@@ -511,8 +569,8 @@ describe("camera store", () => {
 
     // Preview target_gain_percent update
     socket.message({
-      device_name: "main_camera",
-      instruction: "camera_state",
+      device_name: 'main_camera',
+      instruction: 'camera_state',
       data: {
         preview: { target_gain_percent: 75 },
       },
