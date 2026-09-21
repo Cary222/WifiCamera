@@ -43,6 +43,7 @@ import { useNebulaCapture } from './use-nebula-capture';
 import { usePlateSolve } from './use-plate-solve';
 
 const watermarkLogo = require('@/assets/common/watermark_white.png') as number;
+
 const BRAND = '#CBFF3C';
 const CARD_BG = '#1F1F1F';
 const SHEET_BG = '#141414';

@@ -8,8 +8,7 @@ import { Text } from '@/components/ui';
 import { ArrowLeft, Download, Share, Trash } from '@/components/ui/icons';
 import { useImageViewerActions } from '../hooks/use-image-viewer-actions';
 
-// eslint-disable-next-line perfectionist/sort-imports -- require must come after regular imports
-const watermarkLogo = require('@/assets/common/watermark_white.png');
+const watermarkLogo = require('@/assets/common/watermark_white.png') as number;
 
 type Props = {
   item: PhotoItem | null;

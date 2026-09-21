@@ -36,6 +36,7 @@ import {
 import { LandscapeRuler } from './landscape-ruler';
 
 const watermarkLogo = require('@/assets/common/watermark_white.png') as number;
+
 const BRAND = '#CBFF3C';
 const SHEET_BG = '#141414';
 const CARD_BG = '#1F1F1F';
