@@ -8,6 +8,7 @@ import {
   downloadImageFile,
   saveImageToPhone,
 } from '../services/album-service';
+import { watermarkLocalImageFile } from '../services/image-watermark-service';
 
 type UseImageViewerActionsParams = {
   item: PhotoItem | null;
@@ -119,8 +120,9 @@ export function useImageViewerActions({
         previewUrl: item.previewUrl,
         path: item.path,
       });
+      const fileToShare = await watermarkLocalImageFile(localUri);
 
-      await Sharing.shareAsync(localUri, {
+      await Sharing.shareAsync(fileToShare, {
         dialogTitle: item.target,
         mimeType: 'image/jpeg',
         UTI: 'public.jpeg',

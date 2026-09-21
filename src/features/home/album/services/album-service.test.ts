@@ -21,6 +21,7 @@ jest.mock('../../camera/client', () => ({
 jest.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file:///mock/cache/',
   downloadAsync: jest.fn(),
+  readAsStringAsync: jest.fn(),
   writeAsStringAsync: jest.fn(),
   EncodingType: { Base64: 'base64' },
 }));

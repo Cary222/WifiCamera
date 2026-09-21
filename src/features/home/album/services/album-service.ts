@@ -22,6 +22,7 @@ import {
   ALBUM_REQUEST_TIMEOUT_MS,
   getAlbumBaseUrl,
 } from '../config';
+import { watermarkLocalImageFile } from './image-watermark-service';
 
 const albumClient = cameraClient;
 
@@ -232,6 +233,7 @@ export async function saveImageToPhone(params: {
   }
 
   const localUri = await downloadImageFile(params);
-  await MediaLibrary.saveToLibraryAsync(localUri);
-  return localUri;
+  const fileToSave = await watermarkLocalImageFile(localUri);
+  await MediaLibrary.saveToLibraryAsync(fileToSave);
+  return fileToSave;
 }

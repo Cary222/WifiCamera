@@ -1,16 +1,15 @@
+import type { LayoutChangeEvent } from 'react-native';
 import type { PhotoItem } from '../types';
 import { Image } from 'expo-image';
 import * as React from 'react';
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Modal, Pressable, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui';
 import { ArrowLeft, Download, Share, Trash } from '@/components/ui/icons';
 import { useImageViewerActions } from '../hooks/use-image-viewer-actions';
+
+// eslint-disable-next-line perfectionist/sort-imports -- require must come after regular imports
+const watermarkLogo = require('@/assets/common/watermark_white.png');
 
 type Props = {
   item: PhotoItem | null;
@@ -173,6 +172,54 @@ function ViewerBottomBar({
     </View>
   );
 }
+type ViewerWatermarkProps = {
+  containerSize: { width: number; height: number };
+  imageSize: { width: number; height: number } | null;
+  bottomInset: number;
+};
+
+function ViewerWatermark({ containerSize, imageSize, bottomInset }: ViewerWatermarkProps) {
+  const watermarkBottom = React.useMemo(() => {
+    const cw = containerSize.width;
+    const ch = containerSize.height;
+    if (cw <= 0 || ch <= 0)
+      return bottomInset + 80;
+
+    const imgWidth = imageSize?.width ?? 16;
+    const imgHeight = imageSize?.height ?? 9;
+    const imgRatio = imgWidth / imgHeight;
+    const containerRatio = cw / ch;
+
+    if (containerRatio <= imgRatio) {
+      const renderedHeight = cw / imgRatio;
+      const verticalPadding = (ch - renderedHeight) / 2;
+      return Math.max(bottomInset + 20, verticalPadding + 16);
+    }
+    return bottomInset + 80;
+  }, [containerSize.width, containerSize.height, imageSize, bottomInset]);
+
+  return (
+    <View
+      testID="viewer-watermark"
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        bottom: watermarkBottom,
+        left: 0,
+        right: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10,
+      }}
+    >
+      <Image
+        source={watermarkLogo}
+        style={{ width: 140, height: 14, opacity: 0.88 }}
+        contentFit="contain"
+      />
+    </View>
+  );
+}
 
 /**
  * Full-screen image preview screen matching camera album specs:
@@ -198,11 +245,20 @@ export function ImageViewer({ item, onClose, onDeleted }: Props) {
 
   const visible = item !== null;
 
+  const [containerSize, setContainerSize] = React.useState<{ width: number; height: number }>({ width: 0, height: 0 });
+  const [imageSize, setImageSize] = React.useState<{ width: number; height: number } | null>(null);
+
+  const handleContainerLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setContainerSize({ width, height });
+  }, []);
+
   const close = React.useCallback(() => {
     if (isBusy)
       return;
     setLoading(true);
     setFailed(false);
+    setImageSize(null);
     onClose();
   }, [isBusy, onClose]);
 
@@ -214,7 +270,7 @@ export function ImageViewer({ item, onClose, onDeleted }: Props) {
       statusBarTranslucent
       onRequestClose={close}
     >
-      <View className="flex-1 bg-black">
+      <View className="flex-1 bg-black" onLayout={handleContainerLayout}>
         <ViewerTopBar
           item={item}
           topInset={insets.top}
@@ -228,6 +284,11 @@ export function ImageViewer({ item, onClose, onDeleted }: Props) {
             source={{ uri: item?.previewUrl }}
             style={{ flex: 1 }}
             contentFit="contain"
+            onLoad={(event) => {
+              if (event.source?.width && event.source?.height) {
+                setImageSize({ width: event.source.width, height: event.source.height });
+              }
+            }}
             onLoadStart={() => {
               setLoading(true);
               setFailed(false);
@@ -237,6 +298,14 @@ export function ImageViewer({ item, onClose, onDeleted }: Props) {
               setLoading(false);
               setFailed(true);
             }}
+          />
+        )}
+
+        {!loading && !failed && Boolean(item?.previewUrl) && (
+          <ViewerWatermark
+            containerSize={containerSize}
+            imageSize={imageSize}
+            bottomInset={insets.bottom}
           />
         )}
 
