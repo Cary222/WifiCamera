@@ -27,6 +27,12 @@
     "folder_count": "{{count}} items",
     "folder_date": "Date",
     "folder_size": "Size",
+    "format_sheet": {
+      "cancel": "Cancel",
+      "confirm": "Confirm Format",
+      "title": "Confirm Format TF Card",
+      "warning": "All contents on the TF card (including photos, videos, and other files) will be erased. Content saved to the phone album will not be affected. This operation cannot be undone."
+    },
     "load_error": "Failed to load folders",
     "loading": "Loading folders...",
     "mock_mode_hint": "Camera not connected — using mock data",
@@ -39,7 +45,20 @@
       "subtitle": "{{used}} / {{total}}"
     },
     "subtitle": "Photos & videos",
-    "title": "Photo Gallery"
+    "title": "Photo Gallery",
+    "viewer": {
+      "delete_cancel": "Cancel",
+      "delete_confirm": "Delete",
+      "delete_confirm_message": "This photo will be permanently removed from the TF card and cannot be recovered.",
+      "delete_confirm_title": "Confirm Delete Photo",
+      "delete_failed": "Failed to delete, please retry",
+      "permission_denied_message": "Please allow photo library access in system settings to save images.",
+      "permission_denied_title": "Photo Library Access Denied",
+      "save_failed": "Save failed, please check network and retry",
+      "save_success": "Saved to phone album",
+      "share_failed": "Share failed, please retry",
+      "share_unavailable": "Sharing is not available on this device"
+    }
   },
   "camera": {
     "capture": "Single capture",

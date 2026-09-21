@@ -1,10 +1,14 @@
-import type { LandscapeRatio } from '../camera-store';
-import { useEffect } from 'react';
-import { Pressable, useWindowDimensions } from 'react-native';
-import { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useUniwind } from 'uniwind';
-import { Text } from '@/components/ui';
+import type { LandscapeRatio } from "../camera-store";
+import { useEffect } from "react";
+import { Pressable, useWindowDimensions } from "react-native";
+import {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useUniwind } from "uniwind";
+import { Text } from "@/components/ui";
 
 const RATIO_16_9 = 0.5625;
 const PREVIEW_TOP_SPARE_SHARE_16_9 = 0.25;
@@ -66,27 +70,38 @@ export function useAspectRatioAnimation(
     // Stream from board is 16:9 (or 4:3) horizontal. Rotating 90deg maps it to 9:16 (or 3:4).
     rotation = 90;
     scale = 1;
-    const verticalRatio = ratio === '4:3' ? 3 / 4 : RATIO_16_9;
+    // 竖屏下：16:9 画幅映射为 9:16（宽 390，高 693.33）；4:3 画幅映射为 3:4（宽 390，高 520）。
+    // ratio === '4:3' 时，verticalRatio 应为 3/4 (0.75)；ratio === '16:9' 时，为 9/16 (0.5625)。
+    const verticalRatio = ratio === '4:3' ? 3 / 4 : 9 / 16;
     previewWidth = screenWidth;
-    previewHeight = Math.min(screenHeight, Math.round(previewWidth / verticalRatio));
+    previewHeight = Math.min(
+      screenHeight,
+      Math.round(previewWidth / verticalRatio),
+    );
     previewLeft = 0;
 
     const spareHeight = Math.max(0, screenHeight - previewHeight);
-    const topShare = ratio === '4:3' ? PREVIEW_TOP_SPARE_SHARE_4_3 : PREVIEW_TOP_SPARE_SHARE_16_9;
+    const topShare =
+      ratio === '4:3'
+        ? PREVIEW_TOP_SPARE_SHARE_4_3
+        : PREVIEW_TOP_SPARE_SHARE_16_9;
     previewTop = Math.max(insets.top, Math.round(spareHeight * topShare));
 
-    // Keep the video surface at its maximum size (16:9 rotated) so switching ratio
-    // NEVER resizes the underlying RTCView (resizing mid-animation stutters/flashes the stream).
-    surfaceWidth = Math.min(screenHeight, Math.round(screenWidth / RATIO_16_9));
-    surfaceHeight = screenWidth;
-  }
-  else {
+    // RTCView 内部渲染的是横向视频流。在旋转 90 度呈竖屏时：
+    // 内部 RTCView 的未旋转宽度即为旋转后的视觉高度（previewHeight），
+    // 内部 RTCView 的未旋转高度即为旋转后的视觉宽度（previewWidth）。
+    surfaceWidth = previewHeight;
+    surfaceHeight = previewWidth;
+  } else {
     // In landscape orientation:
     // 16:9 and 4:3 are displayed horizontally without rotation.
     rotation = 0;
     scale = 1;
-    const horizontalRatio = ratio === '4:3' ? 4 / 3 : 16 / 9;
-    previewHeight = Math.min(screenHeight, Math.round(screenWidth / horizontalRatio));
+    const horizontalRatio = ratio === "4:3" ? 4 / 3 : 16 / 9;
+    previewHeight = Math.min(
+      screenHeight,
+      Math.round(screenWidth / horizontalRatio),
+    );
     previewWidth = Math.round(previewHeight * horizontalRatio);
     if (previewWidth > screenWidth) {
       previewWidth = screenWidth;
@@ -98,7 +113,10 @@ export function useAspectRatioAnimation(
     previewLeft = Math.max(0, Math.round((screenWidth - previewWidth) / 2));
 
     surfaceWidth = screenWidth;
-    surfaceHeight = Math.min(screenHeight, Math.round(screenWidth * RATIO_16_9));
+    surfaceHeight = Math.min(
+      screenHeight,
+      Math.round(screenWidth * RATIO_16_9),
+    );
   }
 
   const animatedPreviewHeight = useSharedValue(previewHeight);
@@ -107,10 +125,18 @@ export function useAspectRatioAnimation(
   const animatedPreviewLeft = useSharedValue(previewLeft);
 
   useEffect(() => {
-    animatedPreviewHeight.value = withTiming(previewHeight, { duration: animationDuration });
-    animatedPreviewWidth.value = withTiming(previewWidth, { duration: animationDuration });
-    animatedPreviewTop.value = withTiming(previewTop, { duration: animationDuration });
-    animatedPreviewLeft.value = withTiming(previewLeft, { duration: animationDuration });
+    animatedPreviewHeight.value = withTiming(previewHeight, {
+      duration: animationDuration,
+    });
+    animatedPreviewWidth.value = withTiming(previewWidth, {
+      duration: animationDuration,
+    });
+    animatedPreviewTop.value = withTiming(previewTop, {
+      duration: animationDuration,
+    });
+    animatedPreviewLeft.value = withTiming(previewLeft, {
+      duration: animationDuration,
+    });
   }, [
     animatedPreviewHeight,
     animatedPreviewWidth,
@@ -130,7 +156,9 @@ export function useAspectRatioAnimation(
     height: animatedPreviewHeight.value,
   }));
 
-  const topBarStyle = useAnimatedStyle(() => ({ top: insets.top + topBarOffset }));
+  const topBarStyle = useAnimatedStyle(() => ({
+    top: insets.top + topBarOffset,
+  }));
 
   return {
     previewStyle,
@@ -194,12 +222,12 @@ export function ToolCard({
   textOnly = false,
   onPress,
   cardBg,
-  activeBg = '#CBFF3C',
-  className = '',
+  activeBg = "#CBFF3C",
+  className = "",
 }: ToolCardProps) {
   const { theme } = useUniwind();
-  const isDark = theme === 'dark';
-  const resolvedCardBg = cardBg ?? (isDark ? '#1F1F1F' : '#F4F4F5');
+  const isDark = theme === "dark";
+  const resolvedCardBg = cardBg ?? (isDark ? "#1F1F1F" : "#F4F4F5");
 
   return (
     <Pressable
@@ -207,14 +235,22 @@ export function ToolCard({
       style={{ backgroundColor: active ? activeBg : resolvedCardBg }}
       className={`h-[92px] flex-1 items-center justify-center gap-2 rounded-2xl active:opacity-80 ${className}`}
     >
-      {textOnly
-        ? <Text className={`text-[21px] ${active ? 'text-black dark:text-black' : 'text-black dark:text-white'}`}>{label}</Text>
-        : (
-            <>
-              {icon}
-              <Text className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-black dark:text-white'}`}>{label}</Text>
-            </>
-          )}
+      {textOnly ? (
+        <Text
+          className={`text-[21px] ${active ? "text-black dark:text-black" : "text-black dark:text-white"}`}
+        >
+          {label}
+        </Text>
+      ) : (
+        <>
+          {icon}
+          <Text
+            className={`text-[12px] ${active ? "text-black dark:text-black" : "text-black dark:text-white"}`}
+          >
+            {label}
+          </Text>
+        </>
+      )}
     </Pressable>
   );
 }
@@ -242,10 +278,10 @@ type AspectRatioButtonProps = {
 export function AspectRatioButton({
   ratio,
   onPress,
-  cardBg = '#1F1F1F',
-  className = '',
+  cardBg = "#1F1F1F",
+  className = "",
 }: AspectRatioButtonProps) {
-  const ratioLabel = ratio === '4:3' ? '4:3' : '16:9';
+  const ratioLabel = ratio === "4:3" ? "4:3" : "16:9";
 
   return (
     <ToolCard

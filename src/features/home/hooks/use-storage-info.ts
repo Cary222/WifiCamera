@@ -30,7 +30,7 @@ const EMPTY_INFO: DiskInfo = {
  *   - Falls back to an unmounted-point query if the SD card lookup fails.
  *   - Returns placeholder values (`—`) until the request resolves.
  */
-export function useStorageInfo(isConnected: boolean): DiskInfo {
+export function useStorageInfo(isConnected: boolean, refreshKey?: number): DiskInfo {
   const [info, setInfo] = useState<DiskInfo>(EMPTY_INFO);
 
   useEffect(() => {
@@ -76,7 +76,7 @@ export function useStorageInfo(isConnected: boolean): DiskInfo {
     return () => {
       active = false;
     };
-  }, [isConnected]);
+  }, [isConnected, refreshKey]);
 
   return info;
 }

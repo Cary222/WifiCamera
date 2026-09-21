@@ -28,6 +28,7 @@ export * from './starmap-filled';
 export * from './storage';
 export * from './support';
 export * from './temperature';
+export * from './trash';
 export * from './user';
 export * from './weather';
 export * from './website';

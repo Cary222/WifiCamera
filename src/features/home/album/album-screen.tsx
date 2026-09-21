@@ -12,7 +12,7 @@ import type { AlbumData, PhotoItem, StorageCardState } from './types';
 import { useNavigation } from '@react-navigation/native';
 import { Image as NImage } from 'expo-image';
 import * as React from 'react';
-import { Platform, ScrollView, View } from 'react-native';
+import { Alert, Platform, ScrollView, View } from 'react-native';
 
 import {
   SafeAreaView,
@@ -27,10 +27,15 @@ import { translate } from '@/lib/i18n';
 import { AlbumErrorState } from './components/album-error-state';
 import { DateGroupHeader } from './components/date-group-header';
 import { FolderGrid } from './components/folder-tile';
+import { FormatConfirmSheet } from './components/format-confirm-sheet';
 import { ImageViewer } from './components/image-viewer';
 import { StorageCard } from './components/storage-card';
 import { getAlbumBaseUrl } from './config';
-import { listPicFolders } from './services/album-service';
+import {
+  FormatError,
+  formatSdCard,
+  listPicFolders,
+} from './services/album-service';
 // eslint-disable-next-line perfectionist/sort-imports -- require must come after regular imports
 const moreIcon = require('@/assets/common/more.png');
 
@@ -365,6 +370,150 @@ function AlbumBody({
   );
 }
 
+function useFormatAction(onSuccess: () => Promise<void>) {
+  const [showFormatSheet, setShowFormatSheet] = React.useState(false);
+  const [isFormatting, setIsFormatting] = React.useState(false);
+  const lastTaskRef = React.useRef<{ requestId?: string; taskId?: string } | null>(null);
+
+  const handleFormatPress = React.useCallback(() => {
+    setShowFormatSheet(true);
+  }, []);
+
+  const handleConfirmFormat = React.useCallback(async () => {
+    if (isFormatting)
+      return;
+
+    setIsFormatting(true);
+    try {
+      try {
+        useCameraStore.getState().stopStreaming();
+      }
+      catch {
+        // ignore if not streaming or offline
+      }
+      const result = await formatSdCard();
+      if (result?.taskId || result?.requestId) {
+        lastTaskRef.current = { requestId: result.requestId, taskId: result.taskId };
+      }
+      setShowFormatSheet(false);
+      await onSuccess();
+      Alert.alert('格式化成功', 'TF卡已成功格式化。');
+    }
+    catch (error: unknown) {
+      setShowFormatSheet(false);
+      if (error instanceof FormatError) {
+        lastTaskRef.current = { requestId: error.requestId, taskId: error.taskId };
+        if (error.code === 'FORMAT_STATUS_UNKNOWN') {
+          Alert.alert('格式化状态未知', error.message);
+          return;
+        }
+        if (
+          error.code === 'FORMAT_UNSUPPORTED_FIRMWARE'
+          || error.code === 'FORMAT_ENDPOINT_NOT_AVAILABLE'
+        ) {
+          Alert.alert('格式化失败', '固件暂未提供格式化接口，操作未执行。');
+          return;
+        }
+        if (error.code === 'STORAGE_BUSY') {
+          Alert.alert('格式化失败', error.message || '相机当前正忙或正在写入，无法执行格式化。');
+          return;
+        }
+        if (error.code === 'STORAGE_NO_CARD') {
+          Alert.alert('格式化失败', error.message || '未检测到TF卡或TF卡未挂载，无法格式化。');
+          return;
+        }
+        Alert.alert('格式化失败', error.message || '格式化失败，请重试。');
+        return;
+      }
+
+      const isBlocker = Boolean(
+        error instanceof Error
+        && (error.message === 'FORMAT_ENDPOINT_NOT_AVAILABLE'
+          || error.message === 'FORMAT_UNSUPPORTED_FIRMWARE'),
+      );
+      const message = isBlocker
+        ? '固件暂未提供格式化接口，操作未执行。'
+        : error instanceof Error
+          ? error.message
+          : '格式化失败，请重试。';
+      Alert.alert('格式化失败', message);
+    }
+    finally {
+      setIsFormatting(false);
+    }
+  }, [isFormatting, onSuccess]);
+
+  return {
+    showFormatSheet,
+    isFormatting,
+    handleFormatPress,
+    handleConfirmFormat,
+    setShowFormatSheet,
+    lastTask: lastTaskRef.current,
+  };
+}
+
+function AlbumContent({
+  status,
+  isDark,
+  albumData,
+  storageState,
+  collapsed,
+  isMockMode,
+  insetsBottom,
+  toggleGroup,
+  onRefresh,
+  onFormatPress,
+  onItemPress,
+}: {
+  status: Status;
+  isDark: boolean;
+  albumData: AlbumData | null;
+  storageState: StorageCardState;
+  collapsed: Record<string, boolean>;
+  isMockMode: boolean;
+  insetsBottom: number;
+  toggleGroup: (groupId: string) => void;
+  onRefresh: () => void;
+  onFormatPress: () => void;
+  onItemPress: (item: PhotoItem) => void;
+}) {
+  if (status === 'loading') {
+    return (
+      <View
+        className={`flex-1 items-center justify-center ${isDark ? 'bg-[#090a0c]' : 'bg-white'}`}
+      >
+        <Text className="text-[14px] text-black dark:text-white">
+          {translate('album.loading')}
+        </Text>
+      </View>
+    );
+  }
+
+  if (status === 'error' || !albumData) {
+    return (
+      <AlbumErrorState
+        message={translate('album.load_error')}
+        onRetry={onRefresh}
+      />
+    );
+  }
+
+  return (
+    <AlbumBody
+      isDark={isDark}
+      storage={storageState}
+      data={albumData}
+      collapsed={collapsed}
+      toggleGroup={toggleGroup}
+      isMockMode={isMockMode}
+      onFormatPress={onFormatPress}
+      onItemPress={onItemPress}
+      insetsBottom={insetsBottom}
+    />
+  );
+}
+
 export function AlbumScreen() {
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
@@ -372,7 +521,8 @@ export function AlbumScreen() {
   const isMockMode = useCameraStore.use.isMockMode();
   const connectionStatus = useCameraStore.use.connectionStatus();
   const isConnected = connectionStatus === 'open';
-  const storageInfo = useStorageInfo(isConnected);
+  const [storageRefreshKey, setStorageRefreshKey] = React.useState(0);
+  const storageInfo = useStorageInfo(isConnected, storageRefreshKey);
 
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
   const [status, setStatus] = React.useState<Status>('loading');
@@ -380,6 +530,15 @@ export function AlbumScreen() {
   const [selectedPhoto, setSelectedPhoto] = React.useState<PhotoItem | null>(
     null,
   );
+
+  React.useEffect(() => {
+    try {
+      useCameraStore.getState().stopStreaming();
+    }
+    catch {
+      // ignore
+    }
+  }, []);
 
   const toggleGroup = React.useCallback((groupId: string) => {
     setCollapsed(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -396,6 +555,7 @@ export function AlbumScreen() {
 
   const handleRefresh = React.useCallback(async () => {
     setStatus('loading');
+    setStorageRefreshKey(k => k + 1);
     try {
       const folders = await listPicFolders();
       console.info(`[Album] folders=${folders.length}`);
@@ -411,51 +571,18 @@ export function AlbumScreen() {
     }
   }, [storageState]);
 
-  const handleFormatPress = React.useCallback(() => {
-    // TODO: wire up to camera format command once the camera API is reachable
-  }, []);
+  const {
+    showFormatSheet,
+    isFormatting,
+    handleFormatPress,
+    handleConfirmFormat,
+    setShowFormatSheet,
+  } = useFormatAction(handleRefresh);
 
   // Initial load
   React.useEffect(() => {
     void handleRefresh();
   }, [handleRefresh]);
-
-  const renderContent = () => {
-    if (status === 'loading') {
-      return (
-        <View
-          className={`flex-1 items-center justify-center ${isDark ? 'bg-[#090a0c]' : 'bg-white'}`}
-        >
-          <Text className="text-[14px] text-black dark:text-white">
-            {translate('album.loading')}
-          </Text>
-        </View>
-      );
-    }
-
-    if (status === 'error' || !albumData) {
-      return (
-        <AlbumErrorState
-          message={translate('album.load_error')}
-          onRetry={handleRefresh}
-        />
-      );
-    }
-
-    return (
-      <AlbumBody
-        isDark={isDark}
-        storage={storageState}
-        data={albumData}
-        collapsed={collapsed}
-        toggleGroup={toggleGroup}
-        isMockMode={isMockMode}
-        onFormatPress={handleFormatPress}
-        onItemPress={item => setSelectedPhoto(item)}
-        insetsBottom={insets.bottom}
-      />
-    );
-  };
 
   return (
     <>
@@ -464,12 +591,35 @@ export function AlbumScreen() {
         style={{ flex: 1, backgroundColor: isDark ? '#090a0c' : '#FFFFFF' }}
       >
         <TitleBar isDark={isDark} onRefreshPress={handleRefresh} />
-        {renderContent()}
+        <AlbumContent
+          status={status}
+          isDark={isDark}
+          albumData={albumData}
+          storageState={storageState}
+          collapsed={collapsed}
+          isMockMode={isMockMode}
+          insetsBottom={insets.bottom}
+          toggleGroup={toggleGroup}
+          onRefresh={handleRefresh}
+          onFormatPress={handleFormatPress}
+          onItemPress={setSelectedPhoto}
+        />
       </SafeAreaView>
 
       <ImageViewer
         item={selectedPhoto}
         onClose={() => setSelectedPhoto(null)}
+        onDeleted={() => {
+          setSelectedPhoto(null);
+          void handleRefresh();
+        }}
+      />
+
+      <FormatConfirmSheet
+        visible={showFormatSheet}
+        loading={isFormatting}
+        onConfirm={handleConfirmFormat}
+        onCancel={() => setShowFormatSheet(false)}
       />
     </>
   );

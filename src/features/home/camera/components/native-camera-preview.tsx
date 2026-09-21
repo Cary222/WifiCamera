@@ -1,10 +1,10 @@
 /* eslint-disable max-lines-per-function */
 
-import type { MediaStream } from 'react-native-webrtc';
+import type { MediaStream } from "react-native-webrtc";
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { NativeModules, Platform, Pressable, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { NativeModules, Platform, Pressable, View } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
   useAnimatedReaction,
@@ -12,35 +12,30 @@ import Animated, {
   useSharedValue,
   withSpring,
   withTiming,
-} from 'react-native-reanimated';
-import { Text } from '@/components/ui';
-import { appLogger } from '@/lib/app-logger';
-import { translate } from '@/lib/i18n';
-import { useCameraStore } from '../camera-store';
-import { getCameraWhepUrl } from '../config';
+} from "react-native-reanimated";
+import { Text } from "@/components/ui";
+import { appLogger } from "@/lib/app-logger";
+import { translate } from "@/lib/i18n";
+import { useCameraStore } from "../camera-store";
+import { getCameraWhepUrl } from "../config";
 import {
   logStreamPoint,
   markStreamStart,
-} from '../services/stream-start-probe';
+} from "../services/stream-start-probe";
 import {
   openWhepSession,
   startWhepNegotiation,
-} from '../services/whep-service';
+} from "../services/whep-service";
 
 const NativeWebRTC = NativeModules.WebRTCModule
-  ? require('react-native-webrtc')
+  ? require("react-native-webrtc")
   : null;
 
 export const RTCView = NativeWebRTC?.RTCView ?? View;
 
-export type CameraPreviewMode = 'auto' | 'manual';
-export type CameraPreviewState = 'connecting' | 'live' | 'error';
+export type CameraPreviewMode = "auto" | "manual";
+export type CameraPreviewState = "connecting" | "live" | "error";
 
-type LandscapePreviewOptions = {
-  mode?: CameraPreviewMode;
-  manualExposure?: number;
-  manualGain?: number;
-};
 
 let mountedPreviewCount = 0;
 
@@ -60,15 +55,24 @@ function serializePreviewTeardown(
   return activePreviewTeardown;
 }
 
+type LandscapePreviewOptions = {
+  mode?: CameraPreviewMode;
+  manualExposure?: number;
+  manualGain?: number;
+  reconnectKey?: string | number;
+};
+
 export function useLandscapeCameraPreview(
-  _options: LandscapePreviewOptions = {},
+  options: LandscapePreviewOptions = {},
 ) {
+  const { reconnectKey } = options;
   const startStreaming = useCameraStore.use.startStreaming();
   const startStreamingManual = useCameraStore.use.startStreamingManual();
   const connectionStatus = useCameraStore.use.connectionStatus();
   const transport = useCameraStore.use.transport();
-  const [previewState, setPreviewState]
-    = useState<CameraPreviewState>('connecting');
+  const landscapeRatio = useCameraStore.use.landscapeRatio();
+  const [previewState, setPreviewState] =
+    useState<CameraPreviewState>("connecting");
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   useEffect(() => {
@@ -79,8 +83,8 @@ export function useLandscapeCameraPreview(
   }, []);
 
   useEffect(() => {
-    if (connectionStatus !== 'open') {
-      setPreviewState('connecting');
+    if (connectionStatus !== "open") {
+      setPreviewState("connecting");
       return;
     }
 
@@ -101,26 +105,24 @@ export function useLandscapeCameraPreview(
         clearInterval(statsTimer);
         statsTimer = null;
       }
-      if (!close)
-        return activePreviewTeardown;
+      if (!close) return activePreviewTeardown;
       return serializePreviewTeardown(close);
     };
 
     const scheduleReconnect = () => {
-      if (!active || reconnectTimer)
-        return;
+      if (!active || reconnectTimer) return;
       const cameraBusy = useCameraStore.getState().cameraState?.busy;
-      if (cameraBusy === 'error') {
-        appLogger.warn('WHEP', '相机状态机处于 error 状态，停止自动重连');
-        setPreviewState('error');
+      if (cameraBusy === "error") {
+        appLogger.warn("WHEP", "相机状态机处于 error 状态，停止自动重连");
+        setPreviewState("error");
         return;
       }
       if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         appLogger.warn(
-          'WHEP',
+          "WHEP",
           `视频流已达到最大重试次数(${MAX_RECONNECT_ATTEMPTS})，停止自动重试`,
         );
-        setPreviewState('error');
+        setPreviewState("error");
         return;
       }
       reconnectAttempts += 1;
@@ -129,9 +131,9 @@ export function useLandscapeCameraPreview(
         BASE_RECONNECT_DELAY_MS * 1.5 ** (reconnectAttempts - 1),
       );
       setStream(null);
-      setPreviewState('connecting');
+      setPreviewState("connecting");
       appLogger.info(
-        'WHEP',
+        "WHEP",
         `视频流将在 ${Math.round(delay)}ms 后第 ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} 次重连`,
       );
       void releaseSession();
@@ -142,16 +144,14 @@ export function useLandscapeCameraPreview(
     };
 
     const connect = async () => {
-      if (!active || connecting)
-        return;
+      if (!active || connecting) return;
       connecting = true;
       try {
         await releaseSession();
         // Also wait for a previous screen's session to finish tearing down.
         await activePreviewTeardown;
-        if (!active)
-          return;
-        logStreamPoint('whep_connect');
+        if (!active) return;
+        logStreamPoint("whep_connect");
         const session = await openWhepSession(getCameraWhepUrl(), {
           onDisconnected: scheduleReconnect,
           onTrack: (incomingStream) => {
@@ -166,7 +166,7 @@ export function useLandscapeCameraPreview(
         }
         closeSession = session.close;
         setStream(session.stream);
-        setPreviewState('live');
+        setPreviewState("live");
         reconnectAttempts = 0;
         // Periodic diagnostics: after 4 ticks (8s) drop to a slow cadence.
         let ticks = 0;
@@ -174,39 +174,34 @@ export function useLandscapeCameraPreview(
           ticks += 1;
           if (ticks <= 4 || ticks % 6 === 0) {
             void session.getStats().then((stats) => {
-              if (__DEV__)
-                console.info(`[CameraWHEP-stats] ${stats}`);
+              if (__DEV__) console.info(`[CameraWHEP-stats] ${stats}`);
             });
           }
         }, 2_000);
-      }
-      catch (error) {
-        if (__DEV__)
-          console.warn('[CameraWHEP]', error);
+      } catch (error) {
+        if (__DEV__) console.warn("[CameraWHEP]", error);
         scheduleReconnect();
-      }
-      finally {
+      } finally {
         connecting = false;
       }
     };
 
-    setPreviewState('connecting');
+    setPreviewState("connecting");
 
     // 与网页端一致：只在进入风景模式时开流一次；WHEP 重连只重挂预览，绝不重启板端推流。
     // createOffer 和等开流回包并行；POST 仍等回包 + 上次 DELETE 结束。
     const bringUp = async () => {
       const storeState = useCameraStore.getState();
       const auto = storeState.landscapeAutoMode;
-      markStreamStart(auto ? 'auto' : 'manual');
+      markStreamStart(auto ? "auto" : "manual");
       const negotiation = startWhepNegotiation(getCameraWhepUrl(), {
         onDisconnected: scheduleReconnect,
         onTrack: (incomingStream) => {
-          if (active)
-            setStream(incomingStream);
+          if (active) setStream(incomingStream);
         },
       });
       const ack = auto
-        ? await startStreaming('auto')
+        ? await startStreaming("auto")
         : await startStreamingManual(
             storeState.landscapeManualExposure,
             storeState.landscapeManualGain,
@@ -215,7 +210,7 @@ export function useLandscapeCameraPreview(
         negotiation.discard();
         return;
       }
-      logStreamPoint('stream_ack', {
+      logStreamPoint("stream_ack", {
         timeout: Boolean(ack.timeout),
         error: ack.error ?? null,
         success: ack.msg?.success !== false,
@@ -228,7 +223,7 @@ export function useLandscapeCameraPreview(
           negotiation.discard();
           return;
         }
-        logStreamPoint('whep_connect');
+        logStreamPoint("whep_connect");
         const session = await negotiation.post();
         if (!active) {
           await session.close();
@@ -236,43 +231,38 @@ export function useLandscapeCameraPreview(
         }
         closeSession = session.close;
         setStream(session.stream);
-        setPreviewState('live');
+        setPreviewState("live");
         reconnectAttempts = 0;
         let ticks = 0;
         statsTimer = setInterval(() => {
           ticks += 1;
           if (ticks <= 4 || ticks % 6 === 0) {
             void session.getStats().then((stats) => {
-              if (__DEV__)
-                console.info(`[CameraWHEP-stats] ${stats}`);
+              if (__DEV__) console.info(`[CameraWHEP-stats] ${stats}`);
             });
           }
         }, 2_000);
-      }
-      catch (error) {
+      } catch (error) {
         negotiation.discard();
-        if (__DEV__)
-          console.warn('[CameraWHEP]', error);
-        if (active)
-          scheduleReconnect();
-      }
-      finally {
+        if (__DEV__) console.warn("[CameraWHEP]", error);
+        if (active) scheduleReconnect();
+      } finally {
         connecting = false;
       }
     };
     void bringUp();
     return () => {
       active = false;
-      if (reconnectTimer)
-        clearTimeout(reconnectTimer);
-      if (statsTimer)
-        clearInterval(statsTimer);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (statsTimer) clearInterval(statsTimer);
       setStream(null);
       void releaseSession();
     };
-    // 不依赖模式/曝光/增益，避免调参时断开并重建 WebRTC 会话。
+    // 不依赖曝光/增益，避免调参时断开并重建 WebRTC 会话。
+    // 亦不依赖 landscapeRatio 重建：切换画幅时硬件板端内部会自动重启推流，
+    // WebRTC 底层音视频轨道会自动接收新的分辨率，重建 WHEP 反而导致状态竞态。
     // transport 变化必须重建：WHEP 地址随链路切换而变。
-  }, [connectionStatus, transport]);
+  }, [connectionStatus, transport, reconnectKey]);
 
   return { previewState, stream };
 }
@@ -282,7 +272,7 @@ export type PreviewSurfaceProps = {
   previewState: CameraPreviewState;
   width: number;
   height: number;
-  objectFit?: 'cover' | 'contain';
+  objectFit?: "cover" | "contain";
   rotation?: number;
   scale?: number;
   pinchZoomable?: boolean;
@@ -295,16 +285,16 @@ export type PreviewSurfaceProps = {
 const WebVideoSurface = memo(
   ({
     stream,
-    width = '100%',
-    height = '100%',
-    objectFit = 'cover',
+    width = "100%",
+    height = "100%",
+    objectFit = "cover",
     rotation = 0,
     scale = 1,
   }: {
     stream: MediaStream | null;
     width?: number | string;
     height?: number | string;
-    objectFit?: 'cover' | 'contain';
+    objectFit?: "cover" | "contain";
     rotation?: number;
     scale?: number;
   }) => {
@@ -323,8 +313,7 @@ const WebVideoSurface = memo(
 
     useEffect(() => {
       const video = videoRef.current;
-      if (!video)
-        return;
+      if (!video) return;
 
       if (!stream) {
         video.srcObject = null;
@@ -342,22 +331,22 @@ const WebVideoSurface = memo(
         void video.play().catch(() => {});
       };
 
-      nativeStream.addEventListener?.('addtrack', handleTrackEvent);
-      nativeStream.addEventListener?.('removetrack', handleTrackEvent);
+      nativeStream.addEventListener?.("addtrack", handleTrackEvent);
+      nativeStream.addEventListener?.("removetrack", handleTrackEvent);
 
       return () => {
-        nativeStream.removeEventListener?.('addtrack', handleTrackEvent);
-        nativeStream.removeEventListener?.('removetrack', handleTrackEvent);
+        nativeStream.removeEventListener?.("addtrack", handleTrackEvent);
+        nativeStream.removeEventListener?.("removetrack", handleTrackEvent);
       };
     }, [stream]);
 
-    const transformStyle
-      = [
-        rotation ? `rotate(${rotation}deg)` : '',
-        scale !== 1 ? `scale(${scale})` : '',
+    const transformStyle =
+      [
+        rotation ? `rotate(${rotation}deg)` : "",
+        scale !== 1 ? `scale(${scale})` : "",
       ]
         .filter(Boolean)
-        .join(' ') || undefined;
+        .join(" ") || undefined;
 
     return (
       <video
@@ -370,13 +359,13 @@ const WebVideoSurface = memo(
           height,
           objectFit,
           transform: transformStyle,
-          background: '#0B0B0D',
+          background: "#0B0B0D",
         }}
       />
     );
   },
 );
-WebVideoSurface.displayName = 'WebVideoSurface';
+WebVideoSurface.displayName = "WebVideoSurface";
 
 export const PreviewSurface = memo(
   ({
@@ -384,14 +373,14 @@ export const PreviewSurface = memo(
     previewState,
     width,
     height,
-    objectFit = 'contain',
+    objectFit = "contain",
     rotation = 0,
     scale = 1,
     pinchZoomable = true,
   }: PreviewSurfaceProps) => {
     const pinchScale = useSharedValue(1);
     const savedScale = useSharedValue(1);
-    const [zoomText, setZoomText] = useState('1.0x');
+    const [zoomText, setZoomText] = useState("1.0x");
     const [isZoomed, setIsZoomed] = useState(false);
 
     const updateZoomState = useCallback((val: number) => {
@@ -414,8 +403,7 @@ export const PreviewSurface = memo(
       savedScale.value = 1;
     }, [pinchScale, savedScale]);
     const pinchGesture = useMemo(() => {
-      if (!pinchZoomable)
-        return null;
+      if (!pinchZoomable) return null;
       return Gesture.Pinch()
         .onUpdate((event) => {
           pinchScale.value = Math.min(
@@ -427,16 +415,14 @@ export const PreviewSurface = memo(
           if (pinchScale.value < 1) {
             pinchScale.value = withSpring(1);
             savedScale.value = 1;
-          }
-          else {
+          } else {
             savedScale.value = pinchScale.value;
           }
         });
     }, [pinchZoomable, pinchScale, savedScale]);
 
     const doubleTapGesture = useMemo(() => {
-      if (!pinchZoomable)
-        return null;
+      if (!pinchZoomable) return null;
       return Gesture.Tap()
         .numberOfTaps(2)
         .onEnd(() => {
@@ -446,8 +432,7 @@ export const PreviewSurface = memo(
     }, [pinchZoomable, pinchScale, savedScale]);
 
     const composedGesture = useMemo(() => {
-      if (!pinchGesture || !doubleTapGesture)
-        return null;
+      if (!pinchGesture || !doubleTapGesture) return null;
       return Gesture.Simultaneous(pinchGesture, doubleTapGesture);
     }, [pinchGesture, doubleTapGesture]);
 
@@ -461,11 +446,15 @@ export const PreviewSurface = memo(
       };
     });
 
-    const hasTracks
-      = stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
+    const hasTracks =
+      stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
+
+    const isRotated = rotation === 90 || rotation === 270;
+    const containerWidth = isRotated ? height : width;
+    const containerHeight = isRotated ? width : height;
 
     const renderSurface = () => {
-      if (Platform.OS === 'web') {
+      if (Platform.OS === "web") {
         return (
           <WebVideoSurface
             stream={stream}
@@ -478,6 +467,7 @@ export const PreviewSurface = memo(
       if (stream && hasTracks && NativeWebRTC) {
         return (
           <RTCView
+            key={`rtc-${width}x${height}-${rotation}-${stream.toURL()}`}
             streamURL={stream.toURL()}
             objectFit={objectFit}
             mirror={false}
@@ -486,28 +476,38 @@ export const PreviewSurface = memo(
         );
       }
       const cameraBusy = useCameraStore.getState().cameraState?.busy;
-      const errorText
-        = cameraBusy === 'error'
-          ? '相机服务异常，请重启相机'
-          : translate('landscape.preview_failed');
+      const errorText =
+        cameraBusy === "error"
+          ? "相机服务异常，请重启相机"
+          : translate("landscape.preview_failed");
 
       return (
         <View
           className="flex-1 items-center justify-center bg-[#0B0B0D]"
           style={{ width, height }}
         >
-          <Text className="text-sm text-white/40">
-            {previewState === 'error'
+          <Text
+            className="text-sm text-white/40"
+            style={
+              rotation
+                ? { transform: [{ rotate: `-${rotation}deg` }] }
+                : undefined
+            }
+          >
+            {previewState === "error"
               ? errorText
-              : translate('landscape.preview_connecting')}
+              : translate("landscape.preview_connecting")}
           </Text>
         </View>
       );
     };
 
     const surfaceContent = (
-      <View style={{ width, height }} className="overflow-hidden">
-        <Animated.View style={[{ width, height }, animatedSurfaceStyle]}>
+      <View
+        style={{ width: containerWidth, height: containerHeight }}
+        className="items-center justify-center overflow-hidden"
+      >
+        <Animated.View style={animatedSurfaceStyle}>
           {renderSurface()}
         </Animated.View>
         {isZoomed && (
@@ -539,24 +539,24 @@ export const PreviewSurface = memo(
     return surfaceContent;
   },
 );
-PreviewSurface.displayName = 'PreviewSurface';
+PreviewSurface.displayName = "PreviewSurface";
 
 /**
  * Keeps the existing preview-area layout intact and replaces only its
  * placeholder content with the board's native WebRTC stream.
  */
 export function NativeCameraPreview({
-  objectFit = 'contain',
+  objectFit = "contain",
   rotation = 0,
   scale = 1,
 }: {
-  objectFit?: 'cover' | 'contain';
+  objectFit?: "cover" | "contain";
   rotation?: number;
   scale?: number;
 } = {}) {
   const { previewState, stream } = useLandscapeCameraPreview();
-  const hasTracks
-    = stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
+  const hasTracks =
+    stream && (stream.getTracks ? stream.getTracks().length > 0 : true);
 
   const transformStyle = useMemo(() => {
     const transforms: Array<{ rotate?: string } | { scale?: number }> = [];
@@ -571,34 +571,32 @@ export function NativeCameraPreview({
 
   return (
     <View className="flex-1 overflow-hidden rounded-2xl bg-neutral-900">
-      {Platform.OS === 'web'
-        ? (
-            <WebVideoSurface
-              stream={stream}
-              objectFit={objectFit}
-              rotation={rotation}
-              scale={scale}
-            />
-          )
-        : (
-            stream
-            && hasTracks
-            && NativeWebRTC && (
-              <RTCView
-                streamURL={stream.toURL()}
-                objectFit={objectFit}
-                mirror={false}
-                style={[
-                  { flex: 1 },
-                  transformStyle ? { transform: transformStyle } : undefined,
-                ]}
-              />
-            )
-          )}
-      {previewState !== 'live' && (
+      {Platform.OS === "web" ? (
+        <WebVideoSurface
+          stream={stream}
+          objectFit={objectFit}
+          rotation={rotation}
+          scale={scale}
+        />
+      ) : (
+        stream &&
+        hasTracks &&
+        NativeWebRTC && (
+          <RTCView
+            streamURL={stream.toURL()}
+            objectFit={objectFit}
+            mirror={false}
+            style={[
+              { flex: 1 },
+              transformStyle ? { transform: transformStyle } : undefined,
+            ]}
+          />
+        )
+      )}
+      {previewState !== "live" && (
         <View className="absolute inset-0 items-center justify-center">
           <Text className="text-neutral-500">
-            {previewState === 'error' ? '相机预览连接失败' : '相机预览区域'}
+            {previewState === "error" ? "相机预览连接失败" : "相机预览区域"}
           </Text>
         </View>
       )}

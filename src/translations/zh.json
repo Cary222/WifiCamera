@@ -27,6 +27,12 @@
     "folder_count": "{{count}}个项目",
     "folder_date": "日期",
     "folder_size": "大小",
+    "format_sheet": {
+      "cancel": "取消",
+      "confirm": "确认格式化",
+      "title": "确认格式化TF卡",
+      "warning": "TF卡内所有内容（包括照片、视频及其他文件）将被清空，已保存至手机相册的内容不会受到影响，该操作无法撤销。"
+    },
     "load_error": "加载文件夹失败",
     "loading": "正在加载文件夹...",
     "mock_mode_hint": "相机未连接，使用模拟数据",
@@ -39,7 +45,20 @@
       "subtitle": "{{used}} / {{total}}"
     },
     "subtitle": "照片和视频",
-    "title": "相册"
+    "title": "相册",
+    "viewer": {
+      "delete_cancel": "取消",
+      "delete_confirm": "删除",
+      "delete_confirm_message": "删除后该照片将从TF卡中永久移除，无法恢复。",
+      "delete_confirm_title": "确认删除照片",
+      "delete_failed": "删除失败，请重试",
+      "permission_denied_message": "请在系统设置中允许应用访问照片库权限以保存图片。",
+      "permission_denied_title": "无法访问相册",
+      "save_failed": "保存失败，请检查网络后重试",
+      "save_success": "已保存至手机相册",
+      "share_failed": "分享失败，请重试",
+      "share_unavailable": "当前设备不支持系统分享"
+    }
   },
   "camera": {
     "capture": "单次拍摄",

@@ -1,9 +1,9 @@
-import type { ReactNode } from 'react';
-import { act, renderHook } from '@testing-library/react-native';
-import * as React from 'react';
-import * as ReactNative from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useAspectRatioAnimation } from './aspect-ratio-switcher';
+import type { ReactNode } from "react";
+import { act, renderHook } from "@testing-library/react-native";
+import * as React from "react";
+import * as ReactNative from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useAspectRatioAnimation } from "./aspect-ratio-switcher";
 
 function wrapper({ children }: { children: ReactNode }) {
   return (
@@ -18,8 +18,8 @@ function wrapper({ children }: { children: ReactNode }) {
   );
 }
 
-describe('useAspectRatioAnimation', () => {
-  const defaultDimensions = ReactNative.Dimensions.get('window');
+describe("useAspectRatioAnimation", () => {
+  const defaultDimensions = ReactNative.Dimensions.get("window");
   afterEach(() => {
     act(() => {
       ReactNative.Dimensions.set({
@@ -28,12 +28,12 @@ describe('useAspectRatioAnimation', () => {
       });
     });
   });
-  it('calculates portrait 9:16 and 3:4 adaptive viewports with 90-degree rotation', () => {
+  it("calculates portrait 9:16 and 3:4 adaptive viewports with 90-degree rotation", () => {
     const { result: r16_9 } = renderHook(
-      () => useAspectRatioAnimation('16:9'),
+      () => useAspectRatioAnimation("16:9"),
       { wrapper },
     );
-    const { result: r4_3 } = renderHook(() => useAspectRatioAnimation('4:3'), {
+    const { result: r4_3 } = renderHook(() => useAspectRatioAnimation("4:3"), {
       wrapper,
     });
 
@@ -54,16 +54,14 @@ describe('useAspectRatioAnimation', () => {
       4 / 3,
       1,
     );
-
-    // Surface dimensions are kept constant so ratio switching never resizes RTCView
-    expect(r16_9.current.surfaceWidth).toBe(r4_3.current.surfaceWidth);
-    expect(r16_9.current.surfaceHeight).toBe(r4_3.current.surfaceHeight);
-    expect(
-      r16_9.current.surfaceWidth / r16_9.current.surfaceHeight,
-    ).toBeCloseTo(16 / 9, 1);
+    // Surface dimensions in portrait: unrotated RTCView is previewHeight x previewWidth
+    expect(r16_9.current.surfaceWidth).toBe(r16_9.current.previewHeight);
+    expect(r16_9.current.surfaceHeight).toBe(r16_9.current.previewWidth);
+    expect(r4_3.current.surfaceWidth).toBe(r4_3.current.previewHeight);
+    expect(r4_3.current.surfaceHeight).toBe(r4_3.current.previewWidth);
   });
 
-  it('calculates landscape 16:9 and 4:3 viewports with 0-degree rotation', () => {
+  it("calculates landscape 16:9 and 4:3 viewports with 0-degree rotation", () => {
     act(() => {
       ReactNative.Dimensions.set({
         window: { width: 844, height: 390, scale: 1, fontScale: 1 },
@@ -72,10 +70,10 @@ describe('useAspectRatioAnimation', () => {
     });
 
     const { result: r16_9 } = renderHook(
-      () => useAspectRatioAnimation('16:9'),
+      () => useAspectRatioAnimation("16:9"),
       { wrapper },
     );
-    const { result: r4_3 } = renderHook(() => useAspectRatioAnimation('4:3'), {
+    const { result: r4_3 } = renderHook(() => useAspectRatioAnimation("4:3"), {
       wrapper,
     });
 

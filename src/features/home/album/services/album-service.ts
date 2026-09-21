@@ -12,8 +12,11 @@ import type {
  * Network errors are caught and return empty arrays so the UI can still render
  * with mock data rather than crashing when the camera is unreachable.
  */
+import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import { cameraClient } from '../../camera/client';
 import { unwrapCamera } from '../../camera/errors';
+import { getImage } from '../../camera/services/file-service';
 import {
   ALBUM_ENDPOINTS,
   ALBUM_REQUEST_TIMEOUT_MS,
@@ -164,4 +167,71 @@ export async function deletePicFolder(sourceDir: string): Promise<void> {
     source_dir: sourceDir,
   });
   unwrapCamera(res.data, 'POST', legacyUrl);
+}
+
+export {
+  checkStorageCapabilities,
+  FormatError,
+  formatSdCard,
+  getFormatTaskStatus,
+} from './format-service';
+export type {
+  FormatErrorCode,
+  FormatRequestPayload,
+  FormatResponse,
+  FormatResult,
+  FormatSdCardOptions,
+  FormatTaskStatusResponse,
+  StorageStatusResponse,
+} from './format-service';
+
+/**
+ * Downloads an image file from the camera board to the phone's local cache.
+ */
+export async function downloadImageFile(params: {
+  previewUrl?: string;
+  path?: string;
+}): Promise<string> {
+  const rawFilename = params.path ? params.path.split(/[\\/]/).pop() : null;
+  const filename = rawFilename && rawFilename.length > 0 ? rawFilename : `photo_${Date.now()}.jpg`;
+  const cacheDir = FileSystem.cacheDirectory ?? '';
+  const localUri = `${cacheDir}${Date.now()}_${filename}`;
+
+  if (params.previewUrl && params.previewUrl.startsWith('http')) {
+    try {
+      const downloadRes = await FileSystem.downloadAsync(params.previewUrl, localUri);
+      return downloadRes.uri;
+    }
+    catch (error) {
+      console.warn('[album] downloadAsync failed, attempting fallback', error);
+    }
+  }
+
+  if (params.path) {
+    const dataUri = await getImage(params.path);
+    const base64Data = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
+    await FileSystem.writeAsStringAsync(localUri, base64Data, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return localUri;
+  }
+
+  throw new Error('NO_IMAGE_SOURCE');
+}
+
+/**
+ * Downloads and saves an image to the phone's system photo album with permission handling.
+ */
+export async function saveImageToPhone(params: {
+  previewUrl?: string;
+  path?: string;
+}): Promise<string> {
+  const { status, granted } = await MediaLibrary.requestPermissionsAsync(true);
+  if (!granted && status !== 'granted') {
+    throw new Error('PERMISSION_DENIED');
+  }
+
+  const localUri = await downloadImageFile(params);
+  await MediaLibrary.saveToLibraryAsync(localUri);
+  return localUri;
 }

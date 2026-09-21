@@ -15,7 +15,21 @@ export const ALBUM_ENDPOINTS = {
   delDir: '/FileCopy/del_dir/',
 } as const;
 
+/**
+ * PROPOSED storage format endpoints (Draft contract — NOT yet implemented on firmware).
+ * Firmware main@c6fb93c does not have these routes. They are subject to firmware alignment.
+ */
+export const PROPOSED_STORAGE_ENDPOINTS = {
+  status: '/storage/status',
+  format: '/storage/format',
+  formatStatus: '/storage/format/status',
+} as const;
+
 export const ALBUM_REQUEST_TIMEOUT_MS = 15_000;
+export const FORMAT_CHECK_TIMEOUT_MS = 5_000;
+export const FORMAT_POST_TIMEOUT_MS = 10_000;
+export const FORMAT_POLL_INTERVAL_MS = 1_000;
+export const FORMAT_MAX_POLL_ATTEMPTS = 90;
 
 /**
  * Album requests must target the same endpoint as preview/capture.

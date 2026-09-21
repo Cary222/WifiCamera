@@ -29,6 +29,42 @@ const appIconBadgeConfig: AppIconBadgeConfig = {
   ],
 };
 
+const expoFontConfig = {
+  ios: {
+    fonts: [
+      'node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf',
+      'node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf',
+      'node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf',
+      'node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf',
+    ],
+  },
+  android: {
+    fonts: [
+      {
+        fontFamily: 'Inter',
+        fontDefinitions: [
+          {
+            path: 'node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf',
+            weight: 400,
+          },
+          {
+            path: 'node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf',
+            weight: 500,
+          },
+          {
+            path: 'node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf',
+            weight: 600,
+          },
+          {
+            path: 'node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf',
+            weight: 700,
+          },
+        ],
+      },
+    ],
+  },
+};
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: Env.EXPO_PUBLIC_NAME,
@@ -82,43 +118,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     [
-      'expo-font',
+      'expo-media-library',
       {
-        ios: {
-          fonts: [
-            'node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf',
-            'node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf',
-            'node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf',
-            'node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf',
-          ],
-        },
-        android: {
-          fonts: [
-            {
-              fontFamily: 'Inter',
-              fontDefinitions: [
-                {
-                  path: 'node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf',
-                  weight: 400,
-                },
-                {
-                  path: 'node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf',
-                  weight: 500,
-                },
-                {
-                  path: 'node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf',
-                  weight: 600,
-                },
-                {
-                  path: 'node_modules/@expo-google-fonts/inter/700Bold/Inter_700Bold.ttf',
-                  weight: 700,
-                },
-              ],
-            },
-          ],
-        },
+        photosPermission: false,
+        savePhotosPermission: 'Allow $(PRODUCT_NAME) to save photos.',
       },
     ],
+    ['expo-font', expoFontConfig],
     'expo-localization',
     'expo-router',
     './plugins/with-stellarium-assets',
