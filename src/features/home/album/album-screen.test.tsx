@@ -1,4 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react-native';
 import * as React from 'react';
 import { Alert } from 'react-native';
 import { AlbumScreen } from './album-screen';
@@ -23,7 +28,8 @@ jest.mock('react-native-webview', () => {
   const React = require('react');
   const { View } = require('react-native');
   return {
-    WebView: (props: any) => React.createElement(View, { testID: 'mock-webview', ...props }),
+    WebView: (props: any) =>
+      React.createElement(View, { testID: 'mock-webview', ...props }),
   };
 });
 
@@ -188,10 +194,14 @@ describe('albumScreen: format execution flow', () => {
 
   it('busy state prevents duplicate format calls while in flight', async () => {
     let resolveFormat: () => void = () => {};
-    const pendingPromise = new Promise<{ ok: boolean; status: string }>((resolve) => {
-      resolveFormat = () => resolve({ ok: true, status: 'success' });
-    });
-    (albumService.formatSdCard as jest.Mock).mockReturnValueOnce(pendingPromise);
+    const pendingPromise = new Promise<{ ok: boolean; status: string }>(
+      (resolve) => {
+        resolveFormat = () => resolve({ ok: true, status: 'success' });
+      },
+    );
+    (albumService.formatSdCard as jest.Mock).mockReturnValueOnce(
+      pendingPromise,
+    );
 
     render(<AlbumScreen />);
 
@@ -209,7 +219,10 @@ describe('albumScreen: format execution flow', () => {
 
     resolveFormat();
     await waitFor(() => {
-      expect(Alert.alert).toHaveBeenCalledWith('格式化成功', 'TF卡已成功格式化。');
+      expect(Alert.alert).toHaveBeenCalledWith(
+        '格式化成功',
+        'TF卡已成功格式化。',
+      );
     });
   });
 });

@@ -8,7 +8,12 @@
  * The store (`useAlbumStore`) is NOT used here — the screen manages its own
  * data loading so it can directly own the mock/real data transformation.
  */
-import type { AlbumData, PhotoItem, StorageCardState, VideoMediaItem } from './types';
+import type {
+  AlbumData,
+  PhotoItem,
+  StorageCardState,
+  VideoMediaItem,
+} from './types';
 import { useNavigation } from '@react-navigation/native';
 import { Image as NImage } from 'expo-image';
 import * as React from 'react';
@@ -397,10 +402,13 @@ function AlbumBody({
   onPlayVideo?: (item: VideoMediaItem) => void;
   insetsBottom: number;
 }) {
-  const tabOptions = React.useMemo(() => [
-    { value: 'photos' as const, label: translate('album.tab_photos') },
-    { value: 'videos' as const, label: translate('album.tab_videos') },
-  ], []);
+  const tabOptions = React.useMemo(
+    () => [
+      { value: 'photos' as const, label: translate('album.tab_photos') },
+      { value: 'videos' as const, label: translate('album.tab_videos') },
+    ],
+    [],
+  );
 
   return (
     <ScrollView
@@ -452,7 +460,10 @@ function AlbumBody({
 function useFormatAction(onSuccess: () => Promise<void>) {
   const [showFormatSheet, setShowFormatSheet] = React.useState(false);
   const [isFormatting, setIsFormatting] = React.useState(false);
-  const lastTaskRef = React.useRef<{ requestId?: string; taskId?: string } | null>(null);
+  const lastTaskRef = React.useRef<{
+    requestId?: string;
+    taskId?: string;
+  } | null>(null);
 
   const handleFormatPress = React.useCallback(() => {
     setShowFormatSheet(true);
@@ -472,7 +483,10 @@ function useFormatAction(onSuccess: () => Promise<void>) {
       }
       const result = await formatSdCard();
       if (result?.taskId || result?.requestId) {
-        lastTaskRef.current = { requestId: result.requestId, taskId: result.taskId };
+        lastTaskRef.current = {
+          requestId: result.requestId,
+          taskId: result.taskId,
+        };
       }
       setShowFormatSheet(false);
       await onSuccess();
@@ -481,7 +495,10 @@ function useFormatAction(onSuccess: () => Promise<void>) {
     catch (error: unknown) {
       setShowFormatSheet(false);
       if (error instanceof FormatError) {
-        lastTaskRef.current = { requestId: error.requestId, taskId: error.taskId };
+        lastTaskRef.current = {
+          requestId: error.requestId,
+          taskId: error.taskId,
+        };
         if (error.code === 'FORMAT_STATUS_UNKNOWN') {
           Alert.alert('格式化状态未知', error.message);
           return;
@@ -494,11 +511,17 @@ function useFormatAction(onSuccess: () => Promise<void>) {
           return;
         }
         if (error.code === 'STORAGE_BUSY') {
-          Alert.alert('格式化失败', error.message || '相机当前正忙或正在写入，无法执行格式化。');
+          Alert.alert(
+            '格式化失败',
+            error.message || '相机当前正忙或正在写入，无法执行格式化。',
+          );
           return;
         }
         if (error.code === 'STORAGE_NO_CARD') {
-          Alert.alert('格式化失败', error.message || '未检测到TF卡或TF卡未挂载，无法格式化。');
+          Alert.alert(
+            '格式化失败',
+            error.message || '未检测到TF卡或TF卡未挂载，无法格式化。',
+          );
           return;
         }
         Alert.alert('格式化失败', error.message || '格式化失败，请重试。');
@@ -617,7 +640,9 @@ function useAlbumMedia(storageState: StorageCardState) {
         listPicFolders(),
         listAllVideosAndSer(),
       ]);
-      console.info(`[Album] folders=${folders.length} videos=${videoList.length}`);
+      console.info(
+        `[Album] folders=${folders.length} videos=${videoList.length}`,
+      );
       const { groups } = groupIntoAlbumData(folders);
       setVideos(videoList);
       setAlbumData({ storage: storageState, groups });
@@ -636,6 +661,7 @@ function useAlbumMedia(storageState: StorageCardState) {
   return { status, albumData, videos, handleRefresh };
 }
 
+// eslint-disable-next-line max-lines-per-function -- album screen layout
 export function AlbumScreen() {
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
@@ -644,9 +670,14 @@ export function AlbumScreen() {
   const connectionStatus = useCameraStore.use.connectionStatus();
   const isConnected = connectionStatus === 'open';
 
-  const [activeTab, setActiveTab] = React.useState<'photos' | 'videos'>('photos');
-  const [selectedPhoto, setSelectedPhoto] = React.useState<PhotoItem | null>(null);
-  const [selectedVideo, setSelectedVideo] = React.useState<VideoMediaItem | null>(null);
+  const [activeTab, setActiveTab] = React.useState<'photos' | 'videos'>(
+    'photos',
+  );
+  const [selectedPhoto, setSelectedPhoto] = React.useState<PhotoItem | null>(
+    null,
+  );
+  const [selectedVideo, setSelectedVideo]
+    = React.useState<VideoMediaItem | null>(null);
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
 
   React.useEffect(() => {
@@ -666,7 +697,7 @@ export function AlbumScreen() {
   const storageInfo = useStorageInfo(isConnected, storageRefreshKey);
 
   const storageState = React.useMemo<StorageCardState>(() => {
-    const hasCard = storageInfo.hasCard ?? (storageInfo.totalGB > 0);
+    const hasCard = storageInfo.hasCard ?? storageInfo.totalGB > 0;
     const hasRealData = hasCard && storageInfo.totalGB > 0;
     return {
       name: 'album.storage_card.name',
@@ -675,9 +706,15 @@ export function AlbumScreen() {
       hasCard,
       statusText: hasCard ? undefined : storageInfo.remainingLabel,
     };
-  }, [storageInfo.hasCard, storageInfo.usedGB, storageInfo.totalGB, storageInfo.remainingLabel]);
+  }, [
+    storageInfo.hasCard,
+    storageInfo.usedGB,
+    storageInfo.totalGB,
+    storageInfo.remainingLabel,
+  ]);
 
-  const { status, albumData, videos, handleRefresh } = useAlbumMedia(storageState);
+  const { status, albumData, videos, handleRefresh }
+    = useAlbumMedia(storageState);
 
   const refreshAll = React.useCallback(async () => {
     setStorageRefreshKey(k => k + 1);
@@ -695,7 +732,9 @@ export function AlbumScreen() {
   return (
     <>
       <FocusAwareStatusBar />
-      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#090a0c' : '#FFFFFF' }}>
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: isDark ? '#090a0c' : '#FFFFFF' }}
+      >
         <TitleBar isDark={isDark} onRefreshPress={refreshAll} />
         <AlbumContent
           status={status}
@@ -725,7 +764,10 @@ export function AlbumScreen() {
         }}
       />
 
-      <VideoPlayerModal item={selectedVideo} onClose={() => setSelectedVideo(null)} />
+      <VideoPlayerModal
+        item={selectedVideo}
+        onClose={() => setSelectedVideo(null)}
+      />
 
       <FormatConfirmSheet
         visible={showFormatSheet}

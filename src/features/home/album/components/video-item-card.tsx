@@ -33,7 +33,11 @@ function SerActionButton({
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 16,
-        backgroundColor: isDownloadable ? (isDark ? '#22252A' : '#E5E7EB') : 'transparent',
+        backgroundColor: isDownloadable
+          ? isDark
+            ? '#22252A'
+            : '#E5E7EB'
+          : 'transparent',
         opacity: isDownloadable ? 1 : 0.4,
         flexDirection: 'row',
         alignItems: 'center',
@@ -54,7 +58,11 @@ function SerActionButton({
                   fontSize: 12,
                   marginLeft: 4,
                   fontWeight: '600',
-                  color: isDownloadable ? (isDark ? '#FFFFFF' : '#111827') : '#888888',
+                  color: isDownloadable
+                    ? isDark
+                      ? '#FFFFFF'
+                      : '#111827'
+                    : '#888888',
                 }}
               >
                 {isDownloadable ? translate('album.videos.download') : '未收尾'}
@@ -80,7 +88,13 @@ function Mp4PlayButton() {
         justifyContent: 'center',
       }}
     >
-      <Text style={{ fontSize: 13, color: isDark ? '#FFFFFF' : '#111827', marginLeft: 2 }}>
+      <Text
+        style={{
+          fontSize: 13,
+          color: isDark ? '#FFFFFF' : '#111827',
+          marginLeft: 2,
+        }}
+      >
         ▶
       </Text>
     </View>
@@ -96,7 +110,9 @@ function ItemInfoSection({ item }: { item: VideoMediaItem }) {
           width: 44,
           height: 44,
           borderRadius: 12,
-          backgroundColor: isSer ? 'rgba(203, 255, 60, 0.12)' : 'rgba(74, 144, 226, 0.15)',
+          backgroundColor: isSer
+            ? 'rgba(203, 255, 60, 0.12)'
+            : 'rgba(74, 144, 226, 0.15)',
           alignItems: 'center',
           justifyContent: 'center',
         }}
@@ -113,7 +129,10 @@ function ItemInfoSection({ item }: { item: VideoMediaItem }) {
       </View>
 
       <View className="ml-3 flex-1">
-        <Text numberOfLines={1} className="text-[15px] font-medium text-black dark:text-white">
+        <Text
+          numberOfLines={1}
+          className="text-[15px] font-medium text-black dark:text-white"
+        >
           {item.name}
         </Text>
         <Text className="mt-1 text-[12px] text-neutral-400 dark:text-neutral-500">
@@ -164,7 +183,8 @@ export function VideoItemCard({ item, onPlayPress }: Props) {
     }
     catch (error: unknown) {
       console.warn('[VideoItemCard] SER download failed', error);
-      const isNotFinalized = error instanceof Error && error.message === 'SER_NOT_FINALIZED';
+      const isNotFinalized
+        = error instanceof Error && error.message === 'SER_NOT_FINALIZED';
       Alert.alert(
         '下载失败',
         isNotFinalized
@@ -182,7 +202,9 @@ export function VideoItemCard({ item, onPlayPress }: Props) {
       testID={`video-card-${item.id}`}
       onPress={() => (isSer ? handleSerDownload() : onPlayPress?.(item))}
       className={`mx-4 mb-3 flex-row items-center justify-between rounded-2xl border p-3.5 active:opacity-85 ${
-        isDark ? 'border-neutral-800 bg-[#121316]' : 'border-neutral-200 bg-neutral-50'
+        isDark
+          ? 'border-neutral-800 bg-[#121316]'
+          : 'border-neutral-200 bg-neutral-50'
       }`}
     >
       <ItemInfoSection item={item} />

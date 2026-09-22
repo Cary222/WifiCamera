@@ -197,13 +197,19 @@ export async function downloadImageFile(params: {
   path?: string;
 }): Promise<string> {
   const rawFilename = params.path ? params.path.split(/[\\/]/).pop() : null;
-  const filename = rawFilename && rawFilename.length > 0 ? rawFilename : `photo_${Date.now()}.jpg`;
+  const filename
+    = rawFilename && rawFilename.length > 0
+      ? rawFilename
+      : `photo_${Date.now()}.jpg`;
   const cacheDir = FileSystem.cacheDirectory ?? '';
   const localUri = `${cacheDir}${Date.now()}_${filename}`;
 
   if (params.previewUrl && params.previewUrl.startsWith('http')) {
     try {
-      const downloadRes = await FileSystem.downloadAsync(params.previewUrl, localUri);
+      const downloadRes = await FileSystem.downloadAsync(
+        params.previewUrl,
+        localUri,
+      );
       return downloadRes.uri;
     }
     catch (error) {
@@ -238,7 +244,9 @@ export async function saveImageToPhone(params: {
 
   const localUri = await downloadImageFile(params);
   const shouldWatermark = params.watermark ?? true;
-  const fileToSave = shouldWatermark ? await watermarkLocalImageFile(localUri) : localUri;
+  const fileToSave = shouldWatermark
+    ? await watermarkLocalImageFile(localUri)
+    : localUri;
   await MediaLibrary.saveToLibraryAsync(fileToSave);
   return fileToSave;
 }
@@ -247,7 +255,10 @@ export function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0)
     return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const i = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
   const val = bytes / 1024 ** i;
   return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
@@ -313,7 +324,11 @@ export async function listAllVideosAndSer(): Promise<VideoMediaItem[]> {
       const res = await albumClient.get<ListVideosSerResponse>(serUrl, {
         timeout: ALBUM_REQUEST_TIMEOUT_MS,
       });
-      if (!res.data?.ok || res.data.kind !== 'ser' || !Array.isArray(res.data.videos)) {
+      if (
+        !res.data?.ok
+        || res.data.kind !== 'ser'
+        || !Array.isArray(res.data.videos)
+      ) {
         break;
       }
       for (const v of res.data.videos) {
@@ -365,17 +380,24 @@ export async function downloadSerFile(params: {
   }
 
   const info = await FileSystem.getInfoAsync(tempUri);
-  if (!info.exists || (params.size && params.size > 0 && info.size !== params.size)) {
+  if (
+    !info.exists
+    || (params.size && params.size > 0 && info.size !== params.size)
+  ) {
     await FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {});
     throw new Error('SER_SIZE_MISMATCH');
   }
 
   const docDir = FileSystem.documentDirectory ?? cacheDir;
   const finalUri = `${docDir}${params.name}`;
-  await FileSystem.moveAsync({ from: tempUri, to: finalUri }).catch(async () => {
-    await FileSystem.copyAsync({ from: tempUri, to: finalUri });
-    await FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {});
-  });
+  await FileSystem.moveAsync({ from: tempUri, to: finalUri }).catch(
+    async () => {
+      await FileSystem.copyAsync({ from: tempUri, to: finalUri });
+      await FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(
+        () => {},
+      );
+    },
+  );
 
   return finalUri;
 }
@@ -393,7 +415,10 @@ export async function saveVideoToPhone(params: {
   }
 
   const rawFilename = params.path ? params.path.split(/[\\/]/).pop() : null;
-  const filename = rawFilename && rawFilename.length > 0 ? rawFilename : `video_${Date.now()}.mp4`;
+  const filename
+    = rawFilename && rawFilename.length > 0
+      ? rawFilename
+      : `video_${Date.now()}.mp4`;
   const cacheDir = FileSystem.cacheDirectory ?? '';
   const localUri = `${cacheDir}${Date.now()}_${filename}`;
 
