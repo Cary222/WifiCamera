@@ -6,9 +6,14 @@ import {
   deletePicFile,
   deletePicFolder,
   downloadImageFile,
+  downloadSerFile,
+  formatBytes,
   formatSdCard,
+  formatUnixTimestamp,
+  listAllVideosAndSer,
   listPicFolders,
   saveImageToPhone,
+  saveVideoToPhone,
 } from './album-service';
 
 jest.mock('../../camera/client', () => ({
@@ -20,9 +25,14 @@ jest.mock('../../camera/client', () => ({
 
 jest.mock('expo-file-system/legacy', () => ({
   cacheDirectory: 'file:///mock/cache/',
+  documentDirectory: 'file:///mock/documents/',
   downloadAsync: jest.fn(),
   readAsStringAsync: jest.fn(),
   writeAsStringAsync: jest.fn(),
+  deleteAsync: jest.fn(),
+  getInfoAsync: jest.fn(),
+  moveAsync: jest.fn(),
+  copyAsync: jest.fn(),
   EncodingType: { Base64: 'base64' },
 }));
 
@@ -194,4 +204,91 @@ it('downloadImageFile downloads remote url to local uri', async () => {
 
   expect(uri).toBe('file:///mock/cache/downloaded.jpg');
   expect(FileSystem.downloadAsync).toHaveBeenCalled();
+});
+
+it('formatBytes formats bytes into human readable units', () => {
+  expect(formatBytes(0)).toBe('0 B');
+  expect(formatBytes(15)).toBe('15 B');
+  expect(formatBytes(1178)).toBe('1.2 KB');
+  expect(formatBytes(16186)).toBe('15.8 KB');
+  expect(formatBytes(78796978)).toBe('75.1 MB');
+  expect(formatBytes(31264342016)).toBe('29.1 GB');
+});
+
+it('formatUnixTimestamp converts seconds to formatted date string', () => {
+  expect(formatUnixTimestamp(0)).toBe('未校时');
+  const ts = formatUnixTimestamp(1790056009);
+  expect(ts).toContain('2026-');
+});
+
+it('listAllVideosAndSer fetches both MP4 and SER files, combines and sorts them', async () => {
+  (cameraClient.get as jest.Mock)
+    .mockResolvedValueOnce({
+      data: {
+        ok: true,
+        videos: [{ path: '/mnt/sdcard/Videos/rec_01.mp4', size: 5000, mtime: 1000 }],
+      },
+    })
+    .mockResolvedValueOnce({
+      data: {
+        ok: true,
+        kind: 'ser',
+        total: 1,
+        offset: 0,
+        limit: 40,
+        next_offset: null,
+        videos: [
+          {
+            name: 'planet_01.ser',
+            path: '/mnt/sdcard/Videos/planet_01.ser',
+            kind: 'ser',
+            size: 20000,
+            mtime: 2000,
+            downloadable: true,
+          },
+        ],
+      },
+    });
+
+  const result = await listAllVideosAndSer();
+  expect(result).toHaveLength(2);
+  expect(result[0].kind).toBe('ser');
+  expect(result[0].name).toBe('planet_01.ser');
+  expect(result[1].kind).toBe('mp4');
+  expect(result[1].name).toBe('rec_01.mp4');
+});
+
+it('downloadSerFile downloads file, checks size, moves to documents directory', async () => {
+  (FileSystem.downloadAsync as jest.Mock).mockResolvedValueOnce({ status: 200 });
+  (FileSystem.getInfoAsync as jest.Mock).mockResolvedValueOnce({ exists: true, size: 1024 });
+  (FileSystem.moveAsync as jest.Mock).mockResolvedValueOnce(undefined);
+
+  const finalUri = await downloadSerFile({
+    path: '/mnt/sdcard/Videos/test.ser',
+    name: 'test.ser',
+    size: 1024,
+  });
+
+  expect(finalUri).toBe('file:///mock/documents/test.ser');
+  expect(FileSystem.downloadAsync).toHaveBeenCalled();
+  expect(FileSystem.moveAsync).toHaveBeenCalled();
+});
+
+it('downloadSerFile throws SER_NOT_FINALIZED when server returns 409', async () => {
+  (FileSystem.downloadAsync as jest.Mock).mockResolvedValueOnce({ status: 409 });
+  (FileSystem.deleteAsync as jest.Mock).mockResolvedValueOnce(undefined);
+
+  await expect(
+    downloadSerFile({ path: '/mnt/sdcard/Videos/recording.ser', name: 'recording.ser' }),
+  ).rejects.toThrow('SER_NOT_FINALIZED');
+});
+
+it('saveVideoToPhone downloads video and saves to media library', async () => {
+  (MediaLibrary.requestPermissionsAsync as jest.Mock).mockResolvedValueOnce({ granted: true, status: 'granted' });
+  (FileSystem.downloadAsync as jest.Mock).mockResolvedValueOnce({ status: 200 });
+  (MediaLibrary.saveToLibraryAsync as jest.Mock).mockResolvedValueOnce(undefined);
+
+  const uri = await saveVideoToPhone({ path: '/mnt/sdcard/Videos/sample.mp4' });
+  expect(uri).toContain('sample.mp4');
+  expect(MediaLibrary.saveToLibraryAsync).toHaveBeenCalled();
 });

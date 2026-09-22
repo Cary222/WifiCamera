@@ -8,7 +8,7 @@
  * The store (`useAlbumStore`) is NOT used here — the screen manages its own
  * data loading so it can directly own the mock/real data transformation.
  */
-import type { AlbumData, PhotoItem, StorageCardState } from './types';
+import type { AlbumData, PhotoItem, StorageCardState, VideoMediaItem } from './types';
 import { useNavigation } from '@react-navigation/native';
 import { Image as NImage } from 'expo-image';
 import * as React from 'react';
@@ -20,6 +20,7 @@ import {
 } from 'react-native-safe-area-context';
 import { useUniwind } from 'uniwind';
 import { FocusAwareStatusBar, Pressable, Text } from '@/components/ui';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { useCameraStore } from '@/features/home/camera';
 import { CameraBackButton } from '@/features/home/camera/components/camera-top-bar';
 import { useStorageInfo } from '@/features/home/hooks/use-storage-info';
@@ -30,10 +31,13 @@ import { FolderGrid } from './components/folder-tile';
 import { FormatConfirmSheet } from './components/format-confirm-sheet';
 import { ImageViewer } from './components/image-viewer';
 import { StorageCard } from './components/storage-card';
+import { VideoItemCard } from './components/video-item-card';
+import { VideoPlayerModal } from './components/video-player-modal';
 import { getAlbumBaseUrl } from './config';
 import {
   FormatError,
   formatSdCard,
+  listAllVideosAndSer,
   listPicFolders,
 } from './services/album-service';
 // eslint-disable-next-line perfectionist/sort-imports -- require must come after regular imports
@@ -297,27 +301,107 @@ function TitleBar({
   );
 }
 
+function PhotoListSection({
+  groups,
+  collapsed,
+  toggleGroup,
+  onItemPress,
+}: {
+  groups: AlbumData['groups'];
+  collapsed: Record<string, boolean>;
+  toggleGroup: (groupId: string) => void;
+  onItemPress?: (item: PhotoItem) => void;
+}) {
+  if (groups.length === 0) {
+    return (
+      <View className="flex-1 items-center justify-center py-20">
+        <Text className="text-[14px] text-neutral-400 dark:text-neutral-500">
+          {translate('album.empty')}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <>
+      {groups.map((group) => {
+        const isCollapsed = collapsed[group.id] ?? false;
+        return (
+          <View key={group.id}>
+            <DateGroupHeader
+              dateLabel={group.dateLabel}
+              itemCount={group.items.length}
+              expanded={!isCollapsed}
+              onPress={() => toggleGroup(group.id)}
+            />
+            {!isCollapsed && (
+              <FolderGrid items={group.items} onItemPress={onItemPress} />
+            )}
+          </View>
+        );
+      })}
+    </>
+  );
+}
+
+function VideoListSection({
+  videos,
+  onPlayVideo,
+}: {
+  videos: VideoMediaItem[];
+  onPlayVideo?: (item: VideoMediaItem) => void;
+}) {
+  if (videos.length === 0) {
+    return (
+      <View className="flex-1 items-center justify-center py-20">
+        <Text className="text-[14px] text-neutral-400 dark:text-neutral-500">
+          {translate('album.videos.empty')}
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <View className="mt-2">
+      {videos.map(item => (
+        <VideoItemCard key={item.id} item={item} onPlayPress={onPlayVideo} />
+      ))}
+    </View>
+  );
+}
+
 function AlbumBody({
   isDark,
   storage,
   data,
+  videos,
+  activeTab,
+  onTabChange,
   collapsed,
   toggleGroup,
   isMockMode,
   onFormatPress,
   onItemPress,
+  onPlayVideo,
   insetsBottom,
 }: {
   isDark: boolean;
   storage: StorageCardState;
   data: AlbumData;
+  videos: VideoMediaItem[];
+  activeTab: 'photos' | 'videos';
+  onTabChange: (tab: 'photos' | 'videos') => void;
   collapsed: Record<string, boolean>;
   toggleGroup: (groupId: string) => void;
   isMockMode: boolean;
   onFormatPress?: () => void;
   onItemPress?: (item: PhotoItem) => void;
+  onPlayVideo?: (item: VideoMediaItem) => void;
   insetsBottom: number;
 }) {
+  const tabOptions = React.useMemo(() => [
+    { value: 'photos' as const, label: translate('album.tab_photos') },
+    { value: 'videos' as const, label: translate('album.tab_videos') },
+  ], []);
+
   return (
     <ScrollView
       style={{
@@ -332,7 +416,16 @@ function AlbumBody({
         <StorageCard storage={storage} onFormatPress={onFormatPress} />
       </View>
 
-      {isMockMode && (
+      <View className="mx-4 mt-3">
+        <SegmentedControl
+          options={tabOptions}
+          value={activeTab}
+          onChange={onTabChange}
+          variant="capsule-lg"
+        />
+      </View>
+
+      {isMockMode && activeTab === 'photos' && (
         <View className="mx-4 mt-3 rounded-[10px] border border-[rgba(196,196,196,0.2)] bg-[rgba(255,255,255,0.05)] px-3 py-2">
           <Text className="text-center text-[11px] text-white/50">
             {translate('album.mock_mode_hint')}
@@ -340,31 +433,17 @@ function AlbumBody({
         </View>
       )}
 
-      {data.groups.length === 0
+      {activeTab === 'photos'
         ? (
-            <View className="flex-1 items-center justify-center py-20">
-              <Text className="text-[14px] text-neutral-400 dark:text-neutral-500">
-                {translate('album.empty')}
-              </Text>
-            </View>
+            <PhotoListSection
+              groups={data.groups}
+              collapsed={collapsed}
+              toggleGroup={toggleGroup}
+              onItemPress={onItemPress}
+            />
           )
         : (
-            data.groups.map((group) => {
-              const isCollapsed = collapsed[group.id] ?? false;
-              return (
-                <View key={group.id}>
-                  <DateGroupHeader
-                    dateLabel={group.dateLabel}
-                    itemCount={group.items.length}
-                    expanded={!isCollapsed}
-                    onPress={() => toggleGroup(group.id)}
-                  />
-                  {!isCollapsed && (
-                    <FolderGrid items={group.items} onItemPress={onItemPress} />
-                  )}
-                </View>
-              );
-            })
+            <VideoListSection videos={videos} onPlayVideo={onPlayVideo} />
           )}
     </ScrollView>
   );
@@ -457,6 +536,9 @@ function AlbumContent({
   status,
   isDark,
   albumData,
+  videos,
+  activeTab,
+  onTabChange,
   storageState,
   collapsed,
   isMockMode,
@@ -465,10 +547,14 @@ function AlbumContent({
   onRefresh,
   onFormatPress,
   onItemPress,
+  onPlayVideo,
 }: {
   status: Status;
   isDark: boolean;
   albumData: AlbumData | null;
+  videos: VideoMediaItem[];
+  activeTab: 'photos' | 'videos';
+  onTabChange: (tab: 'photos' | 'videos') => void;
   storageState: StorageCardState;
   collapsed: Record<string, boolean>;
   isMockMode: boolean;
@@ -477,6 +563,7 @@ function AlbumContent({
   onRefresh: () => void;
   onFormatPress: () => void;
   onItemPress: (item: PhotoItem) => void;
+  onPlayVideo: (item: VideoMediaItem) => void;
 }) {
   if (status === 'loading') {
     return (
@@ -504,14 +591,49 @@ function AlbumContent({
       isDark={isDark}
       storage={storageState}
       data={albumData}
+      videos={videos}
+      activeTab={activeTab}
+      onTabChange={onTabChange}
       collapsed={collapsed}
       toggleGroup={toggleGroup}
       isMockMode={isMockMode}
       onFormatPress={onFormatPress}
       onItemPress={onItemPress}
+      onPlayVideo={onPlayVideo}
       insetsBottom={insetsBottom}
     />
   );
+}
+
+function useAlbumMedia(storageState: StorageCardState) {
+  const [status, setStatus] = React.useState<Status>('loading');
+  const [albumData, setAlbumData] = React.useState<AlbumData | null>(null);
+  const [videos, setVideos] = React.useState<VideoMediaItem[]>([]);
+
+  const handleRefresh = React.useCallback(async () => {
+    setStatus('loading');
+    try {
+      const [folders, videoList] = await Promise.all([
+        listPicFolders(),
+        listAllVideosAndSer(),
+      ]);
+      console.info(`[Album] folders=${folders.length} videos=${videoList.length}`);
+      const { groups } = groupIntoAlbumData(folders);
+      setVideos(videoList);
+      setAlbumData({ storage: storageState, groups });
+      setStatus('success');
+    }
+    catch (error) {
+      console.warn('[Album] load failed', error);
+      setStatus('error');
+    }
+  }, [storageState]);
+
+  React.useEffect(() => {
+    void handleRefresh();
+  }, [handleRefresh]);
+
+  return { status, albumData, videos, handleRefresh };
 }
 
 export function AlbumScreen() {
@@ -521,15 +643,11 @@ export function AlbumScreen() {
   const isMockMode = useCameraStore.use.isMockMode();
   const connectionStatus = useCameraStore.use.connectionStatus();
   const isConnected = connectionStatus === 'open';
-  const [storageRefreshKey, setStorageRefreshKey] = React.useState(0);
-  const storageInfo = useStorageInfo(isConnected, storageRefreshKey);
 
+  const [activeTab, setActiveTab] = React.useState<'photos' | 'videos'>('photos');
+  const [selectedPhoto, setSelectedPhoto] = React.useState<PhotoItem | null>(null);
+  const [selectedVideo, setSelectedVideo] = React.useState<VideoMediaItem | null>(null);
   const [collapsed, setCollapsed] = React.useState<Record<string, boolean>>({});
-  const [status, setStatus] = React.useState<Status>('loading');
-  const [albumData, setAlbumData] = React.useState<AlbumData | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = React.useState<PhotoItem | null>(
-    null,
-  );
 
   React.useEffect(() => {
     try {
@@ -544,32 +662,27 @@ export function AlbumScreen() {
     setCollapsed(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   }, []);
 
+  const [storageRefreshKey, setStorageRefreshKey] = React.useState(0);
+  const storageInfo = useStorageInfo(isConnected, storageRefreshKey);
+
   const storageState = React.useMemo<StorageCardState>(() => {
-    const hasRealData = storageInfo.totalGB > 0;
+    const hasCard = storageInfo.hasCard ?? (storageInfo.totalGB > 0);
+    const hasRealData = hasCard && storageInfo.totalGB > 0;
     return {
       name: 'album.storage_card.name',
       usedGB: hasRealData ? storageInfo.usedGB : 0,
       totalGB: hasRealData ? storageInfo.totalGB : 0,
+      hasCard,
+      statusText: hasCard ? undefined : storageInfo.remainingLabel,
     };
-  }, [storageInfo.usedGB, storageInfo.totalGB]);
+  }, [storageInfo.hasCard, storageInfo.usedGB, storageInfo.totalGB, storageInfo.remainingLabel]);
 
-  const handleRefresh = React.useCallback(async () => {
-    setStatus('loading');
+  const { status, albumData, videos, handleRefresh } = useAlbumMedia(storageState);
+
+  const refreshAll = React.useCallback(async () => {
     setStorageRefreshKey(k => k + 1);
-    try {
-      const folders = await listPicFolders();
-      console.info(`[Album] folders=${folders.length}`);
-      const { groups } = groupIntoAlbumData(folders);
-      const totalItems = groups.reduce((n, g) => n + g.items.length, 0);
-      console.info(`[Album] groups=${groups.length} items=${totalItems}`);
-      setAlbumData({ storage: storageState, groups });
-      setStatus('success');
-    }
-    catch (error) {
-      console.warn('[Album] load failed', error);
-      setStatus('error');
-    }
-  }, [storageState]);
+    await handleRefresh();
+  }, [handleRefresh]);
 
   const {
     showFormatSheet,
@@ -577,32 +690,29 @@ export function AlbumScreen() {
     handleFormatPress,
     handleConfirmFormat,
     setShowFormatSheet,
-  } = useFormatAction(handleRefresh);
-
-  // Initial load
-  React.useEffect(() => {
-    void handleRefresh();
-  }, [handleRefresh]);
+  } = useFormatAction(refreshAll);
 
   return (
     <>
       <FocusAwareStatusBar />
-      <SafeAreaView
-        style={{ flex: 1, backgroundColor: isDark ? '#090a0c' : '#FFFFFF' }}
-      >
-        <TitleBar isDark={isDark} onRefreshPress={handleRefresh} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: isDark ? '#090a0c' : '#FFFFFF' }}>
+        <TitleBar isDark={isDark} onRefreshPress={refreshAll} />
         <AlbumContent
           status={status}
           isDark={isDark}
           albumData={albumData}
+          videos={videos}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
           storageState={storageState}
           collapsed={collapsed}
           isMockMode={isMockMode}
           insetsBottom={insets.bottom}
           toggleGroup={toggleGroup}
-          onRefresh={handleRefresh}
+          onRefresh={refreshAll}
           onFormatPress={handleFormatPress}
           onItemPress={setSelectedPhoto}
+          onPlayVideo={setSelectedVideo}
         />
       </SafeAreaView>
 
@@ -611,9 +721,11 @@ export function AlbumScreen() {
         onClose={() => setSelectedPhoto(null)}
         onDeleted={() => {
           setSelectedPhoto(null);
-          void handleRefresh();
+          void refreshAll();
         }}
       />
+
+      <VideoPlayerModal item={selectedVideo} onClose={() => setSelectedVideo(null)} />
 
       <FormatConfirmSheet
         visible={showFormatSheet}

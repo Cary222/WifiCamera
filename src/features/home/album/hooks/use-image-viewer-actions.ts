@@ -75,7 +75,7 @@ export function useImageViewerActions({
     finally {
       setIsSaving(false);
     }
-  }, [item, isBusy]);
+  }, [item, isBusy, watermark]);
 
   const executeDelete = React.useCallback(async () => {
     if (!item || isDeleting)
@@ -138,7 +138,7 @@ export function useImageViewerActions({
     finally {
       setIsSharing(false);
     }
-  }, [item, isBusy]);
+  }, [item, isBusy, watermark]);
 
   return {
     isBusy,

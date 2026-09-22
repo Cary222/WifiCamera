@@ -70,13 +70,65 @@ export async function getDisks(): Promise<string[]> {
   );
   return unwrapCamera(res.data, 'GET', '/FileCopy/get_disks/').disks;
 }
+export type StorageStatusData = {
+  mounted: boolean;
+  ready: boolean;
+  reason?: string;
+  mount_point: string | null;
+};
+
+export async function getStorageStatus(): Promise<StorageStatusData | null> {
+  const baseUrl = getCameraBaseUrl();
+  try {
+    const res = await cameraClient.get<{
+      ok?: boolean;
+      mounted?: boolean;
+      error?: string;
+      capacity_bytes?: number;
+      success?: boolean;
+      data?: StorageStatusData;
+    }>(`${baseUrl}/storage/status`);
+    if (res.data?.ok !== undefined) {
+      const mounted = res.data.mounted ?? (res.data.error !== 'NO_CARD');
+      return {
+        mounted,
+        ready: mounted && !res.data.error,
+        reason: res.data.error || (mounted ? 'OK' : 'NO_CARD'),
+        mount_point: mounted ? '/mnt/sdcard' : null,
+      };
+    }
+  }
+  catch {
+    // fallback to legacy
+  }
+
+  try {
+    const res = await cameraClient.get<{ success: boolean; data: StorageStatusData }>(
+      `${baseUrl}/FileCopy/storage_status/`,
+    );
+    if (res.data?.success && res.data?.data) {
+      return res.data.data;
+    }
+    return null;
+  }
+  catch {
+    return null;
+  }
+}
 
 export async function getSdCardMountPoint(): Promise<string | null> {
   try {
-    const res = await cameraClient.get<{ success: true; data: { mount_point: string | null } }>(
+    const status = await getStorageStatus();
+    if (status) {
+      return status.mounted && status.mount_point ? status.mount_point : null;
+    }
+    const res = await cameraClient.get<{ success: true; data: { mount_point: string | null; mounted?: boolean } }>(
       `${getCameraBaseUrl()}/FileCopy/get_sd_card_mount_point/`,
     );
     const data = unwrapCamera(res.data, 'GET', '/FileCopy/get_sd_card_mount_point/');
+    if (data.mounted === false) {
+      return null;
+    }
     return data.mount_point;
   }
   catch {

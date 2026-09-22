@@ -8,6 +8,7 @@ export const ALBUM_ENDPOINTS = {
   listVideos: '/list_videos',
   getImage: '/get_image',
   getVideo: '/get_video',
+  getFile: '/get_file',
   delete: '/delete',
   listPicFolders: '/FileCopy/list_pic_folders/',
   listPicFiles: '/FileCopy/list_pic_files/',

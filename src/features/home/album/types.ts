@@ -23,6 +23,25 @@ export type PhotoItem = {
   previewUrl?: string;
 };
 
+export type VideoMediaItem = {
+  id: string;
+  name: string;
+  path: string;
+  kind: 'mp4' | 'ser';
+  size: number;
+  mtime: number;
+  downloadable?: boolean;
+  videoUrl?: string;
+  fileUrl?: string;
+  timestamp: string;
+};
+
+export type VideoDateGroup = {
+  id: string;
+  dateLabel: TxKeyPath | string;
+  items: VideoMediaItem[];
+};
+
 export type DateGroup = {
   /** Unique id for the date group */
   id: string;
@@ -37,6 +56,8 @@ export type StorageCardState = {
   name: TxKeyPath | string;
   usedGB: number;
   totalGB: number;
+  hasCard?: boolean;
+  statusText?: string;
 };
 
 export type AlbumData = {
@@ -94,4 +115,36 @@ export type DeleteResponse = {
     del: boolean;
   };
   message?: string;
+};
+
+export type BoardSerItem = {
+  name: string;
+  path: string;
+  kind: 'ser';
+  size: number;
+  mtime: number;
+  downloadable: boolean;
+};
+
+export type ListVideosSerResponse = {
+  ok: boolean;
+  kind: 'ser';
+  total: number;
+  offset: number;
+  limit: number;
+  next_offset: number | null;
+  videos: BoardSerItem[];
+  error?: string;
+};
+
+export type BoardMp4Item = {
+  path: string;
+  size?: number;
+  mtime?: number;
+};
+
+export type ListVideosMp4Response = {
+  ok: boolean;
+  latest?: BoardMp4Item | null;
+  videos?: BoardMp4Item[];
 };

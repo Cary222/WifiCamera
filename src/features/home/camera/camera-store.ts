@@ -75,6 +75,10 @@ export type BoardCameraState = {
   streaming?: boolean;
   recording?: boolean;
   fault_active?: boolean;
+  flags?: {
+    repeat_active?: boolean;
+    storage_ready?: boolean;
+  };
   last_error?: CameraErrorPayload | null;
   preview?: {
     exposure_s?: number;
@@ -157,12 +161,33 @@ export function mapLegacyStatusToCameraStatus(data: unknown): CameraStatus {
   }
 }
 
+export const STORAGE_ERROR_TRANSLATIONS: Record<string, string> = {
+  'NO_CARD': '未检测到 TF 卡',
+  '-20': '未检测到 TF 卡',
+  'CARD_NOT_MOUNTED': 'TF 卡未挂载，暂时无法保存',
+  '-21': 'TF 卡未挂载，暂时无法保存',
+  'CARD_READ_ONLY': 'TF 卡只读，无法保存',
+  '-22': 'TF 卡只读，无法保存',
+  'CARD_FULL': 'TF 卡空间不足',
+  '-23': 'TF 卡空间不足',
+  'STORAGE_IO_ERROR': '存储读写失败',
+  '-24': '存储读写失败',
+  'INVALID_STORAGE_PATH': '保存路径无效',
+  '-25': '保存路径无效',
+};
+
 export function formatCameraErrorMessage(
   failure: unknown,
   defaultFallback = '操作失败',
 ): string {
   if (typeof failure === 'string' && failure.trim() && failure !== 'see data') {
-    return failure.trim();
+    const trimmed = failure.trim();
+    for (const [key, translated] of Object.entries(STORAGE_ERROR_TRANSLATIONS)) {
+      if (trimmed === key || trimmed.includes(`${key}(`) || trimmed.endsWith(`:${key}`)) {
+        return translated;
+      }
+    }
+    return trimmed;
   }
   if (typeof failure === 'object' && failure !== null) {
     const rec = failure as Record<string, unknown>;
@@ -173,6 +198,14 @@ export function formatCameraErrorMessage(
         = typeof errObj.operation === 'string' ? errObj.operation.trim() : '';
       const name = typeof errObj.name === 'string' ? errObj.name.trim() : '';
       const code = typeof errObj.code === 'number' ? errObj.code : undefined;
+
+      const mappedStorage
+        = STORAGE_ERROR_TRANSLATIONS[name]
+          || (code !== undefined ? STORAGE_ERROR_TRANSLATIONS[String(code)] : undefined);
+      if (mappedStorage) {
+        return mappedStorage;
+      }
+
       if (op || name || code !== undefined) {
         const namePart = name
           ? code !== undefined
@@ -185,10 +218,21 @@ export function formatCameraErrorMessage(
       }
     }
     if (typeof err === 'string' && err.trim() && err !== 'see data') {
-      return err.trim();
+      const trimmedErr = err.trim();
+      for (const [key, translated] of Object.entries(STORAGE_ERROR_TRANSLATIONS)) {
+        if (trimmedErr === key || trimmedErr.includes(key)) {
+          return translated;
+        }
+      }
+      return trimmedErr;
     }
     const msg = typeof rec.message === 'string' ? rec.message.trim() : '';
     if (msg && msg !== 'see data') {
+      for (const [key, translated] of Object.entries(STORAGE_ERROR_TRANSLATIONS)) {
+        if (msg === key || msg.includes(key)) {
+          return translated;
+        }
+      }
       return msg;
     }
   }
@@ -241,6 +285,7 @@ type CameraState = {
   lastCommandError: string | null;
   cameraState: BoardCameraState | null;
   gainPercentSupported: boolean | null;
+  storageReady: boolean | null;
   /** Current Wi-Fi band: true = 5GHz, false = 2.4GHz. Null when unknown / disconnected. */
   wifiBand: boolean | null;
   /** When true, show the device connection modal on home screen after Wi-Fi switch. */
@@ -811,6 +856,7 @@ const _useCameraStore = create<CameraState>(set => ({
   remainingExposureTime: 0,
   lastCommandError: null,
   cameraState: null,
+  storageReady: null,
   wifiBand: null,
   transport: getActiveTransport(),
   transportPreference: getTransportPreference(),
@@ -1669,6 +1715,10 @@ function handleCameraMessage(
         cameraStatus,
         streamingInProgress: state.streaming === true,
         lastCommandError,
+        storageReady:
+          typeof state.flags?.storage_ready === 'boolean'
+            ? state.flags.storage_ready
+            : _useCameraStore.getState().storageReady,
       };
       if (typeof state.preview?.target_gain_percent === 'number') {
         update.landscapeManualGain = clampGain(

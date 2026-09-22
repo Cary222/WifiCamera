@@ -19,6 +19,14 @@ jest.mock('@react-navigation/native', () => ({
   useIsFocused: () => true,
 }));
 
+jest.mock('react-native-webview', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    WebView: (props: any) => React.createElement(View, { testID: 'mock-webview', ...props }),
+  };
+});
+
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 40, bottom: 20, left: 0, right: 0 }),
   SafeAreaView: ({ children }: any) => <>{children}</>,
@@ -43,11 +51,15 @@ jest.mock('@/features/home/hooks/use-storage-info', () => ({
     usedGB: 12.5,
     totalGB: 32.0,
     freeGB: 19.5,
+    remainingLabel: '19.5GB',
+    hasCard: true,
+    ready: true,
   }),
 }));
 
 jest.mock('./services/album-service', () => ({
   listPicFolders: jest.fn(),
+  listAllVideosAndSer: jest.fn().mockResolvedValue([]),
   formatSdCard: jest.fn(),
   deletePicFile: jest.fn(),
   downloadImageFile: jest.fn(),

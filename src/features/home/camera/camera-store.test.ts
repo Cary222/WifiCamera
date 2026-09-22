@@ -613,4 +613,27 @@ describe('camera store', () => {
     expect(useCameraStore.getState().landscapeManualExposure).toBe(0.04);
     expect(useCameraStore.getState().landscapeManualGain).toBe(20);
   });
+
+  it('maps NO_CARD and storage error codes to friendly messages', () => {
+    useCameraStore.getState().connect();
+    const socket = MockWebSocket.instances[0];
+    socket.open();
+
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'capture_stream_frame',
+      success: false,
+      error: { code: -20, name: 'NO_CARD', operation: 'capture_stream_frame' },
+    });
+    expect(useCameraStore.getState().lastCommandError).toBe('未检测到 TF 卡');
+
+    socket.message({
+      device_name: 'main_camera',
+      instruction: 'camera_state',
+      data: {
+        flags: { storage_ready: false },
+      },
+    });
+    expect(useCameraStore.getState().storageReady).toBe(false);
+  });
 });

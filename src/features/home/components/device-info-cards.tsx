@@ -80,8 +80,9 @@ export function DeviceInfoCards({ batteryLevel, inCharge = false, storageRemaini
             </View>
             <View className="flex-1 justify-center">
               <Text
-                className="text-[18px] font-normal text-black dark:text-white"
+                className={`font-normal text-black dark:text-white ${storageRemaining.length > 5 ? 'text-[15px]' : 'text-[18px]'}`}
                 numberOfLines={1}
+                adjustsFontSizeToFit
               >
                 {storageRemaining}
               </Text>

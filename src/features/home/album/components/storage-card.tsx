@@ -24,11 +24,12 @@ type Props = {
 export function StorageCard({ storage, onFormatPress }: Props) {
   const { theme } = useUniwind();
   const isDark = theme === 'dark';
-  const ratio = storage.totalGB > 0
+  const hasCard = storage.hasCard ?? (storage.totalGB > 0);
+  const hasData = hasCard && storage.totalGB > 0;
+  const ratio = hasData
     ? Math.max(0, Math.min(1, storage.usedGB / storage.totalGB))
     : 0;
   const percent = Math.round(ratio * 100);
-  const hasData = storage.totalGB > 0;
 
   return (
     <View className="w-full flex-row items-center justify-between rounded-[20px] border-[0.5px] border-neutral-200 bg-neutral-50 px-4 py-3.5 dark:border-[rgba(196,196,196,0.3)] dark:bg-[#111213]">
@@ -49,10 +50,13 @@ export function StorageCard({ storage, onFormatPress }: Props) {
 
       {/* Middle: Used / total & Progress bar stacked vertically */}
       <View className="mx-4 flex-1">
-        <Text className={`text-[15px] font-light ${hasData ? 'text-black dark:text-white' : 'text-neutral-400 dark:text-white/40'}`}>
+        <Text
+          numberOfLines={1}
+          className={`text-[15px] font-light ${hasData ? 'text-black dark:text-white' : 'text-neutral-400 dark:text-white/40'}`}
+        >
           {hasData
             ? `${storage.usedGB.toFixed(1)} GB / ${storage.totalGB} GB`
-            : '—'}
+            : (storage.statusText || translate('album.storage.no_card'))}
         </Text>
         <View className="mt-1.5 h-[3px] w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-[#333333]">
           <View className="h-full rounded-full bg-[#C8E733]" style={{ width: `${percent}%` }} />
@@ -60,8 +64,13 @@ export function StorageCard({ storage, onFormatPress }: Props) {
       </View>
 
       {/* Right: Format button */}
-      <Pressable onPress={onFormatPress} hitSlop={8} className="active:opacity-70">
-        <Text className="text-[15px] font-light text-[#FF3B30]">
+      <Pressable
+        onPress={hasCard ? onFormatPress : undefined}
+        disabled={!hasCard}
+        hitSlop={8}
+        className="active:opacity-70 disabled:opacity-40"
+      >
+        <Text className={`text-[15px] font-light ${hasCard ? 'text-[#FF3B30]' : 'text-neutral-400 dark:text-white/30'}`}>
           {translate('album.storage_card.format')}
         </Text>
       </Pressable>

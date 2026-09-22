@@ -39,13 +39,37 @@
     "open_folder": "Open",
     "refresh": "Refresh",
     "retry": "Retry",
+    "storage": {
+      "card_full": "TF Card Full",
+      "card_not_mounted": "TF Card Not Mounted",
+      "card_read_only": "TF Card Read-Only",
+      "invalid_storage_path": "Invalid Storage Path",
+      "no_card": "No TF Card",
+      "storage_io_error": "Storage I/O Error"
+    },
     "storage_card": {
       "format": "Format",
       "name": "TF Card",
       "subtitle": "{{used}} / {{total}}"
     },
     "subtitle": "Photos & videos",
+    "tab_photos": "Photos",
+    "tab_videos": "Videos & SER",
     "title": "Photo Gallery",
+    "video_player": {
+      "save_failed": "Failed to save video, please retry",
+      "save_success": "Video saved to phone album"
+    },
+    "videos": {
+      "download": "Download",
+      "download_failed": "Failed to download SER file, please retry",
+      "download_success": "SER file downloaded successfully",
+      "downloading": "Downloading...",
+      "empty": "No videos or SER files found",
+      "mp4_tag": "MP4 Video",
+      "not_finalized": "File is not finalized or unavailable. Stop recording and refresh.",
+      "ser_tag": "Planet SER"
+    },
     "viewer": {
       "delete_cancel": "Cancel",
       "delete_confirm": "Delete",

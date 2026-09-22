@@ -39,13 +39,37 @@
     "open_folder": "打开",
     "refresh": "刷新",
     "retry": "重试",
+    "storage": {
+      "card_full": "TF卡空间不足",
+      "card_not_mounted": "TF卡未挂载，暂时无法保存",
+      "card_read_only": "TF卡只读，无法保存",
+      "invalid_storage_path": "保存路径无效",
+      "no_card": "未检测到TF卡",
+      "storage_io_error": "存储读写失败"
+    },
     "storage_card": {
       "format": "格式化",
       "name": "TF卡",
       "subtitle": "{{used}} / {{total}}"
     },
     "subtitle": "照片和视频",
+    "tab_photos": "照片",
+    "tab_videos": "视频与SER",
     "title": "相册",
+    "video_player": {
+      "save_failed": "视频保存失败，请重试",
+      "save_success": "视频已保存至手机相册"
+    },
+    "videos": {
+      "download": "下载",
+      "download_failed": "SER文件下载失败，请重试",
+      "download_success": "SER文件下载完成",
+      "downloading": "下载中…",
+      "empty": "未找到视频或SER文件",
+      "mp4_tag": "MP4 录像",
+      "not_finalized": "文件尚未完成或不可用，请停止录制后刷新",
+      "ser_tag": "行星 SER"
+    },
     "viewer": {
       "delete_cancel": "取消",
       "delete_confirm": "删除",

@@ -39,13 +39,37 @@
     "open_folder": "فتح",
     "refresh": "تحديث",
     "retry": "إعادة المحاولة",
+    "storage": {
+      "card_full": "بطاقة TF ممتلئة",
+      "card_not_mounted": "بطاقة TF غير مثبتة",
+      "card_read_only": "بطاقة TF للقراءة فقط",
+      "invalid_storage_path": "مسار التخزين غير صالح",
+      "no_card": "لم يتم اكتشاف بطاقة TF",
+      "storage_io_error": "خطأ في قراءة/كتابة التخزين"
+    },
     "storage_card": {
       "format": "تهيئة",
       "name": "بطاقة TF",
       "subtitle": "{{used}} / {{total}}"
     },
     "subtitle": "الصور ومقاطع الفيديو",
+    "tab_photos": "الصور",
+    "tab_videos": "فيديو و SER",
     "title": "معرض الصور",
+    "video_player": {
+      "save_failed": "فشل حفظ الفيديو، يرجى إعادة المحاولة",
+      "save_success": "تم حفظ الفيديو في ألبوم الهاتف"
+    },
+    "videos": {
+      "download": "تنزيل",
+      "download_failed": "فشل تنزيل ملف SER، يرجى إعادة المحاولة",
+      "download_success": "تم تنزيل ملف SER بنجاح",
+      "downloading": "جارٍ التنزيل...",
+      "empty": "لم يتم العثور على مقاطع فيديو أو ملفات SER",
+      "mp4_tag": "فيديو MP4",
+      "not_finalized": "الملف غير مكتمل أو غير متاح. أوقف التسجيل وأعد التحديث.",
+      "ser_tag": "SER كوكبي"
+    },
     "viewer": {
       "delete_cancel": "إلغاء",
       "delete_confirm": "حذف",
