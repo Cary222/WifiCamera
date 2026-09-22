@@ -108,6 +108,7 @@ export type WhepSession = {
   stream: MediaStream;
   close: () => Promise<void>;
   getStats: () => Promise<string>;
+  getActualFps: () => Promise<number | null>;
 };
 
 export type WhepNegotiation = {
@@ -357,6 +358,9 @@ export function startWhepNegotiation(
       throw error;
     }
 
+    let lastFramesDecoded = 0;
+    let lastFramesTimestamp = 0;
+
     return {
       stream,
       getStats: async () => {
@@ -378,6 +382,45 @@ export function startWhepNegotiation(
           }
         });
         return rows.join(' | ');
+      },
+      getActualFps: async (): Promise<number | null> => {
+        if (closed)
+          return null;
+        try {
+          const report = await peer.getStats();
+          let computedFps: number | null = null;
+          report.forEach((item: Record<string, unknown>) => {
+            if (
+              item.type === 'inbound-rtp'
+              && (item.kind === 'video' || (!item.kind && typeof item.framesDecoded === 'number'))
+            ) {
+              const decoded = typeof item.framesDecoded === 'number' ? item.framesDecoded : 0;
+              const now = typeof item.timestamp === 'number' ? item.timestamp : Date.now();
+              const fpsVal = typeof item.framesPerSecond === 'number' && item.framesPerSecond >= 0
+                ? Number(item.framesPerSecond.toFixed(1))
+                : null;
+
+              if (lastFramesTimestamp > 0 && now > lastFramesTimestamp && decoded >= lastFramesDecoded) {
+                const deltaFrames = decoded - lastFramesDecoded;
+                const deltaSec = (now - lastFramesTimestamp) / 1000;
+                if (deltaSec >= 0.2) {
+                  const instantFps = deltaFrames / deltaSec;
+                  computedFps = Math.max(0, Math.min(240, Number(instantFps.toFixed(1))));
+                }
+              }
+              else if (fpsVal !== null && fpsVal > 0) {
+                computedFps = fpsVal;
+              }
+
+              lastFramesDecoded = decoded;
+              lastFramesTimestamp = now;
+            }
+          });
+          return computedFps;
+        }
+        catch {
+          return null;
+        }
       },
       close: async () => {
         if (closed)

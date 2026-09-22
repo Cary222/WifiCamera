@@ -276,9 +276,12 @@ type CameraState = {
   landscapeRecordingBaseName: string;
   landscapeRecordingVideoName: string;
   landscapeLatestVideoName: string;
+  desiredStreamingFps: number;
 
   sendInstruction: (instruction: string, params?: unknown[]) => void;
   requestCameraState: () => void;
+  setDesiredStreamingFps: (fps: number) => void;
+  changeStreamingFrameRate: (mode: number, rate: number) => void;
   setLandscapeShutterMode: (mode: LandscapeShutterMode) => void;
   setLandscapeCaptureMode: (mode: LandscapeCaptureMode) => void;
   setLandscapeTimerPlan: (plan: LandscapeTimerPlan) => void;
@@ -378,6 +381,7 @@ const CAMERA_INSTRUCTIONS = {
   setEv: 'set_ev',
   switchWifiBand: 'switch_wifi_band',
   setSensorRoi: 'set_sensor_roi',
+  changeStreamingFrameRate: 'change_streaming_frame_rate',
 } as const;
 
 export const GAIN_PERCENT_COMMANDS = new Set([
@@ -627,6 +631,9 @@ function scheduleStreamingSetting(): void {
       state.landscapeManualExposure,
       state.landscapeManualGain,
     ]);
+    if (state.desiredStreamingFps === 60 && state.landscapeManualExposure <= 0.0167) {
+      state.sendInstruction(CAMERA_INSTRUCTIONS.changeStreamingFrameRate, [1, 60]);
+    }
   }, delay);
 }
 
@@ -829,6 +836,7 @@ const _useCameraStore = create<CameraState>(set => ({
   landscapeRecordingBaseName: '',
   landscapeRecordingVideoName: '',
   landscapeLatestVideoName: '',
+  desiredStreamingFps: 30,
 
   connect: () => {
     const wsUrl = getCameraWebSocketUrl();
@@ -1059,6 +1067,13 @@ const _useCameraStore = create<CameraState>(set => ({
 
   requestCameraState: () =>
     _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.cameraState),
+  setDesiredStreamingFps: fps => set({ desiredStreamingFps: fps }),
+  changeStreamingFrameRate: (mode, rate) => {
+    set({ desiredStreamingFps: rate });
+    _useCameraStore
+      .getState()
+      .sendInstruction(CAMERA_INSTRUCTIONS.changeStreamingFrameRate, [mode, rate]);
+  },
   setLandscapeShutterMode: (mode) => {
     _useCameraStore.getState().switchAutoMode(mode === 'auto');
   },

@@ -86,3 +86,45 @@ export function getPreviewSurfaceHeight(
     : { width: 16, height: 9 };
   return getPreviewSurfaceHeightForRoi(ratio, width, height);
 }
+
+/**
+ * Creates a centered custom hardware ROI preset with 16x8 sensor alignment constraints.
+ */
+export function createCustomRoiPreset(
+  rawWidth: number,
+  rawHeight: number,
+): SensorRoi & {
+  key: string;
+  label: string;
+  resolution: string;
+  descriptionKey: string;
+  fps?: number;
+} {
+  const alignedWidth = Math.max(128, Math.min(1920, Math.round(rawWidth / 16) * 16));
+  const alignedHeight = Math.max(96, Math.min(1080, Math.round(rawHeight / 8) * 8));
+
+  // Sony IMX662 driver constraints: (x & 1) == 0, (y & 3) == 0
+  const idealX = Math.floor((1920 - alignedWidth) / 2);
+  const idealY = Math.floor((1080 - alignedHeight) / 2);
+  const x = Math.min(1920 - alignedWidth, Math.max(0, Math.floor(idealX / 2) * 2));
+  const y = Math.min(1080 - alignedHeight, Math.max(0, Math.floor(idealY / 4) * 4));
+
+  return {
+    key: `custom_${alignedWidth}x${alignedHeight}`,
+    label: `${alignedWidth}×${alignedHeight}`,
+    resolution: `${alignedHeight}P`,
+    descriptionKey: 'planet.roi_custom',
+    fps: (alignedWidth <= 1280 && alignedHeight <= 720) ? 60 : 30,
+    x,
+    y,
+    width: alignedWidth,
+    height: alignedHeight,
+  };
+}
+
+export const QUICK_CUSTOM_ROI_SIZES = [
+  { width: 1280, height: 720, label: '1280×720' },
+  { width: 1024, height: 768, label: '1024×768' },
+  { width: 400, height: 300, label: '400×300' },
+  { width: 320, height: 240, label: '320×240' },
+] as const;
