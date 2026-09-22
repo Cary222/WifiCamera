@@ -1,4 +1,4 @@
-export type AspectRatio = '4:3' | '16:9' | 'full';
+export type AspectRatio = '4:3' | '16:9';
 
 export type SensorRoi = {
   x: number;
@@ -21,9 +21,6 @@ const ROI_RATIO_SCALE_ALIGNMENT = 8;
  * 16:9, matching the hardware ROI constraints observed by the app.
  */
 export function getEffectiveSensorRoi(roi: SensorRoi, aspectRatio: AspectRatio): SensorRoi {
-  if (aspectRatio === 'full')
-    return { ...roi };
-
   const target = TARGET_RATIOS[aspectRatio];
   if (roi.width * target.height === roi.height * target.width
     && roi.width % 16 === 0
@@ -53,8 +50,6 @@ export function getEffectiveSensorRoi(roi: SensorRoi, aspectRatio: AspectRatio):
 }
 
 export function isNativeSensorAspectRatio(roi: SensorRoi, aspectRatio: AspectRatio): boolean {
-  if (aspectRatio === 'full')
-    return true;
   const target = TARGET_RATIOS[aspectRatio];
   return roi.width * target.height === roi.height * target.width;
 }

@@ -31,7 +31,6 @@ import {
   createCustomRoiPreset,
   getEffectiveSensorRoi,
   getPreviewSurfaceHeightForRoi,
-  isNativeSensorAspectRatio,
   QUICK_CUSTOM_ROI_SIZES,
 } from './preview-layout';
 import { PLANET_ROI_PRESETS, usePlanetCapture } from './use-planet-capture';
@@ -141,7 +140,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   // Fig 3 state (Quick Settings)
   // 板端尚未提供测光模式指令，先固定为全画面并禁用切换。
   const meteringMode: MeteringMode = 'matrix';
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('full');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
   const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
 
   // Common ROI and Capture State
@@ -151,22 +150,8 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   const [showCustomEditor, setShowCustomEditor] = useState<boolean>(false);
   const [captureMode, setCaptureMode] = useState<'photo' | 'video'>('video');
   const [roiSheetOpen, setRoiSheetOpen] = useState(false);
-  const activeRoiPreset = useMemo(
-    () =>
-      aspectRatio === '16:9' && !isNativeSensorAspectRatio(roiPreset, '16:9')
-        ? PLANET_ROI_PRESETS[0]
-        : roiPreset,
-    [aspectRatio, roiPreset],
-  );
-  const selectableRoiPresets = useMemo(
-    () =>
-      aspectRatio === '16:9'
-        ? PLANET_ROI_PRESETS.filter(preset =>
-            isNativeSensorAspectRatio(preset, '16:9'),
-          )
-        : PLANET_ROI_PRESETS,
-    [aspectRatio],
-  );
+  const activeRoiPreset = roiPreset;
+  const selectableRoiPresets = PLANET_ROI_PRESETS;
 
   const format: PlanetFormat = useMemo(() => {
     if (containerFormat === 'mp4')
@@ -543,18 +528,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                 onPress={() => {
                   countdown.cancel();
                   dismissError();
-                  const next
-                    = aspectRatio === '4:3'
-                      ? '16:9'
-                      : aspectRatio === '16:9'
-                        ? 'full'
-                        : '4:3';
-                  if (
-                    next === '16:9'
-                    && !isNativeSensorAspectRatio(roiPreset, '16:9')
-                  ) {
-                    setRoiPreset(PLANET_ROI_PRESETS[0]);
-                  }
+                  const next: AspectRatio = aspectRatio === '16:9' ? '4:3' : '16:9';
                   setAspectRatio(next);
                 }}
                 disabled={settingsDisabled}
@@ -569,9 +543,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                 <Text
                   className={`text-[18px] font-normal ${isDark ? 'text-white' : 'text-black'}`}
                 >
-                  {aspectRatio === 'full'
-                    ? translate('planet.aspect_full')
-                    : aspectRatio}
+                  {aspectRatio}
                 </Text>
               </Pressable>
 
@@ -817,9 +789,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                       <Text
                         className={`text-xs font-semibold ${selected ? 'text-black dark:text-black' : 'text-white dark:text-white'}`}
                       >
-                        {aspectRatio === 'full'
-                          ? translate('planet.aspect_full')
-                          : aspectRatio}
+                        {aspectRatio}
                       </Text>
                     </View>
                   </Pressable>

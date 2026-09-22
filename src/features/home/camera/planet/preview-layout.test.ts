@@ -30,12 +30,12 @@ describe('getEffectiveSensorRoi', () => {
     });
   });
 
-  it('keeps exact-ratio presets unchanged and preserves full mode', () => {
+  it('keeps exact-ratio presets unchanged and crops mismatched ratios', () => {
     const deep = { x: 640, y: 300, width: 640, height: 480 };
 
     expect(getEffectiveSensorRoi(deep, '4:3')).toEqual(deep);
-    expect(getEffectiveSensorRoi(deep, 'full')).toEqual(deep);
     expect(getEffectiveSensorRoi(fullHd, '16:9')).toEqual(fullHd);
+    expect(getEffectiveSensorRoi(fullHd, '4:3')).toEqual({ x: 240, y: 0, width: 1440, height: 1080 });
   });
 
   it('keeps cropped coordinates and dimensions even and inside the preset', () => {
@@ -64,8 +64,8 @@ describe('getEffectiveSensorRoi', () => {
 });
 
 describe('getPreviewSurfaceHeight', () => {
-  it('fills the 16:9 viewport in full frame', () => {
-    expect(getPreviewSurfaceHeight('full', WIDTH, TALL_SCREEN)).toBe(WIDTH / 0.5625);
+  it('fills the 16:9 viewport in 16:9 frame', () => {
+    expect(getPreviewSurfaceHeight('16:9', WIDTH, TALL_SCREEN)).toBe(WIDTH / 0.5625);
   });
 
   it('crops to the selected ratio so switching is visible', () => {
@@ -95,7 +95,7 @@ describe('getPreviewSurfaceHeight', () => {
   it('never exceeds the available screen height', () => {
     const shortScreen = 900;
     expect(getPreviewSurfaceHeight('4:3', WIDTH, shortScreen)).toBe(shortScreen);
-    expect(getPreviewSurfaceHeight('full', WIDTH, shortScreen)).toBe(shortScreen);
+    expect(getPreviewSurfaceHeight('16:9', WIDTH, shortScreen)).toBe(shortScreen);
     expect(getPreviewSurfaceHeightForRoi(
       { width: 640, height: 480 },
       WIDTH,
