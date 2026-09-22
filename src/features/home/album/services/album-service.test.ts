@@ -31,6 +31,10 @@ jest.mock('expo-media-library', () => ({
   saveToLibraryAsync: jest.fn(),
 }));
 
+jest.mock('./image-watermark-service', () => ({
+  watermarkLocalImageFile: jest.fn(uri => Promise.resolve(uri)),
+}));
+
 describe('album-service', () => {
   beforeEach(() => {
     jest.clearAllMocks();

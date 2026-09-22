@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 import * as React from 'react';
 import { Alert } from 'react-native';
 import { translate } from '@/lib/i18n';
+import { useCameraStore } from '../../camera';
 import {
   deletePicFile,
   downloadImageFile,
@@ -51,6 +52,7 @@ export function useImageViewerActions({
   const [isSaving, setIsSaving] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [isSharing, setIsSharing] = React.useState(false);
+  const watermark = useCameraStore.use.landscapeWatermark();
 
   const isBusy = isSaving || isDeleting || isSharing;
 
@@ -63,6 +65,7 @@ export function useImageViewerActions({
       await saveImageToPhone({
         previewUrl: item.previewUrl,
         path: item.path,
+        watermark,
       });
       Alert.alert(translate('album.viewer.save_success'));
     }
@@ -120,7 +123,7 @@ export function useImageViewerActions({
         previewUrl: item.previewUrl,
         path: item.path,
       });
-      const fileToShare = await watermarkLocalImageFile(localUri);
+      const fileToShare = watermark ? await watermarkLocalImageFile(localUri) : localUri;
 
       await Sharing.shareAsync(fileToShare, {
         dialogTitle: item.target,

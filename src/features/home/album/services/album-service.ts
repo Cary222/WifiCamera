@@ -212,7 +212,7 @@ export async function downloadImageFile(params: {
     const dataUri = await getImage(params.path);
     const base64Data = dataUri.includes(',') ? dataUri.split(',')[1] : dataUri;
     await FileSystem.writeAsStringAsync(localUri, base64Data, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
     return localUri;
   }
@@ -226,6 +226,7 @@ export async function downloadImageFile(params: {
 export async function saveImageToPhone(params: {
   previewUrl?: string;
   path?: string;
+  watermark?: boolean;
 }): Promise<string> {
   const { status, granted } = await MediaLibrary.requestPermissionsAsync(true);
   if (!granted && status !== 'granted') {
@@ -233,7 +234,8 @@ export async function saveImageToPhone(params: {
   }
 
   const localUri = await downloadImageFile(params);
-  const fileToSave = await watermarkLocalImageFile(localUri);
+  const shouldWatermark = params.watermark ?? true;
+  const fileToSave = shouldWatermark ? await watermarkLocalImageFile(localUri) : localUri;
   await MediaLibrary.saveToLibraryAsync(fileToSave);
   return fileToSave;
 }

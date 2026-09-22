@@ -1,4 +1,4 @@
-import base64 from 'base64-js';
+import { fromByteArray, toByteArray } from 'base64-js';
 import * as FileSystem from 'expo-file-system/legacy';
 import jpeg from 'jpeg-js';
 
@@ -8,11 +8,17 @@ import {
   WATERMARK_WIDTH,
 } from './watermark-mask-data';
 
+// eslint-disable-next-line perfectionist/sort-imports, import/newline-after-import, unicorn/prefer-node-protocol -- Hermes polyfill
+const bufferModule = require('buffer');
+if (!Reflect.get(globalThis, 'Buffer')) {
+  Reflect.set(globalThis, 'Buffer', bufferModule.Buffer);
+}
+
 let cachedAlphaMask: Uint8Array | null = null;
 
 function getAlphaMask(): Uint8Array {
   if (!cachedAlphaMask) {
-    cachedAlphaMask = base64.toByteArray(WATERMARK_ALPHA_BASE64);
+    cachedAlphaMask = toByteArray(WATERMARK_ALPHA_BASE64);
   }
   return cachedAlphaMask;
 }
@@ -69,15 +75,15 @@ export function applyWatermarkToJpegBytes(jpegBytes: Uint8Array): Uint8Array {
 export async function watermarkLocalImageFile(localUri: string): Promise<string> {
   try {
     const base64Data = await FileSystem.readAsStringAsync(localUri, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
-    const bytes = base64.toByteArray(base64Data);
+    const bytes = toByteArray(base64Data);
     const watermarkedBytes = applyWatermarkToJpegBytes(bytes);
-    const watermarkedBase64 = base64.fromByteArray(watermarkedBytes);
+    const watermarkedBase64 = fromByteArray(watermarkedBytes);
 
     const outUri = `${FileSystem.cacheDirectory}wm_${Date.now()}.jpg`;
     await FileSystem.writeAsStringAsync(outUri, watermarkedBase64, {
-      encoding: FileSystem.EncodingType.Base64,
+      encoding: 'base64',
     });
     return outUri;
   }

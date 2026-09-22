@@ -178,6 +178,7 @@ describe('imageViewer actions', () => {
       expect(albumService.saveImageToPhone).toHaveBeenCalledWith({
         previewUrl: mockItem.previewUrl,
         path: mockItem.path,
+        watermark: true,
       });
     });
   });

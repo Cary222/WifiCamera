@@ -1,4 +1,4 @@
-import base64 from 'base64-js';
+import { fromByteArray } from 'base64-js';
 import * as FileSystem from 'expo-file-system/legacy';
 import jpeg from 'jpeg-js';
 import {
@@ -46,7 +46,7 @@ describe('image-watermark-service', () => {
     const height = 50;
     const rawData = new Uint8Array(width * height * 4);
     const testJpeg = jpeg.encode({ data: rawData, width, height }, 80).data;
-    const testBase64 = base64.fromByteArray(testJpeg);
+    const testBase64 = fromByteArray(testJpeg);
 
     (FileSystem.readAsStringAsync as jest.Mock).mockResolvedValueOnce(testBase64);
     (FileSystem.writeAsStringAsync as jest.Mock).mockResolvedValueOnce(undefined);
