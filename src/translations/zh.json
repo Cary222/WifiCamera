@@ -696,7 +696,6 @@
     "version_label": "版本"
   },
   "planet": {
-    "aspect_full": "全幅",
     "bit_depth": "位深",
     "container": "封装",
     "countdown": "倒计时",
@@ -724,7 +723,7 @@
     "roi_apply": "应用此尺寸",
     "roi_custom": "自定义裁切",
     "roi_deep_desc": "中心裁切 640P",
-    "roi_full_desc": "全画幅 1080P",
+    "roi_full_desc": "标准 1080P",
     "roi_height": "高度",
     "roi_medium_desc": "中心裁切 800P",
     "roi_quick_presets": "推荐尺寸",
