@@ -22,9 +22,8 @@ import {
   useLandscapeCameraPreview,
 } from '../components/native-camera-preview';
 import { formatGain } from '../gain-code';
-import { formatShutter, SHUTTER_VALUES } from '../shutter-values';
-
 import { getImage } from '../services/file-service';
+import { formatShutter, SHUTTER_VALUES } from '../shutter-values';
 import {
   CloseIcon,
   CountdownIcon,
