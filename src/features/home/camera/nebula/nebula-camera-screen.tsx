@@ -23,6 +23,7 @@ import {
   useLandscapeCameraPreview,
 } from '../components/native-camera-preview';
 import { getCameraBaseUrl } from '../config';
+import { calculateEvLinkedExposure } from '../ev-linkage';
 import { formatGain } from '../gain-code';
 import {
   CloseIcon,
@@ -124,6 +125,8 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const [activeParam, setActiveParam] = useState<
     'wb' | 'shutter' | 'gain' | 'ev'
   >('shutter');
+  const [baseExposure, setBaseExposure] = useState(0.008);
+  const [baseGain, setBaseGain] = useState(10);
   const [exposure, setExposure] = useState(0.008);
   const [gain, setGain] = useState(10);
   const [whiteBalance, setWhiteBalance] = useState(0);
@@ -144,7 +147,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
       wb: whiteBalance === 0 ? 'AUTO' : `${whiteBalance}K`,
       shutter: formatShutter(exposure),
       gain: formatGain(gain),
-      ev: `${ev}`,
+      ev: ev > 0 ? `+${ev}` : `${ev}`,
     }),
     [whiteBalance, exposure, gain, ev],
   );
@@ -558,7 +561,9 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                         formatTick={(value, index) =>
                           index % 5 === 0 ? formatShutter(value) : null}
                         onChange={(value) => {
+                          setBaseExposure(value);
                           setExposure(value);
+                          setEv(0);
                           changeStreamingSetting(value, gain);
                         }}
                       />
@@ -572,7 +577,9 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                         formatTick={(value, index) =>
                           index % 10 === 0 ? String(value) : null}
                         onChange={(value) => {
+                          setBaseGain(value);
                           setGain(value);
+                          setEv(0);
                           changeStreamingSetting(exposure, value);
                         }}
                       />
@@ -597,18 +604,41 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                       />
                     )}
                     {activeParam === 'ev' && (
-                      <LandscapeRuler
-                        label=""
-                        values={EV_VALUES}
-                        value={ev}
-                        formatValue={value => `${value}`}
-                        formatTick={(value, index) =>
-                          index % 2 === 0 ? `${value}` : null}
-                        onChange={(value) => {
-                          setEv(value);
-                          changeEv(value);
-                        }}
-                      />
+                      <View className="gap-2">
+                        <LandscapeRuler
+                          label=""
+                          values={EV_VALUES}
+                          value={ev}
+                          formatValue={value => (value > 0 ? `+${value}` : `${value}`)}
+                          formatTick={(value, index) =>
+                            index % 2 === 0
+                              ? value > 0
+                                ? `+${value}`
+                                : `${value}`
+                              : null}
+                          onChange={(value) => {
+                            setEv(value);
+                            const linkage = calculateEvLinkedExposure(
+                              baseExposure,
+                              baseGain,
+                              value,
+                            );
+                            setExposure(linkage.exposure);
+                            setGain(linkage.gain);
+                            changeStreamingSetting(linkage.exposure, linkage.gain);
+                            changeEv(value);
+                          }}
+                        />
+                        <View className="items-center justify-center py-1">
+                          <Text className="text-[12px] text-neutral-400 dark:text-white/60">
+                            {translate('nebula.ev_linkage_feedback', {
+                              shutter: paramValues.shutter,
+                              gain: paramValues.gain,
+                              defaultValue: `当前联动快门: ${paramValues.shutter} · 增益: ${paramValues.gain}`,
+                            })}
+                          </Text>
+                        </View>
+                      </View>
                     )}
                   </View>
                 </View>

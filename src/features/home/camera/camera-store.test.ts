@@ -577,4 +577,40 @@ describe('camera store', () => {
     });
     expect(useCameraStore.getState().landscapeManualGain).toBe(75);
   });
+
+  it('links manual exposure and gain when EV is changed and resets EV on manual setting', () => {
+    const store = useCameraStore.getState();
+
+    // 1. Establish manual baseline: 0.008s (1/125), gain 10
+    store.changeStreamingSetting(0.008, 10);
+    expect(useCameraStore.getState().landscapeManualExposure).toBe(0.008);
+    expect(useCameraStore.getState().landscapeManualGain).toBe(10);
+    expect(useCameraStore.getState().landscapeEv).toBe(0);
+
+    // 2. Change EV to +1.0 -> linked exposure becomes 0.0167s (1/60)
+    store.changeEv(1.0);
+    expect(useCameraStore.getState().landscapeEv).toBe(1.0);
+    expect(useCameraStore.getState().landscapeManualExposure).toBe(0.0167);
+    expect(useCameraStore.getState().landscapeManualGain).toBe(10);
+
+    // 3. Change EV to -1.0 -> linked exposure becomes 0.004s (1/250)
+    store.changeEv(-1.0);
+    expect(useCameraStore.getState().landscapeEv).toBe(-1.0);
+    expect(useCameraStore.getState().landscapeManualExposure).toBe(0.004);
+    expect(useCameraStore.getState().landscapeManualGain).toBe(10);
+
+    // 4. Return EV to 0 -> restores baseline
+    store.changeEv(0);
+    expect(useCameraStore.getState().landscapeEv).toBe(0);
+    expect(useCameraStore.getState().landscapeManualExposure).toBe(0.008);
+    expect(useCameraStore.getState().landscapeManualGain).toBe(10);
+
+    // 5. User adjusts shutter directly -> resets EV to 0 and establishes new baseline
+    store.changeEv(1.0);
+    expect(useCameraStore.getState().landscapeEv).toBe(1.0);
+    store.changeStreamingSetting(0.04, 20);
+    expect(useCameraStore.getState().landscapeEv).toBe(0);
+    expect(useCameraStore.getState().landscapeManualExposure).toBe(0.04);
+    expect(useCameraStore.getState().landscapeManualGain).toBe(20);
+  });
 });

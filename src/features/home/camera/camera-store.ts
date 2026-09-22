@@ -11,6 +11,7 @@ import type { CameraSerial, CameraVersion } from './types';
 import { create } from 'zustand';
 import { createSelectors } from '@/lib/utils';
 import { getCameraWebSocketUrl } from './config';
+import { calculateEvLinkedExposure } from './ev-linkage';
 import { syncBoardTime } from './services/startup-service';
 import { CameraWebSocketService } from './services/websocket-service';
 import {
@@ -262,6 +263,8 @@ type CameraState = {
   landscapeCountdownRemaining: number;
   landscapeCapturePendingId: string | null;
   landscapeAutoMode: boolean;
+  landscapeBaseExposure: number;
+  landscapeBaseGain: number;
   landscapeManualExposure: number;
   landscapeManualGain: number;
   landscapeWhiteBalance: number;
@@ -822,6 +825,8 @@ const _useCameraStore = create<CameraState>(set => ({
   landscapeCapturePendingId: null,
   landscapeAutoMode: true,
   // Default manual gain 10 on the unified 0~100 scale.
+  landscapeBaseExposure: 0.08,
+  landscapeBaseGain: 10,
   landscapeManualExposure: 0.08,
   landscapeManualGain: 10,
   gainPercentSupported: null,
@@ -1173,9 +1178,14 @@ const _useCameraStore = create<CameraState>(set => ({
       );
   },
   startStreamingManual: (exposure, gain): Promise<CommandWaitResult> => {
+    const clampedExposure = clampExposure(exposure);
+    const clampedGain = clampGain(gain);
     set({
-      landscapeManualExposure: clampExposure(exposure),
-      landscapeManualGain: clampGain(gain),
+      landscapeBaseExposure: clampedExposure,
+      landscapeBaseGain: clampedGain,
+      landscapeManualExposure: clampedExposure,
+      landscapeManualGain: clampedGain,
+      landscapeEv: 0,
     });
     const state = _useCameraStore.getState();
     return state.sendCommandWait(
@@ -1189,9 +1199,14 @@ const _useCameraStore = create<CameraState>(set => ({
       .getState()
       .sendInstruction(CAMERA_INSTRUCTIONS.stopStreaming),
   changeStreamingSetting: (exposure, gain) => {
+    const clampedExposure = clampExposure(exposure);
+    const clampedGain = clampGain(gain);
     set({
-      landscapeManualExposure: clampExposure(exposure),
-      landscapeManualGain: clampGain(gain),
+      landscapeBaseExposure: clampedExposure,
+      landscapeBaseGain: clampedGain,
+      landscapeManualExposure: clampedExposure,
+      landscapeManualGain: clampedGain,
+      landscapeEv: 0,
     });
     scheduleStreamingSetting();
   },
@@ -1202,7 +1217,19 @@ const _useCameraStore = create<CameraState>(set => ({
       .sendInstruction(CAMERA_INSTRUCTIONS.setWhiteBalance, [cct]);
   },
   changeEv: (ev) => {
-    set({ landscapeEv: ev });
+    const state = _useCameraStore.getState();
+    const baseExp = state.landscapeBaseExposure || state.landscapeManualExposure || 0.08;
+    const baseGain = typeof state.landscapeBaseGain === 'number'
+      ? state.landscapeBaseGain
+      : state.landscapeManualGain;
+    const linkage = calculateEvLinkedExposure(baseExp, baseGain, ev);
+
+    set({
+      landscapeEv: ev,
+      landscapeManualExposure: clampExposure(linkage.exposure),
+      landscapeManualGain: clampGain(linkage.gain),
+    });
+    scheduleStreamingSetting();
     _useCameraStore.getState().sendInstruction(CAMERA_INSTRUCTIONS.setEv, [ev]);
   },
   captureStreamFrame: (path) => {
