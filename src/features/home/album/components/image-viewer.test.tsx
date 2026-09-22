@@ -84,6 +84,25 @@ describe('imageViewer rendering', () => {
     fireEvent.press(screen.getByTestId('viewer-back-button'));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it('renders watermark at bottom of preview when image is loaded', () => {
+    render(
+      <ImageViewer
+        item={mockItem}
+        onClose={onClose}
+        onDeleted={onDeleted}
+      />,
+    );
+
+    expect(screen.queryByTestId('viewer-watermark')).toBeFalsy();
+    const image = screen.getByText('正在加载原图…');
+    expect(image).toBeTruthy();
+
+    const expoImage = screen.UNSAFE_getByType(require('expo-image').Image);
+    fireEvent(expoImage, 'loadEnd');
+
+    expect(screen.getByTestId('viewer-watermark')).toBeTruthy();
+  });
 });
 
 describe('imageViewer actions', () => {
@@ -159,6 +178,7 @@ describe('imageViewer actions', () => {
       expect(albumService.saveImageToPhone).toHaveBeenCalledWith({
         previewUrl: mockItem.previewUrl,
         path: mockItem.path,
+        watermark: true,
       });
     });
   });

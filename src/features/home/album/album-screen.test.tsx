@@ -29,7 +29,12 @@ jest.mock('@/features/home/camera', () => ({
     use: {
       isMockMode: () => false,
       connectionStatus: () => 'open',
+      landscapeWatermark: () => true,
     },
+    getState: () => ({
+      stopStreaming: jest.fn(),
+      landscapeWatermark: true,
+    }),
   },
 }));
 

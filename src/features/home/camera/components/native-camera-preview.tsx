@@ -69,6 +69,7 @@ export function useLandscapeCameraPreview(
   const startStreamingManual = useCameraStore.use.startStreamingManual();
   const connectionStatus = useCameraStore.use.connectionStatus();
   const transport = useCameraStore.use.transport();
+  const landscapeRatioVersion = useCameraStore.use.landscapeRatioVersion();
   const [previewState, setPreviewState]
     = useState<CameraPreviewState>('connecting');
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -284,11 +285,9 @@ export function useLandscapeCameraPreview(
       setActualFps(null);
       void releaseSession();
     };
-    // 不依赖曝光/增益，避免调参时断开并重建 WebRTC 会话。
-    // 亦不依赖 landscapeRatio 重建：切换画幅时硬件板端内部会自动重启推流，
-    // WebRTC 底层音视频轨道会自动接收新的分辨率，重建 WHEP 反而导致状态竞态。
+    // 画幅版本变化时重建 WHEP 会话，彻底消除旧分辨率/比例缓存。
     // transport 变化必须重建：WHEP 地址随链路切换而变。
-  }, [connectionStatus, transport, reconnectKey]);
+  }, [connectionStatus, transport, landscapeRatioVersion, reconnectKey]);
 
   return { previewState, stream, actualFps };
 }
@@ -484,7 +483,17 @@ export const PreviewSurface = memo(
     const containerWidth = isRotated ? height : width;
     const containerHeight = isRotated ? width : height;
 
-    const renderSurface = () => {
+    const isVideoActive = Boolean(
+      Platform.OS === 'web' ? stream : stream && hasTracks && NativeWebRTC,
+    );
+
+    const cameraBusy = useCameraStore.getState().cameraState?.busy;
+    const errorText
+      = cameraBusy === 'error'
+        ? '相机服务异常，请重启相机'
+        : translate('landscape.preview_failed');
+
+    const renderActiveSurface = () => {
       if (Platform.OS === 'web') {
         return (
           <WebVideoSurface
@@ -506,31 +515,7 @@ export const PreviewSurface = memo(
           />
         );
       }
-      const cameraBusy = useCameraStore.getState().cameraState?.busy;
-      const errorText
-        = cameraBusy === 'error'
-          ? '相机服务异常，请重启相机'
-          : translate('landscape.preview_failed');
-
-      return (
-        <View
-          className="flex-1 items-center justify-center bg-[#0B0B0D]"
-          style={{ width, height }}
-        >
-          <Text
-            className="text-sm text-white/40"
-            style={
-              rotation
-                ? { transform: [{ rotate: `-${rotation}deg` }] }
-                : undefined
-            }
-          >
-            {previewState === 'error'
-              ? errorText
-              : translate('landscape.preview_connecting')}
-          </Text>
-        </View>
-      );
+      return null;
     };
 
     const surfaceContent = (
@@ -538,9 +523,24 @@ export const PreviewSurface = memo(
         style={{ width: containerWidth, height: containerHeight }}
         className="items-center justify-center overflow-hidden"
       >
-        <Animated.View style={animatedSurfaceStyle}>
-          {renderSurface()}
-        </Animated.View>
+        {isVideoActive
+          ? (
+              <Animated.View style={animatedSurfaceStyle}>
+                {renderActiveSurface()}
+              </Animated.View>
+            )
+          : (
+              <View
+                className="flex-1 items-center justify-center bg-[#0B0B0D]"
+                style={{ width: containerWidth, height: containerHeight }}
+              >
+                <Text className="text-sm text-white/40">
+                  {previewState === 'error'
+                    ? errorText
+                    : translate('landscape.preview_connecting')}
+                </Text>
+              </View>
+            )}
         {isZoomed && (
           <View
             pointerEvents="box-none"

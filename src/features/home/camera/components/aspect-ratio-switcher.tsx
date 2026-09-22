@@ -1,18 +1,17 @@
-import type { LandscapeRatio } from "../camera-store";
-import { useEffect } from "react";
-import { Pressable, useWindowDimensions } from "react-native";
+/* eslint-disable max-lines-per-function */
+import type { LandscapeRatio } from '../camera-store';
+import { useEffect } from 'react';
+import { Pressable, useWindowDimensions } from 'react-native';
 import {
   useAnimatedStyle,
   useSharedValue,
   withTiming,
-} from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useUniwind } from "uniwind";
-import { Text } from "@/components/ui";
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUniwind } from 'uniwind';
+import { Text } from '@/components/ui';
 
 const RATIO_16_9 = 0.5625;
-const PREVIEW_TOP_SPARE_SHARE_16_9 = 0.25;
-const PREVIEW_TOP_SPARE_SHARE_4_3 = 0.35;
 
 export type AspectRatioAnimationResult = {
   /** Animated style for the preview container */
@@ -80,24 +79,21 @@ export function useAspectRatioAnimation(
     );
     previewLeft = 0;
 
-    const spareHeight = Math.max(0, screenHeight - previewHeight);
-    const topShare =
-      ratio === '4:3'
-        ? PREVIEW_TOP_SPARE_SHARE_4_3
-        : PREVIEW_TOP_SPARE_SHARE_16_9;
-    previewTop = Math.max(insets.top, Math.round(spareHeight * topShare));
+    // 竖屏下顶部对齐安全区，画面顶部与顶部栏贴合，底部留出操作空间（与系统相机一致）
+    previewTop = insets.top;
 
     // RTCView 内部渲染的是横向视频流。在旋转 90 度呈竖屏时：
     // 内部 RTCView 的未旋转宽度即为旋转后的视觉高度（previewHeight），
     // 内部 RTCView 的未旋转高度即为旋转后的视觉宽度（previewWidth）。
     surfaceWidth = previewHeight;
     surfaceHeight = previewWidth;
-  } else {
+  }
+  else {
     // In landscape orientation:
     // 16:9 and 4:3 are displayed horizontally without rotation.
     rotation = 0;
     scale = 1;
-    const horizontalRatio = ratio === "4:3" ? 4 / 3 : 16 / 9;
+    const horizontalRatio = ratio === '4:3' ? 4 / 3 : 16 / 9;
     previewHeight = Math.min(
       screenHeight,
       Math.round(screenWidth / horizontalRatio),
@@ -222,12 +218,12 @@ export function ToolCard({
   textOnly = false,
   onPress,
   cardBg,
-  activeBg = "#CBFF3C",
-  className = "",
+  activeBg = '#CBFF3C',
+  className = '',
 }: ToolCardProps) {
   const { theme } = useUniwind();
-  const isDark = theme === "dark";
-  const resolvedCardBg = cardBg ?? (isDark ? "#1F1F1F" : "#F4F4F5");
+  const isDark = theme === 'dark';
+  const resolvedCardBg = cardBg ?? (isDark ? '#1F1F1F' : '#F4F4F5');
 
   return (
     <Pressable
@@ -235,22 +231,24 @@ export function ToolCard({
       style={{ backgroundColor: active ? activeBg : resolvedCardBg }}
       className={`h-[92px] flex-1 items-center justify-center gap-2 rounded-2xl active:opacity-80 ${className}`}
     >
-      {textOnly ? (
-        <Text
-          className={`text-[21px] ${active ? "text-black dark:text-black" : "text-black dark:text-white"}`}
-        >
-          {label}
-        </Text>
-      ) : (
-        <>
-          {icon}
-          <Text
-            className={`text-[12px] ${active ? "text-black dark:text-black" : "text-black dark:text-white"}`}
-          >
-            {label}
-          </Text>
-        </>
-      )}
+      {textOnly
+        ? (
+            <Text
+              className={`text-[21px] ${active ? 'text-black dark:text-black' : 'text-black dark:text-white'}`}
+            >
+              {label}
+            </Text>
+          )
+        : (
+            <>
+              {icon}
+              <Text
+                className={`text-[12px] ${active ? 'text-black dark:text-black' : 'text-black dark:text-white'}`}
+              >
+                {label}
+              </Text>
+            </>
+          )}
     </Pressable>
   );
 }
@@ -278,10 +276,10 @@ type AspectRatioButtonProps = {
 export function AspectRatioButton({
   ratio,
   onPress,
-  cardBg = "#1F1F1F",
-  className = "",
+  cardBg = '#1F1F1F',
+  className = '',
 }: AspectRatioButtonProps) {
-  const ratioLabel = ratio === "4:3" ? "4:3" : "16:9";
+  const ratioLabel = ratio === '4:3' ? '4:3' : '16:9';
 
   return (
     <ToolCard

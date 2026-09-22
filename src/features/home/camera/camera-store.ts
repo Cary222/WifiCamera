@@ -269,6 +269,7 @@ type CameraState = {
   landscapeWatermark: boolean;
   landscapeRatio: LandscapeRatio;
   landscapeApplyingRatio: boolean;
+  landscapeRatioVersion: number;
   landscapeTimerPlan: LandscapeTimerPlan;
   landscapeRepeatState: LandscapeRepeatState;
   landscapeRepeatCurrent: number;
@@ -829,6 +830,7 @@ const _useCameraStore = create<CameraState>(set => ({
   landscapeWatermark: true,
   landscapeRatio: 'full',
   landscapeApplyingRatio: false,
+  landscapeRatioVersion: 0,
   landscapeTimerPlan: DEFAULT_TIMER_PLAN,
   landscapeRepeatState: 'idle',
   landscapeRepeatCurrent: 0,
@@ -1102,10 +1104,12 @@ const _useCameraStore = create<CameraState>(set => ({
     ) {
       return;
     }
-    set({ landscapeRatio, landscapeApplyingRatio: true });
+    set(s => ({
+      landscapeRatio,
+      landscapeApplyingRatio: true,
+      landscapeRatioVersion: s.landscapeRatioVersion + 1,
+    }));
     const roi = LANDSCAPE_RATIO_ROI[landscapeRatio];
-    // Changing the sensor window tears down and rebuilds VI/VPSS/VENC, so the
-    // preview drops for a moment before WHEP renegotiates on its own.
     state.sendInstruction(CAMERA_INSTRUCTIONS.setSensorRoi, [
       roi.x,
       roi.y,
@@ -1117,7 +1121,10 @@ const _useCameraStore = create<CameraState>(set => ({
       clearTimeout(sensorRatioTimer);
     sensorRatioTimer = setTimeout(() => {
       sensorRatioTimer = null;
-      set({ landscapeApplyingRatio: false });
+      set(s => ({
+        landscapeApplyingRatio: false,
+        landscapeRatioVersion: s.landscapeRatioVersion + 1,
+      }));
     }, 1500);
   },
 
@@ -1222,7 +1229,6 @@ const _useCameraStore = create<CameraState>(set => ({
     const isRepeatRunning = state.landscapeRepeatState === 'running';
     if (!canStartLandscapeAction(state, isRepeatRunning))
       return;
-
     const isLongExposure
       = !state.landscapeAutoMode && state.landscapeManualExposure > 1;
     const path = `/mnt/sdcard/Pictures/stream_frame_${Date.now()}.jpg`;

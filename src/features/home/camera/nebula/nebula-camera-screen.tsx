@@ -1,6 +1,7 @@
 /* eslint-disable max-lines-per-function */
 
 import type { LandscapeRatio } from '../camera-store';
+import { Image as NImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
@@ -40,6 +41,8 @@ import {
 } from './solve-format';
 import { useNebulaCapture } from './use-nebula-capture';
 import { usePlateSolve } from './use-plate-solve';
+
+const watermarkLogo = require('@/assets/common/watermark_white.png') as number;
 
 const BRAND = '#CBFF3C';
 const CARD_BG = '#1F1F1F';
@@ -126,7 +129,8 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
   const [whiteBalance, setWhiteBalance] = useState(0);
   const [ev, setEv] = useState(0);
   const [autoStretch, setAutoStretch] = useState(true);
-  const [watermark, setWatermark] = useState(false);
+  const watermark = useCameraStore.use.landscapeWatermark();
+  const setWatermark = useCameraStore.use.setLandscapeWatermark();
   const [timerEnabled, setTimerEnabled] = useState(false);
   const [countdownEnabled, setCountdownEnabled] = useState(false);
   const [timerPlan, setTimerPlan] = useState({ count: 3, interval: 3 });
@@ -220,6 +224,14 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
     const timer = setTimeout(() => setNotice(null), 2000);
     return () => clearTimeout(timer);
   }, [notice]);
+  useEffect(() => {
+    if (!lastCommandError)
+      return;
+    const timer = setTimeout(() => {
+      useCameraStore.setState({ lastCommandError: null });
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [lastCommandError]);
 
   const shutter = () => {
     if (!isConnected)
@@ -282,10 +294,15 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
           objectFit="contain"
         />
         {watermark && (
-          <View className="absolute top-4 left-5">
-            <Text className="text-base font-semibold text-white/85">
-              SVBONY
-            </Text>
+          <View
+            pointerEvents="none"
+            className="absolute inset-x-0 bottom-4 items-center justify-center"
+          >
+            <NImage
+              source={watermarkLogo}
+              style={{ width: 140, height: 14, opacity: 0.88 }}
+              contentFit="contain"
+            />
           </View>
         )}
       </Animated.View>
@@ -632,10 +649,11 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                         />
                         <AspectRatioButton
                           ratio={nebulaRatio}
-                          onPress={() =>
+                          onPress={() => {
                             setLandscapeSensorRatio(
                               nebulaRatio === '4:3' ? '16:9' : '4:3',
-                            )}
+                            );
+                          }}
                           cardBg={isDark ? CARD_BG : '#F4F4F5'}
                         />
                         <ToolCard
@@ -647,7 +665,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
                           label={translate('nebula.watermark')}
                           active={watermark}
                           cardBg={isDark ? CARD_BG : '#F4F4F5'}
-                          onPress={() => setWatermark(value => !value)}
+                          onPress={() => setWatermark(!watermark)}
                         />
                       </View>
                       <Pressable
@@ -764,6 +782,7 @@ export function NebulaCameraScreen({ onBack }: { onBack: () => void }) {
       />
       {lastCommandError && lastCommandError !== 'see data' && (
         <View
+          pointerEvents="box-none"
           className="absolute inset-x-0 items-center"
           style={{ bottom: insets.bottom + 220 }}
         >

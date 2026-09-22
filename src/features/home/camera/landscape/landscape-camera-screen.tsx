@@ -1,5 +1,6 @@
 /* eslint-disable max-lines-per-function */
 
+import { Image as NImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
@@ -23,7 +24,6 @@ import {
 import { formatGain } from '../gain-code';
 import { getImage } from '../services/file-service';
 import { formatShutter, SHUTTER_VALUES } from '../shutter-values';
-
 import {
   CloseIcon,
   CountdownIcon,
@@ -33,6 +33,8 @@ import {
   WatermarkFlaskIcon,
 } from './landscape-icons';
 import { LandscapeRuler } from './landscape-ruler';
+
+const watermarkLogo = require('@/assets/common/watermark_white.png') as number;
 
 const BRAND = '#CBFF3C';
 const SHEET_BG = '#141414';
@@ -266,10 +268,15 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
           objectFit="contain"
         />
         {watermark && (
-          <View className="absolute top-4 left-5">
-            <Text className="text-base font-semibold text-white/85">
-              SVBONY
-            </Text>
+          <View
+            pointerEvents="none"
+            className="absolute inset-x-0 bottom-4 items-center justify-center"
+          >
+            <NImage
+              source={watermarkLogo}
+              style={{ width: 140, height: 14, opacity: 0.88 }}
+              contentFit="contain"
+            />
           </View>
         )}
       </Animated.View>
@@ -647,6 +654,7 @@ export function LandscapeCameraScreen({ onBack }: { onBack: () => void }) {
 
       {lastCommandError && (
         <View
+          pointerEvents="box-none"
           className="absolute inset-x-0 items-center"
           style={{ bottom: insets.bottom + 220 }}
         >
