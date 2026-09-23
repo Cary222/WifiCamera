@@ -262,10 +262,21 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
 
   const settingsDisabled
     = isRecording || isCapturing || isApplyingRoi || countdownRemaining > 0;
-  const surfaceHeight = useMemo(
-    () => getPreviewSurfaceHeightForRoi(effectiveRoi, width, height),
-    [effectiveRoi, height, width],
+  const isPortrait = height >= width;
+  const previewWidth = width;
+  const previewHeight = useMemo(
+    () =>
+      isPortrait
+        ? getPreviewSurfaceHeightForRoi(effectiveRoi, width, height)
+        : Math.min(
+            height,
+            Math.round((width * effectiveRoi.height) / effectiveRoi.width),
+          ),
+    [effectiveRoi, height, isPortrait, width],
   );
+  const surfaceWidth = isPortrait ? previewHeight : width;
+  const surfaceHeight = isPortrait ? previewWidth : previewHeight;
+  const rotation = isPortrait ? 90 : 0;
 
   return (
     <View
@@ -274,22 +285,22 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     >
       {/* 1. Camera Viewport */}
       <View
-        className="flex-1 items-center overflow-hidden"
+        className="absolute left-0 items-center justify-center overflow-hidden"
         style={{
-          marginTop: insets.top + 48,
-          marginBottom: isPanelOpen ? 240 : 100,
-          justifyContent: 'center',
+          top: insets.top,
+          width: previewWidth,
+          height: previewHeight,
           backgroundColor: isDark ? '#000' : '#F9FAFB',
         }}
       >
         <PreviewSurface
+          key={`planet-preview-${aspectRatio}-${effectiveRoi.width}x${effectiveRoi.height}-${surfaceWidth}x${surfaceHeight}`}
           stream={stream}
           previewState={previewState}
-          width={width}
-          height={Math.min(
-            surfaceHeight,
-            height - insets.top - 48 - (isPanelOpen ? 240 : 100),
-          )}
+          width={surfaceWidth}
+          height={surfaceHeight}
+          rotation={rotation}
+          scale={1}
           objectFit="contain"
         />
       </View>
