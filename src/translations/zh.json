@@ -110,6 +110,43 @@
     "title": "WifiCamera",
     "video": "视频"
   },
+  "camera_error": {
+    "fallback": "操作失败",
+    "format_retry": "{{op}}失败，请重试",
+    "format_with_reason": "{{op}}失败：{{reason}}",
+    "name": {
+      "adapter": "相机适配异常",
+      "bad_command": "不支持的命令",
+      "buffer_too_small": "缓冲区不足",
+      "busy": "相机忙，请稍后重试",
+      "failed": "请重试",
+      "invalid_param": "参数无效",
+      "not_found": "设备或资源未找到",
+      "not_ready": "相机尚未就绪",
+      "not_supported": "当前固件不支持",
+      "timeout": "请求超时，请重试",
+      "unknown": "请重试"
+    },
+    "operation": {
+      "change_streaming_frame_rate": "帧率设置",
+      "change_streaming_setting": "曝光参数设置",
+      "ev_set": "曝光补偿设置",
+      "record_start": "开始录像",
+      "record_stop": "停止录像",
+      "roi_set": "画幅设置",
+      "ser_start": "开始 SER 录制",
+      "set_ev": "曝光补偿设置",
+      "set_gain": "增益设置",
+      "set_sensor_roi": "画幅设置",
+      "set_stretch": "自动拉伸设置",
+      "set_white_balance": "白平衡设置",
+      "streaming_frame_rate_set": "帧率设置",
+      "streaming_setting_set": "曝光参数设置",
+      "switch_auto_mode": "曝光模式切换",
+      "unknown": "操作",
+      "white_balance_set": "白平衡设置"
+    }
+  },
   "dashboard": {
     "humidity": "湿度",
     "last_1h": "1h",

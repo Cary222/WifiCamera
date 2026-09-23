@@ -4,6 +4,7 @@ import {
   formatCameraErrorMessage,
   mapBoardStateToCameraStatus,
   mapLegacyStatusToCameraStatus,
+  normalizeCameraCommand,
   useCameraStore,
 } from './camera-store';
 
@@ -437,16 +438,51 @@ describe('camera store', () => {
       error: { code: -7, name: 'ADAPTER', operation: 'record_stop' },
       message: 'see data',
     });
-    expect(structured).toBe('record_stop: ADAPTER(-7)');
+    expect(structured).toBe('停止录像失败：相机适配异常');
 
     const plainErr = formatCameraErrorMessage({
       error: 'NOT_READY',
       message: 'see data',
     });
-    expect(plainErr).toBe('NOT_READY');
+    expect(plainErr).toBe('操作失败：相机尚未就绪');
 
     const seeDataOnly = formatCameraErrorMessage({ message: 'see data' });
     expect(seeDataOnly).toBe('操作失败');
+  });
+
+  it('formats set_stretch INVALID_PARAM without exposing raw name or code', () => {
+    const formatted = formatCameraErrorMessage({
+      device_name: 'main_camera',
+      instruction: 'set_stretch',
+      id: 'APP-x',
+      success: false,
+      message: 'see data',
+      data: false,
+      error: {
+        code: -2,
+        name: 'INVALID_PARAM',
+        operation: 'set_stretch',
+      },
+    });
+    expect(formatted).toBe('自动拉伸设置失败：参数无效');
+    expect(formatted).not.toContain('INVALID_PARAM');
+    expect(formatted).not.toContain('-2');
+  });
+
+  it('maps storage error object with CARD_FULL to friendly TF card message', () => {
+    const formatted = formatCameraErrorMessage({
+      error: { code: -23, name: 'CARD_FULL', operation: 'record_start' },
+      message: 'see data',
+    });
+    expect(formatted).toBe('TF 卡空间不足');
+  });
+
+  it('maps unknown operation with BUSY error to readable fallback', () => {
+    const formatted = formatCameraErrorMessage({
+      error: { code: -4, name: 'BUSY', operation: 'unknown_operation' },
+      message: 'see data',
+    });
+    expect(formatted).toBe('操作失败：相机忙，请稍后重试');
   });
 
   it('drops stale snapshots based on seq within connection', () => {
@@ -506,7 +542,7 @@ describe('camera store', () => {
     });
 
     expect(useCameraStore.getState().lastCommandError).toBe(
-      'record_stop: ADAPTER(-7)',
+      '停止录像失败：相机适配异常',
     );
     expect(useCameraStore.getState().landscapeRecordingState).toBe('idle');
     // cameraStatus was NOT falsely set to in_streaming
@@ -635,5 +671,127 @@ describe('camera store', () => {
       },
     });
     expect(useCameraStore.getState().storageReady).toBe(false);
+  });
+
+  it('validates outgoing parameter contracts via normalizeCameraCommand', () => {
+    // set_stretch: true -> params [1]; 'on' -> invalid
+    const stretchValid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_stretch',
+      params: [true],
+      id: 'APP-1',
+    });
+    expect(stretchValid.valid).toBe(true);
+    expect(stretchValid.message.params).toEqual([1]);
+
+    const stretchFalse = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_stretch',
+      params: [false],
+      id: 'APP-1b',
+    });
+    expect(stretchFalse.valid).toBe(true);
+    expect(stretchFalse.message.params).toEqual([0]);
+
+    const stretchInvalid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_stretch',
+      params: ['on'],
+      id: 'APP-2',
+    });
+    expect(stretchInvalid.valid).toBe(false);
+
+    // set_ev: 99 -> invalid; -3 and 3 -> valid
+    const evInvalid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_ev',
+      params: [99],
+      id: 'APP-3',
+    });
+    expect(evInvalid.valid).toBe(false);
+
+    const evMin = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_ev',
+      params: [-3],
+      id: 'APP-4',
+    });
+    expect(evMin.valid).toBe(true);
+
+    const evMax = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_ev',
+      params: [3],
+      id: 'APP-5',
+    });
+    expect(evMax.valid).toBe(true);
+
+    // set_white_balance: -5 -> invalid; 0 and 5200 -> valid
+    const wbInvalid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_white_balance',
+      params: [-5],
+      id: 'APP-6',
+    });
+    expect(wbInvalid.valid).toBe(false);
+
+    const wbAuto = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_white_balance',
+      params: [0],
+      id: 'APP-7',
+    });
+    expect(wbAuto.valid).toBe(true);
+
+    const wbManual = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'set_white_balance',
+      params: [5200],
+      id: 'APP-8',
+    });
+    expect(wbManual.valid).toBe(true);
+
+    // change_streaming_frame_rate: [1, 999] -> invalid; [1, 60] -> valid
+    const fpsInvalid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'change_streaming_frame_rate',
+      params: [1, 999],
+      id: 'APP-9',
+    });
+    expect(fpsInvalid.valid).toBe(false);
+
+    const fpsValid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'change_streaming_frame_rate',
+      params: [1, 60],
+      id: 'APP-10',
+    });
+    expect(fpsValid.valid).toBe(true);
+
+    // change_streaming_setting: ['fast', 10] -> invalid; [0.008, 10] -> valid
+    const settingInvalid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'change_streaming_setting',
+      params: ['fast', 10],
+      id: 'APP-11',
+    });
+    expect(settingInvalid.valid).toBe(false);
+
+    const settingValid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'change_streaming_setting',
+      params: [0.008, 10],
+      id: 'APP-12',
+    });
+    expect(settingValid.valid).toBe(true);
+
+    // switch_auto_mode: 2 -> invalid
+    const modeInvalid = normalizeCameraCommand({
+      device_name: 'main_camera',
+      instruction: 'switch_auto_mode',
+      params: [2],
+      id: 'APP-13',
+    });
+    expect(modeInvalid.valid).toBe(false);
   });
 });

@@ -110,6 +110,43 @@
     "title": "WifiCamera",
     "video": "Video"
   },
+  "camera_error": {
+    "fallback": "Operation failed",
+    "format_retry": "{{op}} failed, please try again",
+    "format_with_reason": "{{op}} failed: {{reason}}",
+    "name": {
+      "adapter": "Camera adapter error",
+      "bad_command": "Unsupported command",
+      "buffer_too_small": "Buffer too small",
+      "busy": "Camera is busy, please try again later",
+      "failed": "Please try again",
+      "invalid_param": "Invalid parameter",
+      "not_found": "Device or resource not found",
+      "not_ready": "Camera not ready",
+      "not_supported": "Not supported by current firmware",
+      "timeout": "Request timed out, please try again",
+      "unknown": "Please try again"
+    },
+    "operation": {
+      "change_streaming_frame_rate": "Frame rate setting",
+      "change_streaming_setting": "Exposure setting",
+      "ev_set": "Exposure compensation setting",
+      "record_start": "Start recording",
+      "record_stop": "Stop recording",
+      "roi_set": "ROI setting",
+      "ser_start": "Start SER recording",
+      "set_ev": "Exposure compensation setting",
+      "set_gain": "Gain setting",
+      "set_sensor_roi": "ROI setting",
+      "set_stretch": "Auto stretch setting",
+      "set_white_balance": "White balance setting",
+      "streaming_frame_rate_set": "Frame rate setting",
+      "streaming_setting_set": "Exposure setting",
+      "switch_auto_mode": "Exposure mode switch",
+      "unknown": "Operation",
+      "white_balance_set": "White balance setting"
+    }
+  },
   "dashboard": {
     "humidity": "Humidity",
     "last_1h": "1h",

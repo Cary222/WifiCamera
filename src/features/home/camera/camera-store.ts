@@ -9,6 +9,7 @@ import type { CameraTransport, CameraTransportPreference } from './transport';
 import type { CameraSerial, CameraVersion } from './types';
 
 import { create } from 'zustand';
+import { translate } from '@/lib/i18n';
 import { createSelectors } from '@/lib/utils';
 import { getCameraWebSocketUrl } from './config';
 import { calculateEvLinkedExposure } from './ev-linkage';
@@ -176,6 +177,81 @@ export const STORAGE_ERROR_TRANSLATIONS: Record<string, string> = {
   '-25': '保存路径无效',
 };
 
+export const CAMERA_OPERATION_KEY_MAP: Record<string, string> = {
+  change_streaming_frame_rate: 'change_streaming_frame_rate',
+  change_streaming_setting: 'change_streaming_setting',
+  ev_set: 'ev_set',
+  record_start: 'record_start',
+  record_stop: 'record_stop',
+  roi_set: 'roi_set',
+  ser_start: 'ser_start',
+  set_ev: 'set_ev',
+  set_gain: 'set_gain',
+  set_sensor_roi: 'set_sensor_roi',
+  set_stretch: 'set_stretch',
+  set_white_balance: 'set_white_balance',
+  streaming_frame_rate_set: 'streaming_frame_rate_set',
+  streaming_setting_set: 'streaming_setting_set',
+  switch_auto_mode: 'switch_auto_mode',
+  white_balance_set: 'white_balance_set',
+};
+
+export const FIRMWARE_CODE_TO_ERROR_NAME: Record<number, string> = {
+  [-1]: 'FAILED',
+  [-2]: 'INVALID_PARAM',
+  [-3]: 'NOT_READY',
+  [-4]: 'BUSY',
+  [-5]: 'NOT_SUPPORTED',
+  [-6]: 'BUFFER_TOO_SMALL',
+  [-7]: 'ADAPTER',
+  [-8]: 'NOT_FOUND',
+};
+
+export const GENERIC_ERROR_NAME_KEYS: Record<string, string> = {
+  ADAPTER: 'adapter',
+  BAD_COMMAND: 'bad_command',
+  BUFFER_SMALL: 'buffer_too_small',
+  BUFFER_TOO_SMALL: 'buffer_too_small',
+  BUSY: 'busy',
+  FAILED: 'failed',
+  INVALID_PARAM: 'invalid_param',
+  NOT_FOUND: 'not_found',
+  NOT_READY: 'not_ready',
+  NOT_SUPPORTED: 'not_supported',
+  TIMEOUT: 'timeout',
+  UNKNOWN: 'unknown',
+};
+
+export function getCameraOperationLabel(op?: string): string {
+  if (op) {
+    const key = CAMERA_OPERATION_KEY_MAP[op.trim().toLowerCase()];
+    if (key) {
+      return translate(`camera_error.operation.${key}` as Parameters<typeof translate>[0]);
+    }
+  }
+  return translate('camera_error.operation.unknown');
+}
+
+export function formatGenericCameraError(
+  op: string | undefined,
+  name: string,
+): string {
+  const opLabel = getCameraOperationLabel(op);
+  const normalizedName = name.trim().toUpperCase();
+  const key = GENERIC_ERROR_NAME_KEYS[normalizedName];
+
+  if (normalizedName === 'FAILED' || normalizedName === 'UNKNOWN') {
+    return translate('camera_error.format_retry', { op: opLabel });
+  }
+
+  if (key) {
+    const reason = translate(`camera_error.name.${key}` as Parameters<typeof translate>[0]);
+    return translate('camera_error.format_with_reason', { op: opLabel, reason });
+  }
+
+  return translate('camera_error.format_retry', { op: opLabel });
+}
+
 export function formatCameraErrorMessage(
   failure: unknown,
   defaultFallback = '操作失败',
@@ -187,6 +263,10 @@ export function formatCameraErrorMessage(
         return translated;
       }
     }
+    const upperTrimmed = trimmed.toUpperCase();
+    if (GENERIC_ERROR_NAME_KEYS[upperTrimmed]) {
+      return formatGenericCameraError(undefined, upperTrimmed);
+    }
     return trimmed;
   }
   if (typeof failure === 'object' && failure !== null) {
@@ -195,22 +275,33 @@ export function formatCameraErrorMessage(
     if (typeof err === 'object' && err !== null) {
       const errObj = err as Record<string, unknown>;
       const op
-        = typeof errObj.operation === 'string' ? errObj.operation.trim() : '';
-      const name = typeof errObj.name === 'string' ? errObj.name.trim() : '';
+        = typeof errObj.operation === 'string'
+          ? errObj.operation.trim()
+          : typeof rec.instruction === 'string'
+            ? rec.instruction.trim()
+            : '';
       const code = typeof errObj.code === 'number' ? errObj.code : undefined;
+      const rawName = typeof errObj.name === 'string' ? errObj.name.trim() : '';
+      const name = rawName || (code !== undefined ? FIRMWARE_CODE_TO_ERROR_NAME[code] || '' : '');
 
       const mappedStorage
-        = STORAGE_ERROR_TRANSLATIONS[name]
+        = STORAGE_ERROR_TRANSLATIONS[rawName]
           || (code !== undefined ? STORAGE_ERROR_TRANSLATIONS[String(code)] : undefined);
       if (mappedStorage) {
         return mappedStorage;
       }
 
-      if (op || name || code !== undefined) {
-        const namePart = name
+      const upperName = name.toUpperCase();
+      if (GENERIC_ERROR_NAME_KEYS[upperName]) {
+        console.warn(`[CameraError] ${op}: ${rawName || name}(${code ?? ''})`);
+        return formatGenericCameraError(op, upperName);
+      }
+
+      if (op || rawName || code !== undefined) {
+        const namePart = rawName
           ? code !== undefined
-            ? `${name}(${code})`
-            : name
+            ? `${rawName}(${code})`
+            : rawName
           : code !== undefined
             ? `(${code})`
             : '';
@@ -224,6 +315,11 @@ export function formatCameraErrorMessage(
           return translated;
         }
       }
+      const upperErr = trimmedErr.toUpperCase();
+      if (GENERIC_ERROR_NAME_KEYS[upperErr]) {
+        const op = typeof rec.instruction === 'string' ? rec.instruction.trim() : undefined;
+        return formatGenericCameraError(op, upperErr);
+      }
       return trimmedErr;
     }
     const msg = typeof rec.message === 'string' ? rec.message.trim() : '';
@@ -232,6 +328,11 @@ export function formatCameraErrorMessage(
         if (msg === key || msg.includes(key)) {
           return translated;
         }
+      }
+      const upperMsg = msg.toUpperCase();
+      if (GENERIC_ERROR_NAME_KEYS[upperMsg]) {
+        const op = typeof rec.instruction === 'string' ? rec.instruction.trim() : undefined;
+        return formatGenericCameraError(op, upperMsg);
       }
       return msg;
     }
@@ -449,11 +550,10 @@ export function normalizeCameraCommand(message: CameraJsonMessage): {
 } {
   const instruction
     = typeof message.instruction === 'string' ? message.instruction : '';
-  if (!GAIN_PERCENT_COMMANDS.has(instruction)) {
-    return { valid: true, message };
-  }
 
-  const copy: CameraJsonMessage = { ...message, gain_unit: 'percent' };
+  const copy: CameraJsonMessage = GAIN_PERCENT_COMMANDS.has(instruction)
+    ? { ...message, gain_unit: 'percent' }
+    : { ...message };
   const params = Array.isArray(copy.params) ? [...copy.params] : [];
 
   const isValidGain = (g: unknown) =>
@@ -463,7 +563,101 @@ export function normalizeCameraCommand(message: CameraJsonMessage): {
     && g >= 0
     && g <= 100;
 
-  if (instruction === 'set_gain') {
+  if (instruction === 'set_stretch') {
+    if (params.length !== 1) {
+      return {
+        valid: false,
+        message,
+        error: 'set_stretch 参数必须为单个布尔值或 0/1',
+      };
+    }
+    const val = params[0];
+    if (val === true || val === 1) {
+      copy.params = [1];
+    }
+    else if (val === false || val === 0) {
+      copy.params = [0];
+    }
+    else {
+      return {
+        valid: false,
+        message,
+        error: 'set_stretch 参数必须为布尔值或 0/1',
+      };
+    }
+  }
+  else if (instruction === 'switch_auto_mode') {
+    const val = params[0];
+    if (val === 1 || val === true) {
+      params[0] = 1;
+      copy.params = params;
+    }
+    else if (val === 0 || val === false) {
+      params[0] = 0;
+      copy.params = params;
+    }
+    else {
+      return {
+        valid: false,
+        message,
+        error: 'switch_auto_mode 模式参数必须为 0 或 1',
+      };
+    }
+  }
+  else if (instruction === 'set_ev') {
+    const ev = params[0];
+    if (typeof ev !== 'number' || !Number.isFinite(ev) || ev < -3 || ev > 3) {
+      return {
+        valid: false,
+        message,
+        error: 'set_ev 曝光补偿值必须在 -3 到 3 之间',
+      };
+    }
+    copy.params = params;
+  }
+  else if (instruction === 'set_white_balance') {
+    const wb = params[0];
+    const isValidWb
+      = typeof wb === 'number'
+        && Number.isInteger(wb)
+        && (wb === 0 || (wb >= 2000 && wb <= 10000));
+    if (!isValidWb) {
+      return {
+        valid: false,
+        message,
+        error: 'set_white_balance 白平衡值必须为 0 或 2000~10000 的整数',
+      };
+    }
+    copy.params = params;
+  }
+  else if (instruction === 'change_streaming_frame_rate') {
+    const mode = params[0];
+    const isValidMode
+      = mode === 0 || mode === 1 || mode === false || mode === true;
+    if (!isValidMode) {
+      return {
+        valid: false,
+        message,
+        error: 'change_streaming_frame_rate 模式必须为 0 或 1',
+      };
+    }
+    params[0] = mode === 1 || mode === true ? 1 : 0;
+    const fps = params[1];
+    if (fps !== null && fps !== undefined) {
+      const isValidFps
+        = typeof fps === 'number' && Number.isInteger(fps) && fps >= 1 && fps <= 60;
+      if (!isValidFps) {
+        return {
+          valid: false,
+          message,
+          error: 'change_streaming_frame_rate 帧率必须为 1~60 的整数',
+        };
+      }
+      params[1] = fps;
+    }
+    copy.params = params;
+  }
+  else if (instruction === 'set_gain') {
     const gain = params[0];
     if (!isValidGain(gain)) {
       return {
@@ -479,6 +673,18 @@ export function normalizeCameraCommand(message: CameraJsonMessage): {
     || instruction === 'start_streaming_exposure'
     || instruction === 'start_streaming_exposure_and_save'
   ) {
+    const exposure = params[0];
+    if (exposure !== 'auto' && exposure !== null && exposure !== undefined) {
+      const isValidExposure
+        = typeof exposure === 'number' && Number.isFinite(exposure) && exposure > 0;
+      if (!isValidExposure) {
+        return {
+          valid: false,
+          message,
+          error: `${instruction} 曝光值必须为大于 0 的数字、'auto' 或 null`,
+        };
+      }
+    }
     const gain = params[1];
     if (gain !== null && gain !== undefined) {
       if (!isValidGain(gain)) {
@@ -1474,7 +1680,7 @@ const _useCameraStore = create<CameraState>(set => ({
     sendCameraCommand('get_disk', []);
   },
   setGain: gain => sendCameraCommand('set_gain', [gain]),
-  setStretch: enabled => sendCameraCommand('set_stretch', [enabled]),
+  setStretch: enabled => sendCameraCommand('set_stretch', [enabled ? 1 : 0]),
   startExposure: () => {
     const { currentExposureConfig } = _useCameraStore.getState();
     sendCameraCommand('start_exposure', [

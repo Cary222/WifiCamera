@@ -110,6 +110,43 @@
     "title": "WifiCamera",
     "video": "فيديو"
   },
+  "camera_error": {
+    "fallback": "فشلت العملية",
+    "format_retry": "فشلت {{op}}، يرجى إعادة المحاولة",
+    "format_with_reason": "فشلت {{op}}: {{reason}}",
+    "name": {
+      "adapter": "خطأ في محول الكاميرا",
+      "bad_command": "أمر غير مدعوم",
+      "buffer_too_small": "ذاكرة التخزين المؤقت صغيرة جداً",
+      "busy": "الكاميرا مشغولة، يرجى المحاولة لاحقاً",
+      "failed": "يرجى إعادة المحاولة",
+      "invalid_param": "معلمة غير صالحة",
+      "not_found": "لم يتم العثور على الجهاز أو المورد",
+      "not_ready": "الكاميرا ليست جاهزة",
+      "not_supported": "غير مدعوم في البرنامج الثابت الحالي",
+      "timeout": "انتهت مهلة الطلب، يرجى المحاولة مرة أخرى",
+      "unknown": "يرجى إعادة المحاولة"
+    },
+    "operation": {
+      "change_streaming_frame_rate": "إعداد معدل الإطارات",
+      "change_streaming_setting": "إعداد التعرض",
+      "ev_set": "إعداد تعويض التعرض",
+      "record_start": "بدء التسجيل",
+      "record_stop": "إيقاف التسجيل",
+      "roi_set": "إعداد منطقة الاهتمام",
+      "ser_start": "بدء تسجيل SER",
+      "set_ev": "إعداد تعويض التعرض",
+      "set_gain": "إعداد الكسب",
+      "set_sensor_roi": "إعداد منطقة الاهتمام",
+      "set_stretch": "إعداد التمدد التلقائي",
+      "set_white_balance": "إعداد توازن اللون الأبيض",
+      "streaming_frame_rate_set": "إعداد معدل الإطارات",
+      "streaming_setting_set": "إعداد التعرض",
+      "switch_auto_mode": "تبديل وضع التعرض",
+      "unknown": "العملية",
+      "white_balance_set": "إعداد توازن اللون الأبيض"
+    }
+  },
   "dashboard": {
     "humidity": "الرطوبة",
     "last_1h": "1س",
