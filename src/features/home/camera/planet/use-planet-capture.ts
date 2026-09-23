@@ -142,23 +142,30 @@ export function usePlanetCapture({
   const isConnected = connectionStatus === 'open';
   const isCapturing = landscapeCaptureState === 'capturing';
 
-  // 与星云模式一致：进入页面不要用本地默认值覆盖板端 AE。changeStreamingSetting
-  // 会让板端切到手动并锁定该曝光/增益，一进来就下发会得到与实际光照无关的亮度。
+  // 行星模式为全手动曝光模式，进入页面需确保板端切入手动并同步当前 UI 读数。
   const appliedSettingRef = useRef<string | null>(null);
 
-  useEffect(() => {
+  const applyStreamingSetting = useCallback((exp: number, g: number, force = false) => {
     if (!isConnected)
       return;
-    const key = `${exposure}/${gain}`;
-    if (appliedSettingRef.current === null) {
-      appliedSettingRef.current = key;
-      return;
-    }
-    if (appliedSettingRef.current === key)
+    const key = `${exp}/${g}`;
+    if (!force && appliedSettingRef.current === key)
       return;
     appliedSettingRef.current = key;
-    changeStreamingSetting(exposure, gain);
-  }, [exposure, gain, isConnected, changeStreamingSetting]);
+    useCameraStore.getState().switchAutoMode(false);
+    changeStreamingSetting(exp, g);
+  }, [isConnected, changeStreamingSetting]);
+
+  useEffect(() => {
+    applyStreamingSetting(exposure, gain);
+  }, [exposure, gain, applyStreamingSetting]);
+
+  // 画幅 ROI 切换完成后板端重建流，重新确保当前手动曝光与增益生效
+  useEffect(() => {
+    if (!isConnected || roiSequence === 0)
+      return;
+    applyStreamingSetting(exposure, gain, true);
+  }, [roiSequence, isConnected, exposure, gain, applyStreamingSetting]);
 
   // Apply the selected window on entry and after every ratio/preset change so
   // the preview, captured JPEG, MP4 and SER all use one hardware ROI.
@@ -523,5 +530,6 @@ export function usePlanetCapture({
     startRecording,
     stopRecording,
     dismissError,
+    applyStreamingSetting,
   };
 }

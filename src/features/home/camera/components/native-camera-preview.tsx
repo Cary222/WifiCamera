@@ -65,6 +65,8 @@ export function useLandscapeCameraPreview(
   options: LandscapePreviewOptions = {},
 ) {
   const { reconnectKey } = options;
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
   const startStreaming = useCameraStore.use.startStreaming();
   const startStreamingManual = useCameraStore.use.startStreamingManual();
   const connectionStatus = useCameraStore.use.connectionStatus();
@@ -205,7 +207,10 @@ export function useLandscapeCameraPreview(
     // createOffer 和等开流回包并行；POST 仍等回包 + 上次 DELETE 结束。
     const bringUp = async () => {
       const storeState = useCameraStore.getState();
-      const auto = storeState.landscapeAutoMode;
+      const currentOpts = optionsRef.current;
+      const auto = currentOpts.mode ? currentOpts.mode === 'auto' : storeState.landscapeAutoMode;
+      const targetExposure = currentOpts.manualExposure ?? storeState.landscapeManualExposure;
+      const targetGain = currentOpts.manualGain ?? storeState.landscapeManualGain;
       markStreamStart(auto ? 'auto' : 'manual');
       const negotiation = startWhepNegotiation(getCameraWhepUrl(), {
         onDisconnected: scheduleReconnect,
@@ -217,8 +222,8 @@ export function useLandscapeCameraPreview(
       const ack = auto
         ? await startStreaming('auto')
         : await startStreamingManual(
-            storeState.landscapeManualExposure,
-            storeState.landscapeManualGain,
+            targetExposure,
+            targetGain,
           );
       if (!active) {
         negotiation.discard();

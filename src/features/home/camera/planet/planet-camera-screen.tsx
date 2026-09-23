@@ -182,6 +182,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     startRecording,
     stopRecording,
     dismissError,
+    applyStreamingSetting,
   } = usePlanetCapture({
     exposure,
     gain,
@@ -191,6 +192,9 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   });
 
   const { previewState, stream, actualFps } = useLandscapeCameraPreview({
+    mode: 'manual',
+    manualExposure: exposure,
+    manualGain: gain,
     reconnectKey: roiSequence,
   });
 
@@ -445,8 +449,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                     formatTick={(value, index) =>
                       index % 5 === 0 ? formatExposure(value) : null}
                     onChange={(value) => {
-                      if (!settingsDisabled)
+                      if (!settingsDisabled) {
                         setExposure(value);
+                        applyStreamingSetting(value, gain, true);
+                      }
                     }}
                   />
                 </View>
@@ -462,8 +468,10 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                     formatTick={(value, index) =>
                       index % 10 === 0 ? String(value) : null}
                     onChange={(value) => {
-                      if (!settingsDisabled)
+                      if (!settingsDisabled) {
                         setGain(value);
+                        applyStreamingSetting(exposure, value, true);
+                      }
                     }}
                   />
                 </View>
