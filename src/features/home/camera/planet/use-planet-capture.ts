@@ -180,13 +180,18 @@ export function usePlanetCapture({
 
     // Default 1920x1080 full frame is already the board's startup stream.
     // Marking it applied on entry skips an unnecessary sensor restart that
-    // drops the initial WHEP handshake.
+    // drops the initial WHEP handshake — but only if the board was not previously
+    // set to a 4:3 cropped stream.
+    const isFullFrame
+      = effectiveRoi.x === 0
+        && effectiveRoi.y === 0
+        && effectiveRoi.width === 1920
+        && effectiveRoi.height === 1080;
+    const currentLandscapeRatio = useCameraStore.getState().landscapeRatio;
     if (
       appliedRoiKeyRef.current === null
-      && effectiveRoi.x === 0
-      && effectiveRoi.y === 0
-      && effectiveRoi.width === 1920
-      && effectiveRoi.height === 1080
+      && isFullFrame
+      && currentLandscapeRatio !== '4:3'
     ) {
       appliedRoiKeyRef.current = roiKey;
       return;
@@ -289,6 +294,7 @@ export function usePlanetCapture({
           params: [0, 0, 1920, 1080, 0],
           id: `APP-PLANET-UNMOUNT-RESET-ROI-${Date.now().toString(36)}`,
         });
+        useCameraStore.getState().setLandscapeRatio('16:9');
       }
     },
     [clearTimers],

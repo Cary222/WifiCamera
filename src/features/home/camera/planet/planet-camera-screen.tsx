@@ -32,7 +32,6 @@ import { SHUTTER_VALUES } from '../shutter-values';
 import {
   createCustomRoiPreset,
   getEffectiveSensorRoi,
-  getRenderedAspectRatio,
   QUICK_CUSTOM_ROI_SIZES,
 } from './preview-layout';
 import { PLANET_ROI_PRESETS, usePlanetCapture } from './use-planet-capture';
@@ -128,7 +127,6 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   // Top capsule arrow direction: 'down' (图二) <-> 'up' (图三)
   const [arrowDirection, setArrowDirection] = useState<ArrowDirection>('down');
   // Bottom panel open/closed state
-  const [videoDimensions, setVideoDimensions] = useState<{ streamURL: string; width: number; height: number } | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
 
   // Fig 2 state (Param Controls)
@@ -143,7 +141,8 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   // Fig 3 state (Quick Settings)
   // 板端尚未提供测光模式指令，先固定为全画面并禁用切换。
   const meteringMode: MeteringMode = 'matrix';
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('16:9');
+  const storeLandscapeRatio = useCameraStore.use.landscapeRatio();
+  const aspectRatio: AspectRatio = storeLandscapeRatio === '4:3' ? '4:3' : '16:9';
   const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
 
   // Common ROI and Capture State
@@ -278,13 +277,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
     surfaceHeight,
     rotation,
     scale,
-  } = useAspectRatioAnimation(
-    videoDimensions && videoDimensions.streamURL === stream?.toURL()
-      ? getRenderedAspectRatio(videoDimensions.width, videoDimensions.height, aspectRatio)
-      : aspectRatio,
-    220,
-    12,
-  );
+  } = useAspectRatioAnimation(aspectRatio, 220, 12);
   const shutterSize = Math.round(screenWidth * 0.1890547263681592);
   const shutterBorder = Math.max(3, Math.round(shutterSize * 0.043478260869565216));
   const shutterInner = shutterSize - 2 * shutterBorder - 2;
@@ -310,15 +303,6 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
           rotation={rotation}
           scale={scale}
           objectFit="contain"
-          onVideoDimensionsChange={({ width, height }) => {
-            const streamURL = stream?.toURL();
-            if (streamURL) {
-              setVideoDimensions(previous =>
-                previous?.streamURL === streamURL && previous.width === width && previous.height === height
-                  ? previous
-                  : { streamURL, width, height });
-            }
-          }}
         />
       </Animated.View>
 
@@ -596,7 +580,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                   countdown.cancel();
                   dismissError();
                   const next: AspectRatio = aspectRatio === '16:9' ? '4:3' : '16:9';
-                  setAspectRatio(next);
+                  useCameraStore.getState().setLandscapeRatio(next);
                 }}
                 disabled={settingsDisabled}
                 style={{
