@@ -39,10 +39,7 @@ export type AspectRatioAnimationResult = {
 };
 
 /**
- * Hook that provides animated aspect ratio switching logic for Landscape & Nebula modes
- * Returns animation styles and geometry values for preview and top bar
- *
- * @note Planet mode has its own separate layout logic and should NOT use this hook
+ * Shared animated viewport geometry for Landscape, Nebula and Planet modes.
  */
 export function useAspectRatioAnimation(
   ratio: LandscapeRatio,

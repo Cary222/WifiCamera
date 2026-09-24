@@ -1,46 +1,107 @@
-import type { CelestialSearchItem } from '@/features/deep-space/search/celestial-catalog';
-import type { CelestialMetricsItem, ExtendedCelestialCategory, SearchFailureReason } from '@/features/deep-space/search/celestial-search-sheet';
-import type { DeepSpaceViewPreferences, ViewPreferenceDefaults } from '@/features/deep-space/tools/deep-space-view-preferences';
-import type { FieldOfViewInput } from '@/features/deep-space/tools/field-of-view';
-import type { RecentSkyObject } from '@/features/deep-space/tools/recent-sky-objects';
-import type { TimePlaybackSpeed } from '@/features/deep-space/tools/use-sky-time';
-import type { StartTimePolicy } from '@/features/deep-space/tools/use-stellarium-settings';
-import type { SelectedCelestialObject, StellariumSkyLayers, StellariumViewState } from '@/features/stellarium/stellarium-service';
-import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
-import * as React from 'react';
-import { Animated, Easing, Image, Modal, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Defs, Line, LinearGradient, Path, Polygon, RadialGradient, Rect, Stop, Text as SvgText } from 'react-native-svg';
-import SKY_CULTURES_DATA from '@/assets/stellar/skycultures-full.json';
-import { Text } from '@/components/ui';
-import { CalendarPanel } from '@/features/deep-space/calendar/calendar-panel';
-import { DEFAULT_LANDSCAPE_ID, LANDSCAPES } from '@/features/deep-space/landscape/landscape-catalog';
-import { ObjectInfoSheet } from '@/features/deep-space/object-info/object-info-sheet';
-import { ALL_CELESTIAL_OBJECTS } from '@/features/deep-space/search/celestial-catalog';
-import { CelestialSearchSheet } from '@/features/deep-space/search/celestial-search-sheet';
-import { clearViewPreferences, readStoredViewState, readViewPreferences, viewPreferencesSignature, writeStoredViewState, writeViewPreferences } from '@/features/deep-space/tools/deep-space-view-preferences';
-import { FieldOfViewOverlay } from '@/features/deep-space/tools/field-of-view-overlay';
-import { FieldOfViewPanel } from '@/features/deep-space/tools/field-of-view-panel';
-import { addRecentSkyObject, clearRecentSkyObjects, loadRecentSkyObjects, removeRecentSkyObject } from '@/features/deep-space/tools/recent-sky-objects';
-import { parseSkyCoordinateInput } from '@/features/deep-space/tools/sky-coordinate-input';
-import { TelescopeControlPanel } from '@/features/deep-space/tools/telescope-control-panel';
-import { useCompassFollowing } from '@/features/deep-space/tools/use-compass-following';
-import { useObserverLocation } from '@/features/deep-space/tools/use-observer-location';
-import { useSelectedObjectContext } from '@/features/deep-space/tools/use-selected-object-context';
-import { TIME_PLAYBACK_SPEEDS, useSkyTime } from '@/features/deep-space/tools/use-sky-time';
-import { restoreStellariumContext, useStellariumSettings } from '@/features/deep-space/tools/use-stellarium-settings';
-import { StellariumView } from '@/features/stellarium/stellarium-view';
-import { getLanguage, translate } from '@/lib/i18n';
-import { storage } from '@/lib/storage';
-import { AdvancedSlider } from './ui/advanced-slider';
-import { CloseIcon } from './ui/close-icon';
-import { showDeepSpaceFeedback } from './ui/deep-space-feedback';
-import { OVERLAY } from './ui/deep-space-theme';
-import { FeatureSheet } from './ui/feature-sheet';
-import { featureSheetStyles } from './ui/feature-sheet-styles';
-import { cityLabel, formatLatitudeDMS, formatLongitudeDMS, formatUtcOffsetHours } from './ui/location-format';
-import { CityPickerModal, CoordinateInputDialog } from './ui/location-modals';
-import { LocationWorldMap } from './ui/location-world-map';
+import type { CelestialSearchItem } from "@/features/deep-space/search/celestial-catalog";
+import type {
+  CelestialMetricsItem,
+  ExtendedCelestialCategory,
+  SearchFailureReason,
+} from "@/features/deep-space/search/celestial-search-sheet";
+import type {
+  DeepSpaceViewPreferences,
+  ViewPreferenceDefaults,
+} from "@/features/deep-space/tools/deep-space-view-preferences";
+import type { FieldOfViewInput } from "@/features/deep-space/tools/field-of-view";
+import type { RecentSkyObject } from "@/features/deep-space/tools/recent-sky-objects";
+import type { TimePlaybackSpeed } from "@/features/deep-space/tools/use-sky-time";
+import type { StartTimePolicy } from "@/features/deep-space/tools/use-stellarium-settings";
+import type {
+  SelectedCelestialObject,
+  StellariumSkyLayers,
+  StellariumViewState,
+} from "@/features/stellarium/stellarium-service";
+import type { StellariumViewHandle } from "@/features/stellarium/stellarium-view";
+import * as React from "react";
+import {
+  Animated,
+  Easing,
+  Image,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, {
+  Circle,
+  Defs,
+  Line,
+  LinearGradient,
+  Path,
+  Polygon,
+  RadialGradient,
+  Rect,
+  Stop,
+  Text as SvgText,
+} from "react-native-svg";
+import SKY_CULTURES_DATA from "@/assets/stellar/skycultures-full.json";
+import { Text } from "@/components/ui";
+import { CalendarPanel } from "@/features/deep-space/calendar/calendar-panel";
+import {
+  DEFAULT_LANDSCAPE_ID,
+  LANDSCAPES,
+} from "@/features/deep-space/landscape/landscape-catalog";
+import { ObjectInfoSheet } from "@/features/deep-space/object-info/object-info-sheet";
+import { ALL_CELESTIAL_OBJECTS } from "@/features/deep-space/search/celestial-catalog";
+import { CelestialSearchSheet } from "@/features/deep-space/search/celestial-search-sheet";
+import {
+  clearViewPreferences,
+  readStoredViewState,
+  readViewPreferences,
+  viewPreferencesSignature,
+  writeStoredViewState,
+  writeViewPreferences,
+} from "@/features/deep-space/tools/deep-space-view-preferences";
+import { FieldOfViewOverlay } from "@/features/deep-space/tools/field-of-view-overlay";
+import { FieldOfViewPanel } from "@/features/deep-space/tools/field-of-view-panel";
+import {
+  addRecentSkyObject,
+  clearRecentSkyObjects,
+  loadRecentSkyObjects,
+  removeRecentSkyObject,
+} from "@/features/deep-space/tools/recent-sky-objects";
+import { parseSkyCoordinateInput } from "@/features/deep-space/tools/sky-coordinate-input";
+import { TelescopeControlPanel } from "@/features/deep-space/tools/telescope-control-panel";
+import { useCompassFollowing } from "@/features/deep-space/tools/use-compass-following";
+import { useObserverLocation } from "@/features/deep-space/tools/use-observer-location";
+import { useSelectedObjectContext } from "@/features/deep-space/tools/use-selected-object-context";
+import {
+  TIME_PLAYBACK_SPEEDS,
+  useSkyTime,
+} from "@/features/deep-space/tools/use-sky-time";
+import {
+  restoreStellariumContext,
+  useStellariumSettings,
+} from "@/features/deep-space/tools/use-stellarium-settings";
+import { StellariumView } from "@/features/stellarium/stellarium-view";
+import { getLanguage, translate } from "@/lib/i18n";
+import { storage } from "@/lib/storage";
+import { AdvancedSlider } from "./ui/advanced-slider";
+import { CloseIcon } from "./ui/close-icon";
+import { showDeepSpaceFeedback } from "./ui/deep-space-feedback";
+import { OVERLAY } from "./ui/deep-space-theme";
+import { FeatureSheet } from "./ui/feature-sheet";
+import { featureSheetStyles } from "./ui/feature-sheet-styles";
+import {
+  cityLabel,
+  formatLatitudeDMS,
+  formatLongitudeDMS,
+  formatUtcOffsetHours,
+} from "./ui/location-format";
+import { CityPickerModal, CoordinateInputDialog } from "./ui/location-modals";
+import { LocationWorldMap } from "./ui/location-world-map";
 
 const DEFAULT_SKY_LAYERS: Required<StellariumSkyLayers> = {
   atmosphere: false,
@@ -78,19 +139,25 @@ function sliderToMagOffset(value: number): number {
   return Number(((value - 30) / 10).toFixed(2));
 }
 
-function hintsOffsetToPatch(key: keyof LabelHintValues, value: number): Partial<StellariumSkyLayers> {
+function hintsOffsetToPatch(
+  key: keyof LabelHintValues,
+  value: number,
+): Partial<StellariumSkyLayers> {
   const visible = value > 0;
-  const offset = key === 'dsos'
-    ? (value <= 30 ? Number(((value - 30) / 10).toFixed(2)) : Number((((value - 30) / 70) * 12.0).toFixed(2)))
-    : sliderToMagOffset(value);
+  const offset =
+    key === "dsos"
+      ? value <= 30
+        ? Number(((value - 30) / 10).toFixed(2))
+        : Number((((value - 30) / 70) * 12.0).toFixed(2))
+      : sliderToMagOffset(value);
   switch (key) {
-    case 'stars':
+    case "stars":
       return { starHintsOffset: offset, starLabels: visible };
-    case 'planets':
+    case "planets":
       return { planetHintsOffset: offset, planetLabels: visible };
-    case 'dsos':
+    case "dsos":
       return { dsoHintsOffset: offset, dsoLabels: visible };
-    case 'satellites':
+    case "satellites":
       return { satelliteHintsOffset: offset, satelliteLabels: visible };
   }
 }
@@ -108,7 +175,15 @@ function resetAllHints(): Partial<StellariumSkyLayers> {
   };
 }
 
-const DEFAULT_GRID_LINES: Record<'azimuthal' | 'ecliptic' | 'equator' | 'equatorial_j2000' | 'equatorial_jnow' | 'meridian', boolean> = {
+const DEFAULT_GRID_LINES: Record<
+  | "azimuthal"
+  | "ecliptic"
+  | "equator"
+  | "equatorial_j2000"
+  | "equatorial_jnow"
+  | "meridian",
+  boolean
+> = {
   azimuthal: false,
   ecliptic: false,
   equator: false,
@@ -128,54 +203,71 @@ type GridLineKey = keyof typeof DEFAULT_GRID_LINES;
 const DEFAULT_TURBIDITY = 0.96;
 
 const OBSERVER_CITIES = [
-  { latitudeDeg: 39.9, longitudeDeg: 116.41, name: '北京' },
-  { latitudeDeg: 31.23, longitudeDeg: 121.47, name: '上海' },
-  { latitudeDeg: 22.54, longitudeDeg: 114.06, name: '深圳' },
-  { latitudeDeg: 43.83, longitudeDeg: 87.62, name: '乌鲁木齐' },
+  { latitudeDeg: 39.9, longitudeDeg: 116.41, name: "北京" },
+  { latitudeDeg: 31.23, longitudeDeg: 121.47, name: "上海" },
+  { latitudeDeg: 22.54, longitudeDeg: 114.06, name: "深圳" },
+  { latitudeDeg: 43.83, longitudeDeg: 87.62, name: "乌鲁木齐" },
 ];
 
 const REGION_LABELS: Record<string, string> = SKY_CULTURES_DATA.regionsZh;
 
 const BEARING_KEYS = [
-  'deep_space.compass_dir.n',
-  'deep_space.compass_dir.ne',
-  'deep_space.compass_dir.e',
-  'deep_space.compass_dir.se',
-  'deep_space.compass_dir.s',
-  'deep_space.compass_dir.sw',
-  'deep_space.compass_dir.w',
-  'deep_space.compass_dir.nw',
+  "deep_space.compass_dir.n",
+  "deep_space.compass_dir.ne",
+  "deep_space.compass_dir.e",
+  "deep_space.compass_dir.se",
+  "deep_space.compass_dir.s",
+  "deep_space.compass_dir.sw",
+  "deep_space.compass_dir.w",
+  "deep_space.compass_dir.nw",
 ] as const;
-const COMPASS_MAJOR_TICKS = Array.from({ length: 12 }, (_, index) => index * 30);
-const COMPASS_MINOR_TICKS = Array.from({ length: 60 }, (_, index) => index * 6).filter(angle => angle % 30 !== 0);
+const COMPASS_MAJOR_TICKS = Array.from(
+  { length: 12 },
+  (_, index) => index * 30,
+);
+const COMPASS_MINOR_TICKS = Array.from(
+  { length: 60 },
+  (_, index) => index * 6,
+).filter((angle) => angle % 30 !== 0);
 
 function bearingLabel(azimuthDeg: number): string {
-  return translate(BEARING_KEYS[Math.round(((azimuthDeg % 360) + 360) % 360 / 45) % 8]);
+  return translate(
+    BEARING_KEYS[Math.round((((azimuthDeg % 360) + 360) % 360) / 45) % 8],
+  );
 }
 
 function landscapeStepper(activeId: string, onSelect: (id: string) => void) {
-  const index = Math.max(0, LANDSCAPES.findIndex(option => option.id === activeId));
+  const index = Math.max(
+    0,
+    LANDSCAPES.findIndex((option) => option.id === activeId),
+  );
 
   return {
     onStep: (delta: number) => {
       const next = (index + delta + LANDSCAPES.length) % LANDSCAPES.length;
       onSelect(LANDSCAPES[next].id);
     },
-    position: translate('deep_space.landscape.position', { index: index + 1, total: LANDSCAPES.length }),
-    value: ((getLanguage() || 'zh').startsWith('zh') ? LANDSCAPES[index]?.titleZh : LANDSCAPES[index]?.title) ?? activeId,
+    position: translate("deep_space.landscape.position", {
+      index: index + 1,
+      total: LANDSCAPES.length,
+    }),
+    value:
+      ((getLanguage() || "zh").startsWith("zh")
+        ? LANDSCAPES[index]?.titleZh
+        : LANDSCAPES[index]?.title) ?? activeId,
   };
 }
 
 const BORTLE_KEYS = [
-  'deep_space.bortle.b1',
-  'deep_space.bortle.b2',
-  'deep_space.bortle.b3',
-  'deep_space.bortle.b4',
-  'deep_space.bortle.b5',
-  'deep_space.bortle.b6',
-  'deep_space.bortle.b7',
-  'deep_space.bortle.b8',
-  'deep_space.bortle.b9',
+  "deep_space.bortle.b1",
+  "deep_space.bortle.b2",
+  "deep_space.bortle.b3",
+  "deep_space.bortle.b4",
+  "deep_space.bortle.b5",
+  "deep_space.bortle.b6",
+  "deep_space.bortle.b7",
+  "deep_space.bortle.b8",
+  "deep_space.bortle.b9",
 ] as const;
 
 /** User-selected safe default: Bortle 1, the lowest skyglow / best dark sky. */
@@ -190,7 +282,7 @@ const DEFAULT_ENVIRONMENT = {
 
 /** The page's own defaults, used for the first visit and after a reset. */
 const VIEW_PREFERENCE_DEFAULTS: ViewPreferenceDefaults = {
-  currentCulture: 'western',
+  currentCulture: "western",
   environment: DEFAULT_ENVIRONMENT,
   gridLines: DEFAULT_GRID_LINES,
   landscapeId: DEFAULT_LANDSCAPE_ID,
@@ -208,8 +300,7 @@ function useViewPreferenceArchive(preferences: DeepSpaceViewPreferences) {
   const lastSignature = React.useRef(signature);
 
   React.useEffect(() => {
-    if (signature === lastSignature.current)
-      return;
+    if (signature === lastSignature.current) return;
     lastSignature.current = signature;
     writeViewPreferences(storage, preferences);
   }, [preferences, signature]);
@@ -220,7 +311,10 @@ function useViewPreferenceArchive(preferences: DeepSpaceViewPreferences) {
   }, []);
 }
 
-function airQualityStepper(bortleIndex: number, onSelect: (next: number) => void) {
+function airQualityStepper(
+  bortleIndex: number,
+  onSelect: (next: number) => void,
+) {
   const index = Math.min(BORTLE_KEYS.length - 1, Math.max(0, bortleIndex - 1));
 
   return {
@@ -228,7 +322,10 @@ function airQualityStepper(bortleIndex: number, onSelect: (next: number) => void
       const next = (index + delta + BORTLE_KEYS.length) % BORTLE_KEYS.length;
       onSelect(next + 1);
     },
-    position: translate('deep_space.bortle.position', { index: index + 1, total: BORTLE_KEYS.length }),
+    position: translate("deep_space.bortle.position", {
+      index: index + 1,
+      total: BORTLE_KEYS.length,
+    }),
     value: translate(BORTLE_KEYS[index]),
   };
 }
@@ -246,7 +343,7 @@ type IconButtonProps = {
   testID: string;
 };
 
-type DrawerFeature = 'calendar' | 'glossary' | 'settings' | 'tools';
+type DrawerFeature = "calendar" | "glossary" | "settings" | "tools";
 
 type ReferenceDrawerProps = {
   onClose: () => void;
@@ -258,10 +355,14 @@ type DrawerFeatureOptions = {
   currentCulture: string;
   enableAutomaticLocation: () => Promise<void>;
   initialPreferences: DeepSpaceViewPreferences;
-  observer: ReturnType<typeof useObserverLocation>['observer'];
+  observer: ReturnType<typeof useObserverLocation>["observer"];
   setCurrentCulture: (id: string) => void;
-  setManualCoordinate: ReturnType<typeof useObserverLocation>['setManualCoordinate'];
-  setManualObserver: ReturnType<typeof useObserverLocation>['setManualObserver'];
+  setManualCoordinate: ReturnType<
+    typeof useObserverLocation
+  >["setManualCoordinate"];
+  setManualObserver: ReturnType<
+    typeof useObserverLocation
+  >["setManualObserver"];
   stellaRef: React.RefObject<StellariumViewHandle | null>;
   toggleAutomaticLocation: () => Promise<void>;
 };
@@ -280,28 +381,45 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     toggleAutomaticLocation,
   } = options;
   const [active, setActive] = React.useState<DrawerFeature>();
-  const [fieldOfView, setFieldOfView] = React.useState<FieldOfViewInput | undefined>(initialPreferences.fieldOfView);
-  const [gridLines, setGridLines] = React.useState(initialPreferences.gridLines);
-  const [landscapeId, setLandscapeId] = React.useState(initialPreferences.landscapeId);
+  const [fieldOfView, setFieldOfView] = React.useState<
+    FieldOfViewInput | undefined
+  >(initialPreferences.fieldOfView);
+  const [gridLines, setGridLines] = React.useState(
+    initialPreferences.gridLines,
+  );
+  const [landscapeId, setLandscapeId] = React.useState(
+    initialPreferences.landscapeId,
+  );
   // `turbidity` mirrors the engine's own default (measured: 0.96). Seeding a
   // different value here would silently re-tint the sky on first render.
-  const [environment, setEnvironment] = React.useState(initialPreferences.environment);
+  const [environment, setEnvironment] = React.useState(
+    initialPreferences.environment,
+  );
   const close = () => setActive(undefined);
 
-  const updateGridLines = React.useCallback((patch: Partial<typeof DEFAULT_GRID_LINES>) => {
-    setGridLines(prev => ({ ...prev, ...patch }));
-    stellaRef.current?.setGridLines?.(patch);
-  }, [stellaRef]);
+  const updateGridLines = React.useCallback(
+    (patch: Partial<typeof DEFAULT_GRID_LINES>) => {
+      setGridLines((prev) => ({ ...prev, ...patch }));
+      stellaRef.current?.setGridLines?.(patch);
+    },
+    [stellaRef],
+  );
 
-  const selectLandscape = React.useCallback((id: string) => {
-    setLandscapeId(id);
-    stellaRef.current?.setLandscape?.(id);
-  }, [stellaRef]);
+  const selectLandscape = React.useCallback(
+    (id: string) => {
+      setLandscapeId(id);
+      stellaRef.current?.setLandscape?.(id);
+    },
+    [stellaRef],
+  );
 
-  const updateEnvironment = React.useCallback((patch: Partial<typeof environment>) => {
-    setEnvironment(prev => ({ ...prev, ...patch }));
-    stellaRef.current?.setEnvironment?.(patch);
-  }, [stellaRef]);
+  const updateEnvironment = React.useCallback(
+    (patch: Partial<typeof environment>) => {
+      setEnvironment((prev) => ({ ...prev, ...patch }));
+      stellaRef.current?.setEnvironment?.(patch);
+    },
+    [stellaRef],
+  );
 
   return {
     active,
@@ -317,7 +435,8 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     landscapeId,
     observer,
     open: (next: DrawerFeature) => setActive(next),
-    selectCity: (city: typeof OBSERVER_CITIES[number]) => setManualObserver(city),
+    selectCity: (city: (typeof OBSERVER_CITIES)[number]) =>
+      setManualObserver(city),
     selectLandscape,
     selectSkyCulture: (id: string, target?: string | null) => {
       setCurrentCulture(id);
@@ -326,11 +445,14 @@ function useDrawerFeature(options: DrawerFeatureOptions) {
     },
     setManualCoordinate,
     toggleAutomaticLocation,
-    toggleGridLine: (key: GridLineKey) => setGridLines((prev) => {
-      const patch = { [key]: !prev[key] } as Partial<typeof DEFAULT_GRID_LINES>;
-      stellaRef.current?.setGridLines?.(patch);
-      return { ...prev, ...patch };
-    }),
+    toggleGridLine: (key: GridLineKey) =>
+      setGridLines((prev) => {
+        const patch = { [key]: !prev[key] } as Partial<
+          typeof DEFAULT_GRID_LINES
+        >;
+        stellaRef.current?.setGridLines?.(patch);
+        return { ...prev, ...patch };
+      }),
     updateEnvironment,
     updateGridLines,
   };
@@ -366,7 +488,12 @@ function useStellariumDrawerFeature({
 type StarMapOverlayControlsProps = {
   azimuthDeg: number;
   clock: Date;
-  environment: { bortleIndex: number; cardinals: boolean; fog: boolean; turbidity: number };
+  environment: {
+    bortleIndex: number;
+    cardinals: boolean;
+    fog: boolean;
+    turbidity: number;
+  };
   gridLines: typeof DEFAULT_GRID_LINES;
   insets: { bottom: number; top: number };
   isCustomTime?: boolean;
@@ -382,7 +509,12 @@ type StarMapOverlayControlsProps = {
   onToggleNightMode: () => void;
   onToggleSkyLayer: (key: SkyLayerKey) => void;
   onToggleTimePanel?: () => void;
-  onUpdateEnvironment: (patch: { bortleIndex?: number; cardinals?: boolean; fog?: boolean; turbidity?: number }) => void;
+  onUpdateEnvironment: (patch: {
+    bortleIndex?: number;
+    cardinals?: boolean;
+    fog?: boolean;
+    turbidity?: number;
+  }) => void;
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   onUpdateTime?: (date: Date) => void;
@@ -408,7 +540,7 @@ function ActiveDetailSheet({
   onClose: () => void;
   onResetHints: () => void;
 }) {
-  if (activeDetail === 'labels') {
+  if (activeDetail === "labels") {
     return (
       <LabelsControlDetailSheet
         hints={labelHints}
@@ -419,8 +551,7 @@ function ActiveDetailSheet({
       />
     );
   }
-  if (!control)
-    return null;
+  if (!control) return null;
 
   return (
     <QuickControlDetailSheet
@@ -463,7 +594,10 @@ function OverlayBottomBar({
   }
 
   return (
-    <View style={[styles.bottomControls, { paddingBottom: insetsBottom + 14 }]} pointerEvents="box-none">
+    <View
+      style={[styles.bottomControls, { paddingBottom: insetsBottom + 14 }]}
+      pointerEvents="box-none"
+    >
       <View style={styles.leftQuickBar}>
         <GridQuickBar
           controls={controls}
@@ -538,7 +672,7 @@ function OverlaySheets({
       />
       <CompassAzimuthDialog
         currentAzimuth={azimuthDeg}
-        onApply={azimuth => onSetAzimuth?.(azimuth)}
+        onApply={(azimuth) => onSetAzimuth?.(azimuth)}
         onClose={onCloseInput}
         visible={azimuthInputOpen}
       />
@@ -549,7 +683,7 @@ function OverlaySheets({
           isCustomTime={isCustomTime}
           onClose={() => onCloseTimePanel?.()}
           onReturnToNow={onReturnToNow}
-          onUpdateTime={date => onUpdateTime?.(date)}
+          onUpdateTime={(date) => onUpdateTime?.(date)}
           playback={playback}
         />
       )}
@@ -568,8 +702,7 @@ function CenteredCompass({
   onOpenInput: () => void;
   visible: boolean;
 }) {
-  if (!visible)
-    return null;
+  if (!visible) return null;
 
   return (
     <View
@@ -599,8 +732,11 @@ function StarMapOverlayControls(props: StarMapOverlayControlsProps) {
   } = props;
 
   const [quickPanelOpen, setQuickPanelOpen] = React.useState(false);
-  const [activeDetail, setActiveDetail] = React.useState<QuickControlId | null>(null);
-  const [labelHints, setLabelHints] = React.useState<LabelHintValues>(DEFAULT_LABEL_HINTS);
+  const [activeDetail, setActiveDetail] = React.useState<QuickControlId | null>(
+    null,
+  );
+  const [labelHints, setLabelHints] =
+    React.useState<LabelHintValues>(DEFAULT_LABEL_HINTS);
   const [azimuthInputOpen, setAzimuthInputOpen] = React.useState(false);
 
   const controls = getQuickControls({
@@ -620,15 +756,26 @@ function StarMapOverlayControls(props: StarMapOverlayControlsProps) {
 
   const handleReturnToNow = () => {
     onReturnToNow();
-    showDeepSpaceFeedback({ message: translate('deep_space.feedback_returned_to_now'), tone: 'success' });
+    showDeepSpaceFeedback({
+      message: translate("deep_space.feedback_returned_to_now"),
+      tone: "success",
+    });
   };
-  const currentDetailControl = controls.find(c => c.id === activeDetail);
+  const currentDetailControl = controls.find((c) => c.id === activeDetail);
 
   return (
-    <View pointerEvents="box-none" style={[styles.overlay, { paddingTop: insets.top + 12 }]}>
+    <View
+      pointerEvents="box-none"
+      style={[styles.overlay, { paddingTop: insets.top + 12 }]}
+    >
       <TopControls onOpenMenu={onOpenMenu} onOpenSearch={onOpenSearch} />
       <View style={styles.horizonBearing} pointerEvents="none">
-        <Text testID="deep-space-horizon-bearing" style={styles.horizonBearingText}>{bearingLabel(azimuthDeg)}</Text>
+        <Text
+          testID="deep-space-horizon-bearing"
+          style={styles.horizonBearingText}
+        >
+          {bearingLabel(azimuthDeg)}
+        </Text>
       </View>
       <OverlayBottomBar
         activeDetail={activeDetail}
@@ -638,8 +785,7 @@ function StarMapOverlayControls(props: StarMapOverlayControlsProps) {
         isCustomTime={isCustomTime}
         onLongPressControl={setActiveDetail}
         onOpenChange={(next) => {
-          if (!next)
-            setActiveDetail(null);
+          if (!next) setActiveDetail(null);
           setQuickPanelOpen(next);
         }}
         onReturnToNow={handleReturnToNow}
@@ -662,7 +808,7 @@ function StarMapOverlayControls(props: StarMapOverlayControlsProps) {
         isCustomTime={isCustomTime}
         labelHints={labelHints}
         onChangeHint={(key, val) => {
-          setLabelHints(prev => ({ ...prev, [key]: val }));
+          setLabelHints((prev) => ({ ...prev, [key]: val }));
           props.onUpdateSkyLayers(hintsOffsetToPatch(key, val));
         }}
         onCloseDetail={() => setActiveDetail(null)}
@@ -671,7 +817,10 @@ function StarMapOverlayControls(props: StarMapOverlayControlsProps) {
         onResetHints={() => {
           setLabelHints(DEFAULT_LABEL_HINTS);
           props.onUpdateSkyLayers(resetAllHints());
-          showDeepSpaceFeedback({ message: translate('deep_space.feedback_labels_reset'), tone: 'success' });
+          showDeepSpaceFeedback({
+            message: translate("deep_space.feedback_labels_reset"),
+            tone: "success",
+          });
         }}
         onReturnToNow={handleReturnToNow}
         onSetAzimuth={onSetAzimuth}
@@ -683,7 +832,13 @@ function StarMapOverlayControls(props: StarMapOverlayControlsProps) {
   );
 }
 
-type QuickControlId = 'grid-lines' | 'constellation' | 'landscape' | 'atmosphere' | 'labels' | 'night-mode';
+type QuickControlId =
+  | "grid-lines"
+  | "constellation"
+  | "landscape"
+  | "atmosphere"
+  | "labels"
+  | "night-mode";
 
 /**
  * A row inside a quick-control detail sheet.
@@ -706,16 +861,27 @@ type QuickStepper = {
   value: string;
 };
 
-function QuickDetailStepperRow({ item, stepper }: { item: QuickSubItem; stepper: QuickStepper }) {
+function QuickDetailStepperRow({
+  item,
+  stepper,
+}: {
+  item: QuickSubItem;
+  stepper: QuickStepper;
+}) {
   return (
-    <View style={styles.quickDetailRow} testID={`deep-space-quick-detail-stepper-${item.id}`}>
+    <View
+      style={styles.quickDetailRow}
+      testID={`deep-space-quick-detail-stepper-${item.id}`}
+    >
       <View style={styles.quickDetailRowText}>
         <Text style={styles.quickDetailRowLabel}>{item.label}</Text>
         <Text style={styles.quickDetailRowHint}>{stepper.position}</Text>
       </View>
       <View style={styles.quickStepper}>
         <Pressable
-          accessibilityLabel={translate('deep_space.a11y.previous_item', { label: item.label })}
+          accessibilityLabel={translate("deep_space.a11y.previous_item", {
+            label: item.label,
+          })}
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => stepper.onStep(-1)}
@@ -732,7 +898,9 @@ function QuickDetailStepperRow({ item, stepper }: { item: QuickSubItem; stepper:
           {stepper.value}
         </Text>
         <Pressable
-          accessibilityLabel={translate('deep_space.a11y.next_item', { label: item.label })}
+          accessibilityLabel={translate("deep_space.a11y.next_item", {
+            label: item.label,
+          })}
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => stepper.onStep(1)}
@@ -763,8 +931,18 @@ function QuickDetailRow({ item }: { item: QuickSubItem }) {
         <Text style={styles.quickDetailRowLabel}>{item.label}</Text>
         <Text style={styles.quickDetailRowHint}>{item.hint}</Text>
       </View>
-      <View style={[styles.quickDetailSwitch, item.active && styles.quickDetailSwitchActive]}>
-        <View style={[styles.quickDetailKnob, item.active && styles.quickDetailKnobActive]} />
+      <View
+        style={[
+          styles.quickDetailSwitch,
+          item.active && styles.quickDetailSwitchActive,
+        ]}
+      >
+        <View
+          style={[
+            styles.quickDetailKnob,
+            item.active && styles.quickDetailKnobActive,
+          ]}
+        />
       </View>
     </Pressable>
   );
@@ -782,7 +960,7 @@ function useLabelSliderGesture(onChange: (val: number) => void) {
     trackRef.current?.measure((...args: number[]) => {
       const width = args[2];
       const pageX = args[4];
-      if (typeof width === 'number' && width > 0 && typeof pageX === 'number') {
+      if (typeof width === "number" && width > 0 && typeof pageX === "number") {
         trackBoundsRef.current = { pageX, width };
         setTrackWidth(width);
         onMeasured?.();
@@ -790,29 +968,30 @@ function useLabelSliderGesture(onChange: (val: number) => void) {
     });
   }, []);
 
-  const updateFromPageX = React.useCallback((pageX: number, isFinal = false) => {
-    const { pageX: startX, width } = trackBoundsRef.current;
-    if (width <= 0)
-      return;
-    const ratio = (pageX - startX) / width;
-    const nextVal = Math.max(0, Math.min(100, Math.round(ratio * 100)));
-    setDragValue(nextVal);
-    latestValueRef.current = nextVal;
+  const updateFromPageX = React.useCallback(
+    (pageX: number, isFinal = false) => {
+      const { pageX: startX, width } = trackBoundsRef.current;
+      if (width <= 0) return;
+      const ratio = (pageX - startX) / width;
+      const nextVal = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+      setDragValue(nextVal);
+      latestValueRef.current = nextVal;
 
-    if (isFinal) {
-      if (rafRef.current !== null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
+      if (isFinal) {
+        if (rafRef.current !== null) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
+        onChange(nextVal);
+      } else if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          onChange(latestValueRef.current);
+        });
       }
-      onChange(nextVal);
-    }
-    else if (rafRef.current === null) {
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        onChange(latestValueRef.current);
-      });
-    }
-  }, [onChange]);
+    },
+    [onChange],
+  );
 
   const panResponder = React.useMemo(
     () =>
@@ -837,7 +1016,14 @@ function useLabelSliderGesture(onChange: (val: number) => void) {
     [measureTrack, updateFromPageX],
   );
 
-  return { dragValue, measureTrack, panResponder, setTrackWidth, trackRef, trackWidth };
+  return {
+    dragValue,
+    measureTrack,
+    panResponder,
+    setTrackWidth,
+    trackRef,
+    trackWidth,
+  };
 }
 
 function StellariumLabelSlider({
@@ -852,22 +1038,29 @@ function StellariumLabelSlider({
   value: number;
 }) {
   const clampedValue = Math.max(0, Math.min(100, value));
-  const { dragValue, measureTrack, panResponder, setTrackWidth, trackRef, trackWidth } = useLabelSliderGesture(onChange);
+  const {
+    dragValue,
+    measureTrack,
+    panResponder,
+    setTrackWidth,
+    trackRef,
+    trackWidth,
+  } = useLabelSliderGesture(onChange);
   const displayValue = dragValue ?? clampedValue;
 
   return (
     <View style={styles.labelSliderRow}>
       <Text style={styles.labelSliderText}>{label}</Text>
       <View
-        accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+        accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
         accessibilityLabel={label}
         accessibilityRole="adjustable"
         accessibilityValue={{ max: 100, min: 0, now: displayValue }}
         onAccessibilityAction={(event) => {
-          if (event.nativeEvent?.actionName === 'increment') {
+          if (event.nativeEvent?.actionName === "increment") {
             onChange(Math.min(100, displayValue + 5));
           }
-          if (event.nativeEvent?.actionName === 'decrement') {
+          if (event.nativeEvent?.actionName === "decrement") {
             onChange(Math.max(0, displayValue - 5));
           }
         }}
@@ -881,13 +1074,23 @@ function StellariumLabelSlider({
         {...panResponder.panHandlers}
       >
         <View pointerEvents="none" style={styles.labelSliderTrackBg}>
-          <View style={[styles.labelSliderTrackActive, { width: `${displayValue}%` }]} />
+          <View
+            style={[
+              styles.labelSliderTrackActive,
+              { width: `${displayValue}%` },
+            ]}
+          />
         </View>
         <View
           pointerEvents="none"
           style={[
             styles.labelSliderThumb,
-            { left: trackWidth > 22 ? (displayValue / 100) * (trackWidth - 22) : `${displayValue}%` },
+            {
+              left:
+                trackWidth > 22
+                  ? (displayValue / 100) * (trackWidth - 22)
+                  : `${displayValue}%`,
+            },
           ]}
           testID={`${testID}-thumb`}
         />
@@ -910,16 +1113,31 @@ function LabelsControlDetailSheet({
   onReset: () => void;
 }) {
   return (
-    <View pointerEvents="box-none" style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}>
-      <Pressable accessibilityLabel={translate('deep_space.quick.close')} accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
-      <View style={styles.quickDetailCard} testID="deep-space-quick-detail-sheet">
+    <View
+      pointerEvents="box-none"
+      style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}
+    >
+      <Pressable
+        accessibilityLabel={translate("deep_space.quick.close")}
+        accessibilityRole="button"
+        onPress={onClose}
+        style={styles.quickDetailScrim}
+      />
+      <View
+        style={styles.quickDetailCard}
+        testID="deep-space-quick-detail-sheet"
+      >
         <View style={styles.quickDetailHeader}>
           <View style={styles.quickDetailTitleBlock}>
-            <Text style={styles.quickDetailTitle}>{translate('deep_space.quick.title')}</Text>
-            <Text style={styles.quickDetailSubtitle}>{translate('deep_space.quick.subtitle')}</Text>
+            <Text style={styles.quickDetailTitle}>
+              {translate("deep_space.quick.title")}
+            </Text>
+            <Text style={styles.quickDetailSubtitle}>
+              {translate("deep_space.quick.subtitle")}
+            </Text>
           </View>
           <Pressable
-            accessibilityLabel={translate('deep_space.back')}
+            accessibilityLabel={translate("deep_space.back")}
             accessibilityRole="button"
             onPress={onClose}
             style={styles.quickDetailClose}
@@ -931,40 +1149,42 @@ function LabelsControlDetailSheet({
         <View style={styles.quickDetailDivider} />
         <View style={styles.quickDetailList}>
           <StellariumLabelSlider
-            label={translate('deep_space.quick.stars')}
-            onChange={val => onChangeHint('stars', val)}
+            label={translate("deep_space.quick.stars")}
+            onChange={(val) => onChangeHint("stars", val)}
             testID="deep-space-label-slider-stars"
             value={hints.stars}
           />
           <StellariumLabelSlider
-            label={translate('deep_space.quick.planets')}
-            onChange={val => onChangeHint('planets', val)}
+            label={translate("deep_space.quick.planets")}
+            onChange={(val) => onChangeHint("planets", val)}
             testID="deep-space-label-slider-planets"
             value={hints.planets}
           />
           <StellariumLabelSlider
-            label={translate('deep_space.quick.dso')}
-            onChange={val => onChangeHint('dsos', val)}
+            label={translate("deep_space.quick.dso")}
+            onChange={(val) => onChangeHint("dsos", val)}
             testID="deep-space-label-slider-dsos"
             value={hints.dsos}
           />
           <StellariumLabelSlider
-            label={translate('deep_space.quick.satellites')}
-            onChange={val => onChangeHint('satellites', val)}
+            label={translate("deep_space.quick.satellites")}
+            onChange={(val) => onChangeHint("satellites", val)}
             testID="deep-space-label-slider-satellites"
             value={hints.satellites}
           />
         </View>
         <View style={styles.quickDetailFooter}>
           <Pressable
-            accessibilityLabel={translate('deep_space.quick.reset_value')}
+            accessibilityLabel={translate("deep_space.quick.reset_value")}
             accessibilityRole="button"
             hitSlop={12}
             onPress={onReset}
             style={styles.quickDetailResetButton}
             testID="deep-space-labels-reset-button"
           >
-            <Text style={styles.quickDetailResetButtonText}>{translate('deep_space.quick.reset_value')}</Text>
+            <Text style={styles.quickDetailResetButtonText}>
+              {translate("deep_space.quick.reset_value")}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -990,16 +1210,27 @@ function QuickControlDetailSheet({
   title: string;
 }) {
   return (
-    <View pointerEvents="box-none" style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}>
-      <Pressable accessibilityLabel={translate('deep_space.quick.close')} accessibilityRole="button" onPress={onClose} style={styles.quickDetailScrim} />
-      <View style={styles.quickDetailCard} testID="deep-space-quick-detail-sheet">
+    <View
+      pointerEvents="box-none"
+      style={[styles.quickDetailOverlay, { paddingBottom: insetsBottom + 14 }]}
+    >
+      <Pressable
+        accessibilityLabel={translate("deep_space.quick.close")}
+        accessibilityRole="button"
+        onPress={onClose}
+        style={styles.quickDetailScrim}
+      />
+      <View
+        style={styles.quickDetailCard}
+        testID="deep-space-quick-detail-sheet"
+      >
         <View style={styles.quickDetailHeader}>
           <View style={styles.quickDetailTitleBlock}>
             <Text style={styles.quickDetailTitle}>{title}</Text>
             <Text style={styles.quickDetailSubtitle}>{subtitle}</Text>
           </View>
           <Pressable
-            accessibilityLabel={translate('deep_space.back')}
+            accessibilityLabel={translate("deep_space.back")}
             accessibilityRole="button"
             onPress={onClose}
             style={styles.quickDetailClose}
@@ -1010,19 +1241,25 @@ function QuickControlDetailSheet({
         </View>
         <View style={styles.quickDetailDivider} />
         <View style={styles.quickDetailList}>
-          {items.map(item => <QuickDetailRow item={item} key={item.id} />)}
+          {items.map((item) => (
+            <QuickDetailRow item={item} key={item.id} />
+          ))}
         </View>
         {onReset && (
           <View style={styles.quickDetailFooter}>
             <Pressable
-              accessibilityLabel={resetLabel ?? translate('deep_space.quick.reset_default')}
+              accessibilityLabel={
+                resetLabel ?? translate("deep_space.quick.reset_default")
+              }
               accessibilityRole="button"
               hitSlop={12}
               onPress={onReset}
               style={styles.quickDetailResetButton}
               testID="deep-space-quick-detail-reset"
             >
-              <Text style={styles.quickDetailResetButtonText}>{resetLabel ?? translate('deep_space.quick.reset_default')}</Text>
+              <Text style={styles.quickDetailResetButtonText}>
+                {resetLabel ?? translate("deep_space.quick.reset_default")}
+              </Text>
             </Pressable>
           </View>
         )}
@@ -1036,7 +1273,13 @@ type QuickControlEntry = {
   detailItems: QuickSubItem[];
   detailSubtitle: string;
   detailTitle: string;
-  icon: 'grid-lines' | 'constellation' | 'landscape' | 'atmosphere' | 'labels' | 'night';
+  icon:
+    | "grid-lines"
+    | "constellation"
+    | "landscape"
+    | "atmosphere"
+    | "labels"
+    | "night";
   id: QuickControlId;
   label: string;
   onPress: () => void;
@@ -1048,60 +1291,69 @@ function getGridControls({
   lines,
   onToggleGridLine,
   onUpdateGridLines,
-}: Pick<QuickControlParams, 'lines' | 'onToggleGridLine' | 'onUpdateGridLines'>): QuickControlEntry {
-  const gridsActive = lines.azimuthal || lines.equatorial_jnow || lines.equatorial_j2000 || lines.ecliptic || lines.equator || lines.meridian;
+}: Pick<
+  QuickControlParams,
+  "lines" | "onToggleGridLine" | "onUpdateGridLines"
+>): QuickControlEntry {
+  const gridsActive =
+    lines.azimuthal ||
+    lines.equatorial_jnow ||
+    lines.equatorial_j2000 ||
+    lines.ecliptic ||
+    lines.equator ||
+    lines.meridian;
 
   return {
     active: gridsActive,
     detailItems: [
       {
         active: lines.azimuthal,
-        hint: translate('deep_space.grid.azimuthal_hint'),
-        id: 'azimuthal',
-        label: translate('deep_space.grid.azimuthal'),
-        onToggle: () => onToggleGridLine('azimuthal'),
+        hint: translate("deep_space.grid.azimuthal_hint"),
+        id: "azimuthal",
+        label: translate("deep_space.grid.azimuthal"),
+        onToggle: () => onToggleGridLine("azimuthal"),
       },
       {
         active: lines.equatorial_jnow,
-        hint: translate('deep_space.grid.jnow_hint'),
-        id: 'equatorial_jnow',
-        label: translate('deep_space.grid.jnow'),
-        onToggle: () => onToggleGridLine('equatorial_jnow'),
+        hint: translate("deep_space.grid.jnow_hint"),
+        id: "equatorial_jnow",
+        label: translate("deep_space.grid.jnow"),
+        onToggle: () => onToggleGridLine("equatorial_jnow"),
       },
       {
         active: lines.equatorial_j2000,
-        hint: translate('deep_space.grid.j2000_hint'),
-        id: 'equatorial_j2000',
-        label: translate('deep_space.grid.j2000'),
-        onToggle: () => onToggleGridLine('equatorial_j2000'),
+        hint: translate("deep_space.grid.j2000_hint"),
+        id: "equatorial_j2000",
+        label: translate("deep_space.grid.j2000"),
+        onToggle: () => onToggleGridLine("equatorial_j2000"),
       },
       {
         active: lines.ecliptic,
-        hint: translate('deep_space.grid.ecliptic_hint'),
-        id: 'ecliptic',
-        label: translate('deep_space.grid.ecliptic'),
-        onToggle: () => onToggleGridLine('ecliptic'),
+        hint: translate("deep_space.grid.ecliptic_hint"),
+        id: "ecliptic",
+        label: translate("deep_space.grid.ecliptic"),
+        onToggle: () => onToggleGridLine("ecliptic"),
       },
       {
         active: lines.equator,
-        hint: translate('deep_space.grid.equator_hint'),
-        id: 'equator',
-        label: translate('deep_space.grid.equator'),
-        onToggle: () => onToggleGridLine('equator'),
+        hint: translate("deep_space.grid.equator_hint"),
+        id: "equator",
+        label: translate("deep_space.grid.equator"),
+        onToggle: () => onToggleGridLine("equator"),
       },
       {
         active: lines.meridian,
-        hint: translate('deep_space.grid.meridian_hint'),
-        id: 'meridian',
-        label: translate('deep_space.grid.meridian'),
-        onToggle: () => onToggleGridLine('meridian'),
+        hint: translate("deep_space.grid.meridian_hint"),
+        id: "meridian",
+        label: translate("deep_space.grid.meridian"),
+        onToggle: () => onToggleGridLine("meridian"),
       },
     ],
-    detailSubtitle: translate('deep_space.grid.subtitle'),
-    detailTitle: translate('deep_space.grid.title'),
-    icon: 'grid-lines',
-    id: 'grid-lines',
-    label: translate('deep_space.grid.label'),
+    detailSubtitle: translate("deep_space.grid.subtitle"),
+    detailTitle: translate("deep_space.grid.title"),
+    icon: "grid-lines",
+    id: "grid-lines",
+    label: translate("deep_space.grid.label"),
     onPress: () => {
       if (gridsActive) {
         onUpdateGridLines({
@@ -1112,8 +1364,7 @@ function getGridControls({
           equatorial_jnow: false,
           meridian: false,
         });
-      }
-      else {
+      } else {
         onUpdateGridLines({
           azimuthal: true,
           equatorial_jnow: true,
@@ -1121,7 +1372,7 @@ function getGridControls({
       }
     },
     onReset: () => onUpdateGridLines(DEFAULT_GRID_LINES),
-    resetLabel: translate('deep_space.grid.reset'),
+    resetLabel: translate("deep_space.grid.reset"),
   };
 }
 
@@ -1129,53 +1380,57 @@ function getConstellationControls({
   onToggleSkyLayer,
   onUpdateSkyLayers,
   skyLayers,
-}: Pick<QuickControlParams, 'onToggleSkyLayer' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry {
-  const constellationActive = skyLayers.constellationLines || skyLayers.constellationArt;
+}: Pick<
+  QuickControlParams,
+  "onToggleSkyLayer" | "onUpdateSkyLayers" | "skyLayers"
+>): QuickControlEntry {
+  const constellationActive =
+    skyLayers.constellationLines || skyLayers.constellationArt;
 
   return {
     active: constellationActive,
     detailItems: [
       {
         active: skyLayers.constellationLines,
-        hint: translate('deep_space.constellation_panel.lines_hint'),
-        id: 'constellationLines',
-        label: translate('deep_space.constellation_panel.lines'),
-        onToggle: () => onToggleSkyLayer('constellationLines'),
+        hint: translate("deep_space.constellation_panel.lines_hint"),
+        id: "constellationLines",
+        label: translate("deep_space.constellation_panel.lines"),
+        onToggle: () => onToggleSkyLayer("constellationLines"),
       },
       {
         active: skyLayers.constellationArt,
-        hint: translate('deep_space.constellation_panel.art_hint'),
-        id: 'constellationArt',
-        label: translate('deep_space.constellation_panel.art'),
-        onToggle: () => onToggleSkyLayer('constellationArt'),
+        hint: translate("deep_space.constellation_panel.art_hint"),
+        id: "constellationArt",
+        label: translate("deep_space.constellation_panel.art"),
+        onToggle: () => onToggleSkyLayer("constellationArt"),
       },
       {
         active: skyLayers.constellationLabels,
-        hint: translate('deep_space.constellation_panel.names_hint'),
-        id: 'constellationLabels',
-        label: translate('deep_space.constellation_panel.names'),
-        onToggle: () => onToggleSkyLayer('constellationLabels'),
+        hint: translate("deep_space.constellation_panel.names_hint"),
+        id: "constellationLabels",
+        label: translate("deep_space.constellation_panel.names"),
+        onToggle: () => onToggleSkyLayer("constellationLabels"),
       },
       {
         active: skyLayers.constellationBoundaries,
-        hint: translate('deep_space.constellation_panel.bounds_hint'),
-        id: 'constellationBoundaries',
-        label: translate('deep_space.constellation_panel.bounds'),
-        onToggle: () => onToggleSkyLayer('constellationBoundaries'),
+        hint: translate("deep_space.constellation_panel.bounds_hint"),
+        id: "constellationBoundaries",
+        label: translate("deep_space.constellation_panel.bounds"),
+        onToggle: () => onToggleSkyLayer("constellationBoundaries"),
       },
       {
         active: skyLayers.constellationOnlyPointed,
-        hint: translate('deep_space.constellation_panel.only_pointed_hint'),
-        id: 'constellationOnlyPointed',
-        label: translate('deep_space.constellation_panel.only_pointed'),
-        onToggle: () => onToggleSkyLayer('constellationOnlyPointed'),
+        hint: translate("deep_space.constellation_panel.only_pointed_hint"),
+        id: "constellationOnlyPointed",
+        label: translate("deep_space.constellation_panel.only_pointed"),
+        onToggle: () => onToggleSkyLayer("constellationOnlyPointed"),
       },
     ],
-    detailSubtitle: translate('deep_space.constellation_panel.subtitle'),
-    detailTitle: translate('deep_space.constellation_panel.title'),
-    icon: 'constellation',
-    id: 'constellation',
-    label: translate('deep_space.constellation_panel.label'),
+    detailSubtitle: translate("deep_space.constellation_panel.subtitle"),
+    detailTitle: translate("deep_space.constellation_panel.title"),
+    icon: "constellation",
+    id: "constellation",
+    label: translate("deep_space.constellation_panel.label"),
     onPress: () => {
       const next = !constellationActive;
       onUpdateSkyLayers({
@@ -1183,14 +1438,15 @@ function getConstellationControls({
         constellationLines: next,
       });
     },
-    onReset: () => onUpdateSkyLayers({
-      constellationArt: true,
-      constellationBoundaries: false,
-      constellationLabels: true,
-      constellationLines: true,
-      constellationOnlyPointed: false,
-    }),
-    resetLabel: translate('deep_space.constellation_panel.reset'),
+    onReset: () =>
+      onUpdateSkyLayers({
+        constellationArt: true,
+        constellationBoundaries: false,
+        constellationLabels: true,
+        constellationLines: true,
+        constellationOnlyPointed: false,
+      }),
+    resetLabel: translate("deep_space.constellation_panel.reset"),
   };
 }
 
@@ -1200,64 +1456,81 @@ function getAtmosphereControl({
   onUpdateEnvironment,
   onUpdateSkyLayers,
   skyLayers,
-}: Pick<QuickControlParams, 'environment' | 'onToggleSkyLayer' | 'onUpdateEnvironment' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry {
+}: Pick<
+  QuickControlParams,
+  | "environment"
+  | "onToggleSkyLayer"
+  | "onUpdateEnvironment"
+  | "onUpdateSkyLayers"
+  | "skyLayers"
+>): QuickControlEntry {
   return {
     active: skyLayers.atmosphere,
     detailItems: [
       {
         active: skyLayers.atmosphere,
-        hint: translate('deep_space.atmosphere_panel.scattering_hint'),
-        id: 'atmosphere',
-        label: translate('deep_space.atmosphere_panel.scattering'),
-        onToggle: () => onToggleSkyLayer('atmosphere'),
+        hint: translate("deep_space.atmosphere_panel.scattering_hint"),
+        id: "atmosphere",
+        label: translate("deep_space.atmosphere_panel.scattering"),
+        onToggle: () => onToggleSkyLayer("atmosphere"),
       },
       {
         active: environment.fog,
-        hint: translate('deep_space.atmosphere_panel.fog_hint'),
-        id: 'fog',
-        label: translate('deep_space.atmosphere_panel.fog'),
+        hint: translate("deep_space.atmosphere_panel.fog_hint"),
+        id: "fog",
+        label: translate("deep_space.atmosphere_panel.fog"),
         onToggle: () => onUpdateEnvironment({ fog: !environment.fog }),
       },
       {
         active: true,
-        hint: translate('deep_space.atmosphere_panel.air_quality_hint'),
-        id: 'air-quality',
-        label: translate('deep_space.atmosphere_panel.air_quality'),
+        hint: translate("deep_space.atmosphere_panel.air_quality_hint"),
+        id: "air-quality",
+        label: translate("deep_space.atmosphere_panel.air_quality"),
         onToggle: () => {},
-        stepper: airQualityStepper(environment.bortleIndex, bortleIndex => onUpdateEnvironment({ bortleIndex })),
+        stepper: airQualityStepper(environment.bortleIndex, (bortleIndex) =>
+          onUpdateEnvironment({ bortleIndex }),
+        ),
       },
     ],
-    detailSubtitle: translate('deep_space.atmosphere_panel.subtitle'),
-    detailTitle: translate('deep_space.atmosphere_panel.title'),
-    icon: 'atmosphere',
-    id: 'atmosphere',
-    label: translate('deep_space.atmosphere_panel.label'),
-    onPress: () => onToggleSkyLayer('atmosphere'),
+    detailSubtitle: translate("deep_space.atmosphere_panel.subtitle"),
+    detailTitle: translate("deep_space.atmosphere_panel.title"),
+    icon: "atmosphere",
+    id: "atmosphere",
+    label: translate("deep_space.atmosphere_panel.label"),
+    onPress: () => onToggleSkyLayer("atmosphere"),
     onReset: () => {
       onUpdateSkyLayers({ atmosphere: DEFAULT_SKY_LAYERS.atmosphere });
-      onUpdateEnvironment({ bortleIndex: DEFAULT_BORTLE_INDEX, fog: DEFAULT_ENVIRONMENT.fog, turbidity: DEFAULT_TURBIDITY });
+      onUpdateEnvironment({
+        bortleIndex: DEFAULT_BORTLE_INDEX,
+        fog: DEFAULT_ENVIRONMENT.fog,
+        turbidity: DEFAULT_TURBIDITY,
+      });
     },
-    resetLabel: translate('deep_space.atmosphere_panel.reset'),
+    resetLabel: translate("deep_space.atmosphere_panel.reset"),
   };
 }
 
 function getLabelsControl({
   onUpdateSkyLayers,
   skyLayers,
-}: Pick<QuickControlParams, 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry {
-  const labelsActive = skyLayers.planetLabels
-    || skyLayers.starLabels
-    || skyLayers.dsoLabels
-    || skyLayers.satelliteLabels;
+}: Pick<
+  QuickControlParams,
+  "onUpdateSkyLayers" | "skyLayers"
+>): QuickControlEntry {
+  const labelsActive =
+    skyLayers.planetLabels ||
+    skyLayers.starLabels ||
+    skyLayers.dsoLabels ||
+    skyLayers.satelliteLabels;
 
   return {
     active: labelsActive,
     detailItems: [],
-    detailSubtitle: '',
-    detailTitle: translate('deep_space.labels.title'),
-    icon: 'labels',
-    id: 'labels',
-    label: translate('deep_space.labels.title'),
+    detailSubtitle: "",
+    detailTitle: translate("deep_space.labels.title"),
+    icon: "labels",
+    id: "labels",
+    label: translate("deep_space.labels.title"),
     onPress: () => {
       const next = !labelsActive;
       onUpdateSkyLayers({
@@ -1280,46 +1553,58 @@ function getEnvironmentAndNightControls({
   onUpdateEnvironment,
   onUpdateSkyLayers,
   skyLayers,
-}: Pick<QuickControlParams, 'environment' | 'landscapeId' | 'nightMode' | 'onSelectLandscape' | 'onToggleNightMode' | 'onToggleSkyLayer' | 'onUpdateEnvironment' | 'onUpdateSkyLayers' | 'skyLayers'>): QuickControlEntry[] {
+}: Pick<
+  QuickControlParams,
+  | "environment"
+  | "landscapeId"
+  | "nightMode"
+  | "onSelectLandscape"
+  | "onToggleNightMode"
+  | "onToggleSkyLayer"
+  | "onUpdateEnvironment"
+  | "onUpdateSkyLayers"
+  | "skyLayers"
+>): QuickControlEntry[] {
   return [
     {
       active: skyLayers.landscape,
       detailItems: [
         {
           active: skyLayers.landscape,
-          hint: translate('deep_space.landscape.panorama_hint'),
-          id: 'landscape',
-          label: translate('deep_space.landscape.panorama'),
-          onToggle: () => onToggleSkyLayer('landscape'),
+          hint: translate("deep_space.landscape.panorama_hint"),
+          id: "landscape",
+          label: translate("deep_space.landscape.panorama"),
+          onToggle: () => onToggleSkyLayer("landscape"),
         },
         {
           active: environment.cardinals,
-          hint: translate('deep_space.landscape.cardinal_hint'),
-          id: 'cardinals',
-          label: translate('deep_space.landscape.cardinal'),
-          onToggle: () => onUpdateEnvironment({ cardinals: !environment.cardinals }),
+          hint: translate("deep_space.landscape.cardinal_hint"),
+          id: "cardinals",
+          label: translate("deep_space.landscape.cardinal"),
+          onToggle: () =>
+            onUpdateEnvironment({ cardinals: !environment.cardinals }),
         },
         {
           active: true,
-          hint: '',
-          id: 'landscape-library',
-          label: translate('deep_space.landscape.label'),
+          hint: "",
+          id: "landscape-library",
+          label: translate("deep_space.landscape.label"),
           onToggle: () => {},
           stepper: landscapeStepper(landscapeId, onSelectLandscape),
         },
       ],
-      detailSubtitle: translate('deep_space.landscape.subtitle'),
-      detailTitle: translate('deep_space.landscape.title'),
-      icon: 'landscape',
-      id: 'landscape',
-      label: translate('deep_space.landscape.label'),
-      onPress: () => onToggleSkyLayer('landscape'),
+      detailSubtitle: translate("deep_space.landscape.subtitle"),
+      detailTitle: translate("deep_space.landscape.title"),
+      icon: "landscape",
+      id: "landscape",
+      label: translate("deep_space.landscape.label"),
+      onPress: () => onToggleSkyLayer("landscape"),
       onReset: () => {
         onUpdateSkyLayers({ landscape: true });
         onUpdateEnvironment({ cardinals: false });
         onSelectLandscape(DEFAULT_LANDSCAPE_ID);
       },
-      resetLabel: translate('deep_space.landscape.reset'),
+      resetLabel: translate("deep_space.landscape.reset"),
     },
     getAtmosphereControl({
       environment,
@@ -1337,24 +1622,29 @@ function getEnvironmentAndNightControls({
       detailItems: [
         {
           active: nightMode,
-          hint: translate('deep_space.night.red_light_hint'),
-          id: 'nightMode',
-          label: translate('deep_space.night.red_light'),
+          hint: translate("deep_space.night.red_light_hint"),
+          id: "nightMode",
+          label: translate("deep_space.night.red_light"),
           onToggle: onToggleNightMode,
         },
       ],
-      detailSubtitle: translate('deep_space.night.subtitle'),
-      detailTitle: translate('deep_space.night.title'),
-      icon: 'night',
-      id: 'night-mode',
-      label: translate('deep_space.night.label'),
+      detailSubtitle: translate("deep_space.night.subtitle"),
+      detailTitle: translate("deep_space.night.title"),
+      icon: "night",
+      id: "night-mode",
+      label: translate("deep_space.night.label"),
       onPress: onToggleNightMode,
     },
   ];
 }
 
 type QuickControlParams = {
-  environment: { bortleIndex: number; cardinals: boolean; fog: boolean; turbidity: number };
+  environment: {
+    bortleIndex: number;
+    cardinals: boolean;
+    fog: boolean;
+    turbidity: number;
+  };
   landscapeId: string;
   lines: typeof DEFAULT_GRID_LINES;
   nightMode: boolean;
@@ -1362,7 +1652,12 @@ type QuickControlParams = {
   onToggleNightMode: () => void;
   onToggleGridLine: (key: GridLineKey) => void;
   onToggleSkyLayer: (key: SkyLayerKey) => void;
-  onUpdateEnvironment: (patch: { bortleIndex?: number; cardinals?: boolean; fog?: boolean; turbidity?: number }) => void;
+  onUpdateEnvironment: (patch: {
+    bortleIndex?: number;
+    cardinals?: boolean;
+    fog?: boolean;
+    turbidity?: number;
+  }) => void;
   onUpdateGridLines: (patch: Partial<typeof DEFAULT_GRID_LINES>) => void;
   onUpdateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
   skyLayers: typeof DEFAULT_SKY_LAYERS;
@@ -1396,8 +1691,17 @@ function LongPressProgressRing({
   });
 
   return (
-    <View pointerEvents="none" style={styles.progressRingWrapper} testID="deep-space-quick-progress-ring">
-      <Svg height={size} style={styles.progressRingSvg} viewBox={`0 0 ${size} ${size}`} width={size}>
+    <View
+      pointerEvents="none"
+      style={styles.progressRingWrapper}
+      testID="deep-space-quick-progress-ring"
+    >
+      <Svg
+        height={size}
+        style={styles.progressRingSvg}
+        viewBox={`0 0 ${size} ${size}`}
+        width={size}
+      >
         <Circle
           cx={size / 2}
           cy={size / 2}
@@ -1465,11 +1769,11 @@ function QuickControlButton({
     }
   };
 
-  const ringColor = control.id === 'night-mode' ? '#FF5C5C' : '#64A6FF';
+  const ringColor = control.id === "night-mode" ? "#FF5C5C" : "#64A6FF";
 
   return (
     <Pressable
-      accessibilityHint={translate('deep_space.quick.long_press_hint')}
+      accessibilityHint={translate("deep_space.quick.long_press_hint")}
       accessibilityLabel={control.label}
       accessibilityRole="switch"
       accessibilityState={{ checked: control.active }}
@@ -1490,18 +1794,24 @@ function QuickControlButton({
         style={[
           styles.quickControlCell,
           control.active && styles.quickControlCellActive,
-          control.id === 'night-mode' && control.active && styles.quickControlCellNightActive,
+          control.id === "night-mode" &&
+            control.active &&
+            styles.quickControlCellNightActive,
         ]}
       >
         <View style={styles.quickIconWrapper}>
           <QuickControlIcon active={control.active} kind={control.icon} />
-          {pressing && <LongPressProgressRing color={ringColor} progress={progressAnim} />}
+          {pressing && (
+            <LongPressProgressRing color={ringColor} progress={progressAnim} />
+          )}
         </View>
         <Text
           style={[
             styles.quickControlLabel,
             control.active && styles.quickControlLabelActive,
-            control.id === 'night-mode' && control.active && styles.quickControlLabelNightActive,
+            control.id === "night-mode" &&
+              control.active &&
+              styles.quickControlLabelNightActive,
           ]}
         >
           {control.label}
@@ -1527,7 +1837,7 @@ function GridQuickBar({
       {open && (
         <View style={styles.gridQuickMenu} testID="deep-space-grid-quick-panel">
           <View style={styles.gridQuickMenuHighlight} />
-          {controls.map(control => (
+          {controls.map((control) => (
             <QuickControlButton
               control={control}
               key={control.id}
@@ -1537,7 +1847,7 @@ function GridQuickBar({
         </View>
       )}
       <Pressable
-        accessibilityLabel={translate('deep_space.overlay_toggle')}
+        accessibilityLabel={translate("deep_space.overlay_toggle")}
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         onPress={() => onOpenChange(!open)}
@@ -1570,12 +1880,20 @@ function stopMetricsTimers(state: MetricsLifetime) {
   state.deadlineTimer = undefined;
 }
 
-function useSearchMetrics(stellaRef: React.RefObject<StellariumViewHandle | null>, open: boolean) {
-  const [metrics, setMetrics] = React.useState<Record<string, CelestialMetricsItem>>({});
+function useSearchMetrics(
+  stellaRef: React.RefObject<StellariumViewHandle | null>,
+  open: boolean,
+) {
+  const [metrics, setMetrics] = React.useState<
+    Record<string, CelestialMetricsItem>
+  >({});
   const [metricsRetryAvailable, setRetryAvailable] = React.useState(false);
   const [metricsRefreshing, setMetricsRefreshing] = React.useState(false);
   const snapshots = React.useRef(new Map<string, MetricsSnapshot>());
-  const lifetime = React.useRef<MetricsLifetime>({ active: true, generation: 0 });
+  const lifetime = React.useRef<MetricsLifetime>({
+    active: true,
+    generation: 0,
+  });
   const visibleIds = React.useRef<string[]>([]);
   const openRef = React.useRef(open);
   openRef.current = open;
@@ -1598,86 +1916,107 @@ function useSearchMetrics(stellaRef: React.RefObject<StellariumViewHandle | null
     setRetryAvailable(false);
     setMetricsRefreshing(false);
   }, []);
-  const refreshMetrics = React.useCallback((ids: string[], force = false) => {
-    const state = lifetime.current;
-    const names = [...new Set(ids)].slice(0, 100);
-    const key = JSON.stringify(names);
-    if (!state.active || (state.pending && JSON.stringify(visibleIds.current) === key))
-      return;
-    state.generation++;
-    state.pending = false;
-    stopMetricsTimers(state);
-    visibleIds.current = names;
-    const cached = snapshots.current.get(key);
-    setMetrics(cached?.metrics ?? {});
-    setRetryAvailable(cached?.retryAvailable ?? false);
-    setMetricsRefreshing(false);
-    if (!openRef.current || names.length === 0 || (cached && !force))
-      return;
-    state.pending = true;
-    setRetryAvailable(false);
-    setMetricsRefreshing(true);
-    const current = state.generation;
-    const isCurrent = () => state.active && openRef.current && state.generation === current;
-    const staged: Record<string, CelestialMetricsItem> = {};
-    const finish = (retryAvailable: boolean) => {
-      if (!isCurrent())
+  const refreshMetrics = React.useCallback(
+    (ids: string[], force = false) => {
+      const state = lifetime.current;
+      const names = [...new Set(ids)].slice(0, 100);
+      const key = JSON.stringify(names);
+      if (
+        !state.active ||
+        (state.pending && JSON.stringify(visibleIds.current) === key)
+      ) {
         return;
+      }
       state.generation++;
       state.pending = false;
       stopMetricsTimers(state);
-      const next = retryAvailable && cached ? cached.metrics : staged;
-      snapshots.current.set(key, { metrics: next, retryAvailable });
-      setMetrics(next);
-      setRetryAvailable(retryAvailable);
+      visibleIds.current = names;
+      const cached = snapshots.current.get(key);
+      setMetrics(cached?.metrics ?? {});
+      setRetryAvailable(cached?.retryAvailable ?? false);
       setMetricsRefreshing(false);
-    };
-    const deadline = Date.now() + 10_000;
-    state.deadlineTimer = setTimeout(() => finish(true), 10_000);
-    const query = (queryNames: string[]) => {
-      if (!isCurrent())
-        return;
-      if (Date.now() >= deadline) {
-        finish(true);
-        return;
-      }
-      const request = stellaRef.current?.queryTargets?.(queryNames);
-      if (!request) {
-        finish(true);
-        return;
-      }
-      request.then((results) => {
-        if (!isCurrent())
+      if (!openRef.current || names.length === 0 || (cached && !force)) return;
+      state.pending = true;
+      setRetryAvailable(false);
+      setMetricsRefreshing(true);
+      const current = state.generation;
+      const isCurrent = () =>
+        state.active && openRef.current && state.generation === current;
+      const staged: Record<string, CelestialMetricsItem> = {};
+      const finish = (retryAvailable: boolean) => {
+        if (!isCurrent()) return;
+        state.generation++;
+        state.pending = false;
+        stopMetricsTimers(state);
+        const next = retryAvailable && cached ? cached.metrics : staged;
+        snapshots.current.set(key, { metrics: next, retryAvailable });
+        setMetrics(next);
+        setRetryAvailable(retryAvailable);
+        setMetricsRefreshing(false);
+      };
+      const deadline = Date.now() + 10_000;
+      state.deadlineTimer = setTimeout(() => finish(true), 10_000);
+      const query = (queryNames: string[]) => {
+        if (!isCurrent()) return;
+        if (Date.now() >= deadline) {
+          finish(true);
           return;
-        Object.assign(staged, Object.fromEntries(results.map(result => [result.id, result])));
-        const loading = results.filter(result => !result.available && result.reason === 'loading').map(result => result.id);
-        if (loading.length > 0)
-          state.timer = setTimeout(() => query(loading), 500);
-        else
-          finish(false);
-      }).catch(() => {
-        if (!isCurrent())
+        }
+        const request = stellaRef.current?.queryTargets?.(queryNames);
+        if (!request) {
+          finish(true);
           return;
-        for (const id of queryNames)
-          staged[id] = { available: false, reason: 'failed' };
-        finish(true);
-      });
-    };
-    query(names);
-  }, [stellaRef]);
-  return { clearMetrics, metrics, metricsRefreshing, metricsRetryAvailable, refreshMetrics, retryMetrics: () => refreshMetrics(visibleIds.current, true) };
+        }
+        request
+          .then((results) => {
+            if (!isCurrent()) return;
+            Object.assign(
+              staged,
+              Object.fromEntries(results.map((result) => [result.id, result])),
+            );
+            const loading = results
+              .filter(
+                (result) => !result.available && result.reason === "loading",
+              )
+              .map((result) => result.id);
+            if (loading.length > 0)
+              state.timer = setTimeout(() => query(loading), 500);
+            else finish(false);
+          })
+          .catch(() => {
+            if (!isCurrent()) return;
+            for (const id of queryNames)
+              staged[id] = { available: false, reason: "failed" };
+            finish(true);
+          });
+      };
+      query(names);
+    },
+    [stellaRef],
+  );
+  return {
+    clearMetrics,
+    metrics,
+    metricsRefreshing,
+    metricsRetryAvailable,
+    refreshMetrics,
+    retryMetrics: () => refreshMetrics(visibleIds.current, true),
+  };
 }
 
 function searchFailureReason(error: unknown): SearchFailureReason {
-  const reason = error instanceof Error && error.message.startsWith('FOCUS_UNAVAILABLE:') ? error.message.slice('FOCUS_UNAVAILABLE:'.length) : '';
+  const reason =
+    error instanceof Error && error.message.startsWith("FOCUS_UNAVAILABLE:")
+      ? error.message.slice("FOCUS_UNAVAILABLE:".length)
+      : "";
   switch (reason) {
-    case 'loading':
-    case 'culture_mismatch':
-    case 'missing_data':
-    case 'not_found':
+    case "loading":
+    case "culture_mismatch":
+    case "missing_data":
+    case "not_found":
       return reason;
     default:
-      return 'failed';
+      return "failed";
   }
 }
 
@@ -1687,17 +2026,28 @@ function useStarMapSearch(
   stopCompassFollowing: () => void,
 ) {
   const [error, setError] = React.useState<SearchFailureReason | false>(false);
-  const lastTarget = React.useRef('');
+  const lastTarget = React.useRef("");
   const generation = React.useRef(0);
   const [open, setOpen] = React.useState(false);
   const [pending, setPending] = React.useState(false);
-  const [query, setQuery] = React.useState('');
-  const [category, setCategory] = React.useState<ExtendedCelestialCategory>('all');
-  const { clearMetrics, metrics, metricsRefreshing, metricsRetryAvailable, refreshMetrics, retryMetrics } = useSearchMetrics(stellaRef, open);
-  React.useEffect(() => () => {
-    generation.current++;
-    stellaRef.current?.cancelSearch?.();
-  }, [stellaRef]);
+  const [query, setQuery] = React.useState("");
+  const [category, setCategory] =
+    React.useState<ExtendedCelestialCategory>("all");
+  const {
+    clearMetrics,
+    metrics,
+    metricsRefreshing,
+    metricsRetryAvailable,
+    refreshMetrics,
+    retryMetrics,
+  } = useSearchMetrics(stellaRef, open);
+  React.useEffect(
+    () => () => {
+      generation.current++;
+      stellaRef.current?.cancelSearch?.();
+    },
+    [stellaRef],
+  );
 
   const openSearch = (onCloseOthers: () => void) => {
     clearMetrics();
@@ -1714,52 +2064,57 @@ function useStarMapSearch(
     setError(false);
     setPending(false);
     setOpen(false);
-    setQuery('');
-    setCategory('all');
+    setQuery("");
+    setCategory("all");
     stellaRef.current?.cancelSearch?.();
   }, [clearMetrics, stellaRef]);
 
-  const resolveFocusedTarget = React.useCallback((name: string) => {
-    // Focusing re-centers the map, so the sensor has to let go first.
-    stopCompassFollowing();
-    const current = ++generation.current;
-    lastTarget.current = name;
-    setError(false);
-    setPending(true);
-    const request = stellaRef.current?.focusTarget?.(name);
-    if (!request) {
-      setPending(false);
-      return;
-    }
-    request.then((object) => {
-      if (generation.current !== current)
+  const resolveFocusedTarget = React.useCallback(
+    (name: string) => {
+      // Focusing re-centers the map, so the sensor has to let go first.
+      stopCompassFollowing();
+      const current = ++generation.current;
+      lastTarget.current = name;
+      setError(false);
+      setPending(true);
+      const request = stellaRef.current?.focusTarget?.(name);
+      if (!request) {
+        setPending(false);
         return;
-      setPending(false);
-      if (object) {
-        onSelected(object);
-        closeSearch();
       }
-      else {
-        setError('not_found');
-      }
-    }).catch((error) => {
-      if (generation.current !== current)
-        return;
-      setPending(false);
-      setError(searchFailureReason(error));
-    });
-  }, [closeSearch, onSelected, stellaRef, stopCompassFollowing]);
+      request
+        .then((object) => {
+          if (generation.current !== current) return;
+          setPending(false);
+          if (object) {
+            onSelected(object);
+            closeSearch();
+          } else {
+            setError("not_found");
+          }
+        })
+        .catch((error) => {
+          if (generation.current !== current) return;
+          setPending(false);
+          setError(searchFailureReason(error));
+        });
+    },
+    [closeSearch, onSelected, stellaRef, stopCompassFollowing],
+  );
 
-  const selectItem = (item: CelestialSearchItem | RecentSkyObject) => resolveFocusedTarget(item.id);
+  const selectItem = (item: CelestialSearchItem | RecentSkyObject) =>
+    resolveFocusedTarget(item.id);
 
   const submitSearch = () => {
     const target = query.trim();
-    if (!target)
-      return;
+    if (!target) return;
 
     const coordinates = parseSkyCoordinateInput(target);
     if (coordinates) {
-      stellaRef.current?.gotoRaDec?.(coordinates.raHours * 15, coordinates.decDeg);
+      stellaRef.current?.gotoRaDec?.(
+        coordinates.raHours * 15,
+        coordinates.decDeg,
+      );
       closeSearch();
       return;
     }
@@ -1776,7 +2131,8 @@ function useStarMapSearch(
     metricsRefreshing,
     metricsRetryAvailable,
     refreshCurrentMetrics: retryMetrics,
-    retrySearch: () => error ? resolveFocusedTarget(lastTarget.current) : retryMetrics(),
+    retrySearch: () =>
+      error ? resolveFocusedTarget(lastTarget.current) : retryMetrics(),
     open,
     openSearch,
     pending,
@@ -1785,7 +2141,7 @@ function useStarMapSearch(
     selectItem,
     selectRecent: selectItem,
     setCategory,
-    setError: (value: boolean) => setError(value ? 'not_found' : false),
+    setError: (value: boolean) => setError(value ? "not_found" : false),
     setPending,
     setQuery,
     submitSearch,
@@ -1808,7 +2164,7 @@ function RestoreCultureFlow({
     <>
       {showFab && (
         <Pressable
-          accessibilityLabel={translate('deep_space.culture.restore')}
+          accessibilityLabel={translate("deep_space.culture.restore")}
           accessibilityRole="button"
           onPress={() => setDialogOpen(true)}
           style={[styles.restoreCultureFab, { bottom: insetsBottom + 84 }]}
@@ -1836,36 +2192,49 @@ function RestoreCultureFlow({
  * rapid taps a render-closure snapshot can be one render stale, which would
  * send the engine the wrong value and desync the switch UI from the sky.
  */
-function useSkyLayers(stellaRef: React.RefObject<StellariumViewHandle | null>, initialSkyLayers: typeof DEFAULT_SKY_LAYERS) {
+function useSkyLayers(
+  stellaRef: React.RefObject<StellariumViewHandle | null>,
+  initialSkyLayers: typeof DEFAULT_SKY_LAYERS,
+) {
   const [skyLayers, setSkyLayers] = React.useState(initialSkyLayers);
 
-  const updateSkyLayers = React.useCallback((patch: Partial<typeof DEFAULT_SKY_LAYERS>) => {
-    setSkyLayers((prev) => {
-      const next = { ...prev, ...patch };
-      stellaRef.current?.setSkyLayers?.(patch);
-      return next;
-    });
-  }, [stellaRef]);
+  const updateSkyLayers = React.useCallback(
+    (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => {
+      setSkyLayers((prev) => {
+        const next = { ...prev, ...patch };
+        stellaRef.current?.setSkyLayers?.(patch);
+        return next;
+      });
+    },
+    [stellaRef],
+  );
 
-  const toggleSkyLayer = React.useCallback((key: SkyLayerKey) => {
-    setSkyLayers((prev) => {
-      const patch = { [key]: !prev[key] } as Partial<typeof DEFAULT_SKY_LAYERS>;
-      stellaRef.current?.setSkyLayers?.(patch);
-      return { ...prev, ...patch };
-    });
-  }, [stellaRef]);
+  const toggleSkyLayer = React.useCallback(
+    (key: SkyLayerKey) => {
+      setSkyLayers((prev) => {
+        const patch = { [key]: !prev[key] } as Partial<
+          typeof DEFAULT_SKY_LAYERS
+        >;
+        stellaRef.current?.setSkyLayers?.(patch);
+        return { ...prev, ...patch };
+      });
+    },
+    [stellaRef],
+  );
 
   return { skyLayers, toggleSkyLayer, updateSkyLayers };
 }
 
-function useInteractiveClock(stellaRef: React.RefObject<StellariumViewHandle | null>) {
+function useInteractiveClock(
+  stellaRef: React.RefObject<StellariumViewHandle | null>,
+) {
   const time = useSkyTime(stellaRef);
   const [timePanelOpen, setTimePanelOpen] = React.useState(false);
   return {
     ...time,
     closeTimePanel: () => setTimePanelOpen(false),
     timePanelOpen,
-    toggleTimePanel: () => setTimePanelOpen(prev => !prev),
+    toggleTimePanel: () => setTimePanelOpen((prev) => !prev),
   };
 }
 
@@ -1886,8 +2255,7 @@ function SelectedObjectOverlay({
   setSelectedObject: (obj: SelectedCelestialObject | null) => void;
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 }) {
-  if (!selectedObject || drawerOpen || drawerActive || searchOpen)
-    return null;
+  if (!selectedObject || drawerOpen || drawerActive || searchOpen) return null;
 
   return (
     <ObjectInfoSheet
@@ -1955,8 +2323,8 @@ function StarMapModals({
         currentCulture={currentCulture}
         insetsBottom={insetsBottom}
         onRestore={() => {
-          setCurrentCulture('western');
-          stellaRef.current?.setSkyCulture?.('western');
+          setCurrentCulture("western");
+          stellaRef.current?.setSkyCulture?.("western");
         }}
         showFab={showRestoreFab}
       />
@@ -1973,7 +2341,7 @@ function StarMapModals({
         clock={timeState.clock}
         compassFollowing={compassFollowing}
         feature={drawerFeature}
-        onPreviewCulture={id => stellaRef.current?.setSkyCulture?.(id)}
+        onPreviewCulture={(id) => stellaRef.current?.setSkyCulture?.(id)}
         onResetAll={onResetAll}
         onToggleCompassFollowing={onToggleCompassFollowing}
         settings={settings}
@@ -2001,7 +2369,13 @@ function StarMapModals({
   );
 }
 
-function StarMapSearchSheet({ nightMode, onClearRecentHistory, onRemoveRecentHistoryItem, recentObjects, search }: {
+function StarMapSearchSheet({
+  nightMode,
+  onClearRecentHistory,
+  onRemoveRecentHistoryItem,
+  recentObjects,
+  search,
+}: {
   nightMode: boolean;
   onClearRecentHistory: () => void;
   onRemoveRecentHistoryItem: (id: string) => void;
@@ -2036,19 +2410,30 @@ function StarMapSearchSheet({ nightMode, onClearRecentHistory, onRemoveRecentHis
 }
 
 function useDeepSpaceSelection() {
-  const [recentObjects, setRecentObjects] = React.useState<RecentSkyObject[]>(() => loadRecentSkyObjects(storage));
-  const [selectedObject, setSelectedObject] = React.useState<SelectedCelestialObject | null>(null);
+  const [recentObjects, setRecentObjects] = React.useState<RecentSkyObject[]>(
+    () => loadRecentSkyObjects(storage),
+  );
+  const [selectedObject, setSelectedObject] =
+    React.useState<SelectedCelestialObject | null>(null);
 
-  const handleObjectSelected = React.useCallback((object: SelectedCelestialObject) => {
-    setSelectedObject(object);
-    const candidate: RecentSkyObject = {
-      id: object.catalogId || object.id,
-      name: object.name,
-      typeZh: object.typeZh ?? undefined,
-    };
-    setRecentObjects(prev => [candidate, ...prev.filter(item => item.id !== candidate.id)].slice(0, 6));
-    addRecentSkyObject(storage, candidate);
-  }, []);
+  const handleObjectSelected = React.useCallback(
+    (object: SelectedCelestialObject) => {
+      setSelectedObject(object);
+      const candidate: RecentSkyObject = {
+        id: object.catalogId || object.id,
+        name: object.name,
+        typeZh: object.typeZh ?? undefined,
+      };
+      setRecentObjects((prev) =>
+        [candidate, ...prev.filter((item) => item.id !== candidate.id)].slice(
+          0,
+          6,
+        ),
+      );
+      addRecentSkyObject(storage, candidate);
+    },
+    [],
+  );
 
   const clearRecentHistory = React.useCallback(() => {
     setRecentObjects([]);
@@ -2056,7 +2441,7 @@ function useDeepSpaceSelection() {
   }, []);
 
   const removeRecentHistoryItem = React.useCallback((id: string) => {
-    setRecentObjects(prev => prev.filter(item => item.id !== id));
+    setRecentObjects((prev) => prev.filter((item) => item.id !== id));
     removeRecentSkyObject(storage, id);
   }, []);
 
@@ -2079,7 +2464,14 @@ function useDeepSpaceMapReset(options: {
   settings: ReturnType<typeof useStellariumSettings>;
   updateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
 }) {
-  const { clearArchive, drawerFeature, resetCulture, resetNightMode, settings, updateSkyLayers } = options;
+  const {
+    clearArchive,
+    drawerFeature,
+    resetCulture,
+    resetNightMode,
+    settings,
+    updateSkyLayers,
+  } = options;
   return React.useCallback(() => {
     updateSkyLayers(DEFAULT_SKY_LAYERS);
     drawerFeature.updateEnvironment(DEFAULT_ENVIRONMENT);
@@ -2092,7 +2484,14 @@ function useDeepSpaceMapReset(options: {
     settings.resetSettings();
     // Dropped last so the page defaults are not archived straight back.
     clearArchive();
-  }, [clearArchive, drawerFeature, resetCulture, resetNightMode, settings, updateSkyLayers]);
+  }, [
+    clearArchive,
+    drawerFeature,
+    resetCulture,
+    resetNightMode,
+    settings,
+    updateSkyLayers,
+  ]);
 }
 
 /** Ties the page state to its archive: writes on change, resets, and centering. */
@@ -2120,32 +2519,61 @@ function useDeepSpaceViewArchive(options: {
     stopCompassFollowing,
     updateSkyLayers,
   } = options;
-  const preferences = React.useMemo<DeepSpaceViewPreferences>(() => ({
-    currentCulture,
-    environment: drawerFeature.environment,
-    gridLines: drawerFeature.gridLines,
-    landscapeId: drawerFeature.landscapeId,
-    nightMode,
-    skyLayers,
-    ...(drawerFeature.fieldOfView ? { fieldOfView: drawerFeature.fieldOfView } : {}),
-  }), [currentCulture, drawerFeature.environment, drawerFeature.fieldOfView, drawerFeature.gridLines, drawerFeature.landscapeId, nightMode, skyLayers]);
+  const preferences = React.useMemo<DeepSpaceViewPreferences>(
+    () => ({
+      currentCulture,
+      environment: drawerFeature.environment,
+      gridLines: drawerFeature.gridLines,
+      landscapeId: drawerFeature.landscapeId,
+      nightMode,
+      skyLayers,
+      ...(drawerFeature.fieldOfView
+        ? { fieldOfView: drawerFeature.fieldOfView }
+        : {}),
+    }),
+    [
+      currentCulture,
+      drawerFeature.environment,
+      drawerFeature.fieldOfView,
+      drawerFeature.gridLines,
+      drawerFeature.landscapeId,
+      nightMode,
+      skyLayers,
+    ],
+  );
   const clearArchive = useViewPreferenceArchive(preferences);
   const resetCulture = React.useCallback(() => {
-    setCurrentCulture('western');
-    stellaRef.current?.setSkyCulture?.('western');
+    setCurrentCulture("western");
+    stellaRef.current?.setSkyCulture?.("western");
   }, [setCurrentCulture, stellaRef]);
-  const resetNightMode = React.useCallback(() => setNightMode(false), [setNightMode]);
-  const handleResetAll = useDeepSpaceMapReset({ clearArchive, drawerFeature, resetCulture, resetNightMode, settings, updateSkyLayers });
-  const handleCenterObject = React.useCallback((object: SelectedCelestialObject) => {
-    // Re-centering must survive the sensor: let go of the compass first, then
-    // lock the target. The details sheet stays open and no camera command runs.
-    stopCompassFollowing();
-    stellaRef.current?.pointAndLock?.(object.id);
-  }, [stellaRef, stopCompassFollowing]);
-  const handleViewStateChange = React.useCallback((state: StellariumViewState) => {
-    // Archiving a report is a plain write: it must never restore the view.
-    writeStoredViewState(storage, state);
-  }, []);
+  const resetNightMode = React.useCallback(
+    () => setNightMode(false),
+    [setNightMode],
+  );
+  const handleResetAll = useDeepSpaceMapReset({
+    clearArchive,
+    drawerFeature,
+    resetCulture,
+    resetNightMode,
+    settings,
+    updateSkyLayers,
+  });
+  const handleCenterObject = React.useCallback(
+    (object: SelectedCelestialObject) => {
+      // Re-centering must survive the sensor: let go of the compass first, then
+      // lock the target. The details sheet stays open and no camera command runs.
+      stopCompassFollowing();
+      stellaRef.current?.pointAndLock?.(object.id);
+    },
+    [stellaRef, stopCompassFollowing],
+  );
+  const handleViewStateChange = React.useCallback(
+    (state: StellariumViewState) => {
+      // Archiving a report is a plain write: it must never restore the view.
+      writeStoredViewState(storage, state);
+    },
+    [],
+  );
   return { handleCenterObject, handleResetAll, handleViewStateChange };
 }
 
@@ -2190,21 +2618,27 @@ function ActiveStarMapControls({
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
           {/* Invisible corner tap target — tapping the top-right reveals the floating exit button */}
           <Pressable
-            accessibilityLabel={translate('deep_space.exit_fullscreen_hint')}
+            accessibilityLabel={translate("deep_space.exit_fullscreen_hint")}
             accessibilityRole="button"
             onPress={showExitTemporarily}
-            style={[styles.fullscreenCornerTouchTarget, { top: insetsTop, right: 0 }]}
+            style={[
+              styles.fullscreenCornerTouchTarget,
+              { top: insetsTop, right: 0 },
+            ]}
             testID="deep-space-fullscreen-corner-trigger"
           />
           {exitVisible && (
             <Pressable
-              accessibilityLabel={translate('deep_space.exit_fullscreen')}
+              accessibilityLabel={translate("deep_space.exit_fullscreen")}
               accessibilityRole="button"
               onPress={() => {
                 setExitVisible(false);
                 onExitFullscreen();
               }}
-              style={[styles.exitFullscreenButton, { right: 16, top: insetsTop + 12 }]}
+              style={[
+                styles.exitFullscreenButton,
+                { right: 16, top: insetsTop + 12 },
+              ]}
               testID="deep-space-exit-fullscreen"
             >
               <Text style={styles.exitFullscreenText}>✕</Text>
@@ -2218,12 +2652,12 @@ function ActiveStarMapControls({
 
 function useDeepSpaceFullscreenSync(fullscreen: boolean) {
   React.useEffect(() => {
-    if (Platform.OS !== 'web') {
-      StatusBar.setHidden(fullscreen, 'fade');
+    if (Platform.OS !== "web") {
+      StatusBar.setHidden(fullscreen, "fade");
     }
     return () => {
-      if (Platform.OS !== 'web') {
-        StatusBar.setHidden(false, 'fade');
+      if (Platform.OS !== "web") {
+        StatusBar.setHidden(false, "fade");
       }
     };
   }, [fullscreen]);
@@ -2241,7 +2675,8 @@ function useStellariumEngineReady(options: EngineReadyOptions) {
   const latest = React.useRef(options);
   latest.current = options;
   return React.useCallback(() => {
-    const { drawerFeature, getCurrentTime, settings, skyLayers, stellaRef } = latest.current;
+    const { drawerFeature, getCurrentTime, settings, skyLayers, stellaRef } =
+      latest.current;
     stellaRef.current?.setSearchCatalog?.(ALL_CELESTIAL_OBJECTS);
     restoreStellariumContext(stellaRef.current, {
       ...drawerFeature,
@@ -2257,36 +2692,59 @@ function useStellariumEngineReady(options: EngineReadyOptions) {
   }, []);
 }
 
-function useAzimuthController(stellaRef: React.RefObject<StellariumViewHandle | null>) {
+function useAzimuthController(
+  stellaRef: React.RefObject<StellariumViewHandle | null>,
+) {
   const [azimuthDeg, setAzimuthDeg] = React.useState(0);
 
-  const handleSetAzimuth = React.useCallback((targetDeg: number) => {
-    const normalized = Math.round(((targetDeg % 360) + 360) % 360);
-    setAzimuthDeg(normalized);
-    stellaRef.current?.setViewBearing(normalized);
-    showDeepSpaceFeedback({
-      message: translate('deep_space.compass_feedback_rotated', { azimuth: normalized }),
-      tone: 'success',
-    });
-  }, [stellaRef]);
+  const handleSetAzimuth = React.useCallback(
+    (targetDeg: number) => {
+      const normalized = Math.round(((targetDeg % 360) + 360) % 360);
+      setAzimuthDeg(normalized);
+      stellaRef.current?.setViewBearing(normalized);
+      showDeepSpaceFeedback({
+        message: translate("deep_space.compass_feedback_rotated", {
+          azimuth: normalized,
+        }),
+        tone: "success",
+      });
+    },
+    [stellaRef],
+  );
 
   return { azimuthDeg, handleSetAzimuth, setAzimuthDeg };
 }
 
-function useStarMapObservation(stellaRef: React.RefObject<StellariumViewHandle | null>, options: {
-  currentCulture: string;
-  drawerFeature: ReturnType<typeof useStellariumDrawerFeature>;
-  drawerOpen: boolean;
-  selection: ReturnType<typeof useDeepSpaceSelection>;
-  skyLayers: StellariumSkyLayers;
-  stopCompassFollowing: () => void;
-}) {
-  const { currentCulture, drawerFeature, drawerOpen, selection, skyLayers, stopCompassFollowing } = options;
+function useStarMapObservation(
+  stellaRef: React.RefObject<StellariumViewHandle | null>,
+  options: {
+    currentCulture: string;
+    drawerFeature: ReturnType<typeof useStellariumDrawerFeature>;
+    drawerOpen: boolean;
+    selection: ReturnType<typeof useDeepSpaceSelection>;
+    skyLayers: StellariumSkyLayers;
+    stopCompassFollowing: () => void;
+  },
+) {
+  const {
+    currentCulture,
+    drawerFeature,
+    drawerOpen,
+    selection,
+    skyLayers,
+    stopCompassFollowing,
+  } = options;
   const [sceneVersion, setSceneVersion] = React.useState(0);
   const timeState = useInteractiveClock(stellaRef);
   const contextKey = `${timeState.clock.getTime()}:${drawerFeature.observer.latitudeDeg}:${drawerFeature.observer.longitudeDeg}:${currentCulture}:${sceneVersion}`;
-  const search = useStarMapSearch(stellaRef, selection.handleObjectSelected, stopCompassFollowing);
-  const settings = useStellariumSettings(stellaRef, { onReturnToNow: timeState.returnToNow });
+  const search = useStarMapSearch(
+    stellaRef,
+    selection.handleObjectSelected,
+    stopCompassFollowing,
+  );
+  const settings = useStellariumSettings(stellaRef, {
+    onReturnToNow: timeState.returnToNow,
+  });
   const restoreEngine = useStellariumEngineReady({
     drawerFeature,
     getCurrentTime: timeState.getCurrentTime,
@@ -2302,7 +2760,7 @@ function useStarMapObservation(stellaRef: React.RefObject<StellariumViewHandle |
   });
   const handleEngineReady = React.useCallback(() => {
     restoreEngine();
-    setSceneVersion(version => version + 1);
+    setSceneVersion((version) => version + 1);
   }, [restoreEngine]);
   return { handleEngineReady, search, settings, timeState };
 }
@@ -2321,7 +2779,20 @@ function buildStarMapControlsProps(options: {
   toggleSkyLayer: (key: SkyLayerKey) => void;
   updateSkyLayers: (patch: Partial<typeof DEFAULT_SKY_LAYERS>) => void;
 }): StarMapOverlayControlsProps {
-  const { azimuthDeg, drawerFeature, handleSetAzimuth, insets, nightMode, search, setDrawerOpen, setNightMode, skyLayers, timeState, toggleSkyLayer, updateSkyLayers } = options;
+  const {
+    azimuthDeg,
+    drawerFeature,
+    handleSetAzimuth,
+    insets,
+    nightMode,
+    search,
+    setDrawerOpen,
+    setNightMode,
+    skyLayers,
+    timeState,
+    toggleSkyLayer,
+    updateSkyLayers,
+  } = options;
   return {
     azimuthDeg,
     clock: timeState.clock,
@@ -2344,52 +2815,77 @@ function buildStarMapControlsProps(options: {
     onSelectLandscape: drawerFeature.selectLandscape,
     onSetAzimuth: handleSetAzimuth,
     onToggleGridLine: drawerFeature.toggleGridLine,
-    onToggleNightMode: () => setNightMode(value => !value),
+    onToggleNightMode: () => setNightMode((value) => !value),
     onToggleSkyLayer: toggleSkyLayer,
     onToggleTimePanel: timeState.toggleTimePanel,
     onUpdateEnvironment: drawerFeature.updateEnvironment,
     onUpdateGridLines: drawerFeature.updateGridLines,
     onUpdateSkyLayers: updateSkyLayers,
     onUpdateTime: timeState.updateTime,
-    playback: { isPlaying: timeState.isPlaying, onSelectSpeed: timeState.setPlaybackSpeed, onTogglePlayback: timeState.togglePlayback, playbackSpeed: timeState.playbackSpeed },
+    playback: {
+      isPlaying: timeState.isPlaying,
+      onSelectSpeed: timeState.setPlaybackSpeed,
+      onTogglePlayback: timeState.togglePlayback,
+      playbackSpeed: timeState.playbackSpeed,
+    },
     skyLayers,
     timePanelOpen: timeState.timePanelOpen,
   };
 }
 
-export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps): React.ReactElement {
+export function DeepSpaceMapScreen({
+  onBack: _onBack,
+}: DeepSpaceMapScreenProps): React.ReactElement {
   const insets = useSafeAreaInsets();
   const stellaRef = React.useRef<StellariumViewHandle>(null);
-  const { azimuthDeg, handleSetAzimuth, setAzimuthDeg } = useAzimuthController(stellaRef);
+  const { azimuthDeg, handleSetAzimuth, setAzimuthDeg } =
+    useAzimuthController(stellaRef);
   // Read once per visit: the archive is the starting point, never re-read later.
-  const [initialPreferences] = React.useState(() => readViewPreferences(storage, VIEW_PREFERENCE_DEFAULTS));
-  const [currentCulture, setCurrentCulture] = React.useState(initialPreferences.currentCulture);
+  const [initialPreferences] = React.useState(() =>
+    readViewPreferences(storage, VIEW_PREFERENCE_DEFAULTS),
+  );
+  const [currentCulture, setCurrentCulture] = React.useState(
+    initialPreferences.currentCulture,
+  );
   const selection = useDeepSpaceSelection();
-  const drawerFeature = useStellariumDrawerFeature({ currentCulture, initialPreferences, setCurrentCulture, stellaRef });
-  const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [nightMode, setNightMode] = React.useState(initialPreferences.nightMode);
-  const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(stellaRef, initialPreferences.skyLayers);
-  const { compassFollowing, stopCompassFollowing, toggleCompassFollowing } = useCompassFollowing(stellaRef);
-  const { handleEngineReady, search, settings, timeState } = useStarMapObservation(stellaRef, {
+  const drawerFeature = useStellariumDrawerFeature({
     currentCulture,
-    drawerFeature,
-    drawerOpen,
-    selection,
-    skyLayers,
-    stopCompassFollowing,
-  });
-  const { handleCenterObject, handleResetAll, handleViewStateChange } = useDeepSpaceViewArchive({
-    currentCulture,
-    drawerFeature,
-    nightMode,
+    initialPreferences,
     setCurrentCulture,
-    setNightMode,
-    settings,
-    skyLayers,
     stellaRef,
-    stopCompassFollowing,
-    updateSkyLayers,
   });
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
+  const [nightMode, setNightMode] = React.useState(
+    initialPreferences.nightMode,
+  );
+  const { skyLayers, toggleSkyLayer, updateSkyLayers } = useSkyLayers(
+    stellaRef,
+    initialPreferences.skyLayers,
+  );
+  const { compassFollowing, stopCompassFollowing, toggleCompassFollowing } =
+    useCompassFollowing(stellaRef);
+  const { handleEngineReady, search, settings, timeState } =
+    useStarMapObservation(stellaRef, {
+      currentCulture,
+      drawerFeature,
+      drawerOpen,
+      selection,
+      skyLayers,
+      stopCompassFollowing,
+    });
+  const { handleCenterObject, handleResetAll, handleViewStateChange } =
+    useDeepSpaceViewArchive({
+      currentCulture,
+      drawerFeature,
+      nightMode,
+      setCurrentCulture,
+      setNightMode,
+      settings,
+      skyLayers,
+      stellaRef,
+      stopCompassFollowing,
+      updateSkyLayers,
+    });
   useDeepSpaceFullscreenSync(settings.fullscreen);
 
   const controlsProps = buildStarMapControlsProps({
@@ -2406,7 +2902,12 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
     toggleSkyLayer,
     updateSkyLayers,
   });
-  const showRestoreFab = currentCulture !== 'western' && !drawerOpen && !drawerFeature.active && !search.open && !selection.selectedObject;
+  const showRestoreFab =
+    currentCulture !== "western" &&
+    !drawerOpen &&
+    !drawerFeature.active &&
+    !search.open &&
+    !selection.selectedObject;
 
   return (
     <View testID="deep-space-map-shell" style={styles.root}>
@@ -2415,7 +2916,12 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         style={styles.webView}
         onBearingChange={setAzimuthDeg}
         onReady={handleEngineReady}
-        onCommandError={() => showDeepSpaceFeedback({ message: translate('deep_space.operation_failed'), tone: 'danger' })}
+        onCommandError={() =>
+          showDeepSpaceFeedback({
+            message: translate("deep_space.operation_failed"),
+            tone: "danger",
+          })
+        }
         onObjectSelected={selection.handleObjectSelected}
         onSelectionCleared={selection.clearSelection}
         onTargetFound={search.closeSearch}
@@ -2425,14 +2931,30 @@ export function DeepSpaceMapScreen({ onBack: _onBack }: DeepSpaceMapScreenProps)
         }}
         onViewStateChange={handleViewStateChange}
       />
-      {drawerFeature.fieldOfView && <FieldOfViewOverlay input={drawerFeature.fieldOfView} stellaRef={stellaRef} />}
-      {nightMode && <View pointerEvents="none" style={styles.nightModeOverlay} testID="deep-space-night-mode-overlay" />}
+      {drawerFeature.fieldOfView && (
+        <FieldOfViewOverlay
+          input={drawerFeature.fieldOfView}
+          stellaRef={stellaRef}
+        />
+      )}
+      {nightMode && (
+        <View
+          pointerEvents="none"
+          style={styles.nightModeOverlay}
+          testID="deep-space-night-mode-overlay"
+        />
+      )}
       <ActiveStarMapControls
         controlsProps={controlsProps}
         fullscreen={settings.fullscreen}
         insetsTop={insets.top}
         onExitFullscreen={() => settings.setFullscreen(false)}
-        suppressFullscreenButton={drawerOpen || Boolean(drawerFeature.active) || search.open || Boolean(selection.selectedObject)}
+        suppressFullscreenButton={
+          drawerOpen ||
+          Boolean(drawerFeature.active) ||
+          search.open ||
+          Boolean(selection.selectedObject)
+        }
       />
       <StarMapModals
         compassFollowing={compassFollowing}
@@ -2472,32 +2994,41 @@ function RestoreCultureDialog({
   onConfirm: () => void;
   visible: boolean;
 }) {
-  const activeCultureObj = SKY_CULTURES_DATA.cultures.find(c => c.id === currentCulture);
-  const activeCultureName = (getLanguage() || 'zh').startsWith('zh')
+  const activeCultureObj = SKY_CULTURES_DATA.cultures.find(
+    (c) => c.id === currentCulture,
+  );
+  const activeCultureName = (getLanguage() || "zh").startsWith("zh")
     ? (activeCultureObj?.titleZh ?? activeCultureObj?.title ?? currentCulture)
     : (activeCultureObj?.title ?? currentCulture);
 
   return (
     <Modal animationType="fade" transparent visible={visible}>
       <View style={styles.modalOverlay}>
-        <View style={styles.dialogCard} testID="deep-space-restore-culture-dialog">
+        <View
+          style={styles.dialogCard}
+          testID="deep-space-restore-culture-dialog"
+        >
           <Text style={styles.dialogTitle}>
-            {translate('deep_space.culture.dialog_title')}
+            {translate("deep_space.culture.dialog_title")}
             {activeCultureName}
           </Text>
-          <Text style={styles.dialogMessage}>{translate('deep_space.culture.restore_confirm')}</Text>
+          <Text style={styles.dialogMessage}>
+            {translate("deep_space.culture.restore_confirm")}
+          </Text>
           <View style={styles.dialogButtons}>
             <Pressable
-              accessibilityLabel={translate('deep_space.dialog.cancel')}
+              accessibilityLabel={translate("deep_space.dialog.cancel")}
               accessibilityRole="button"
               onPress={onCancel}
               style={styles.dialogButton}
               testID="deep-space-restore-culture-cancel"
             >
-              <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.dialog.cancel')}</Text>
+              <Text style={styles.dialogButtonTextCancel}>
+                {translate("deep_space.dialog.cancel")}
+              </Text>
             </Pressable>
             <Pressable
-              accessibilityLabel={translate('deep_space.dialog.confirm')}
+              accessibilityLabel={translate("deep_space.dialog.confirm")}
               accessibilityRole="button"
               onPress={onConfirm}
               style={[styles.dialogButton, styles.dialogButtonPrimary]}
@@ -2512,13 +3043,27 @@ function RestoreCultureDialog({
   );
 }
 
-function TopControls({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; onOpenSearch: () => void }) {
+function TopControls({
+  onOpenMenu,
+  onOpenSearch,
+}: {
+  onOpenMenu: () => void;
+  onOpenSearch: () => void;
+}) {
   return (
     <View style={styles.topControls}>
-      <IconButton accessibilityLabel={translate('deep_space.menu')} onPress={onOpenMenu} testID="deep-space-reference-menu">
+      <IconButton
+        accessibilityLabel={translate("deep_space.menu")}
+        onPress={onOpenMenu}
+        testID="deep-space-reference-menu"
+      >
         <MenuIcon />
       </IconButton>
-      <IconButton accessibilityLabel={translate('deep_space.search')} onPress={onOpenSearch} testID="deep-space-reference-search">
+      <IconButton
+        accessibilityLabel={translate("deep_space.search")}
+        onPress={onOpenSearch}
+        testID="deep-space-reference-search"
+      >
         <SearchIcon />
       </IconButton>
     </View>
@@ -2545,7 +3090,7 @@ function FeaturePanels({
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 }) {
   switch (feature.active) {
-    case 'calendar':
+    case "calendar":
       return (
         <CalendarPanel
           city={feature.observer}
@@ -2554,7 +3099,7 @@ function FeaturePanels({
           stellaRef={stellaRef}
         />
       );
-    case 'glossary':
+    case "glossary":
       return (
         <GlossaryPanel
           currentCulture={feature.currentCulture}
@@ -2563,7 +3108,7 @@ function FeaturePanels({
           onSelect={feature.selectSkyCulture}
         />
       );
-    case 'settings':
+    case "settings":
       return (
         <SettingsPanel
           automaticLocation={feature.automaticLocation}
@@ -2579,14 +3124,16 @@ function FeaturePanels({
           settings={settings}
         />
       );
-    case 'tools':
+    case "tools":
       return (
         <ToolsPanel
           fieldOfViewActive={Boolean(feature.fieldOfView)}
           onApplyFieldOfView={feature.applyFieldOfView}
           onClearFieldOfView={feature.clearFieldOfView}
           onClose={feature.close}
-          onGoto={(raHours, decDeg) => stellaRef.current?.gotoRaDec(raHours * 15, decDeg)}
+          onGoto={(raHours, decDeg) =>
+            stellaRef.current?.gotoRaDec(raHours * 15, decDeg)
+          }
         />
       );
     default:
@@ -2594,14 +3141,22 @@ function FeaturePanels({
   }
 }
 
-function IconButton({ accessibilityLabel, children, onPress, testID }: IconButtonProps) {
+function IconButton({
+  accessibilityLabel,
+  children,
+  onPress,
+  testID,
+}: IconButtonProps) {
   return (
     <Pressable
       accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
       hitSlop={8}
       onPress={onPress}
-      style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+      style={({ pressed }) => [
+        styles.iconButton,
+        pressed && styles.iconButtonPressed,
+      ]}
       testID={testID}
     >
       {children}
@@ -2610,13 +3165,22 @@ function IconButton({ accessibilityLabel, children, onPress, testID }: IconButto
 }
 
 function ReferenceDrawer({ onClose, onOpen }: ReferenceDrawerProps) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.drawerOverlay}>
-      <Pressable accessibilityLabel={translate('deep_space.menu')} accessibilityRole="button" onPress={onClose} style={styles.drawerScrim} />
-      <View testID="deep-space-reference-drawer" style={styles.drawer}>
+      <Pressable
+        accessibilityLabel={translate("deep_space.menu")}
+        accessibilityRole="button"
+        onPress={onClose}
+        style={styles.drawerScrim}
+      />
+      <View
+        testID="deep-space-reference-drawer"
+        style={[styles.drawer, { paddingTop: insets.top }]}
+      >
         <View style={styles.drawerHeader}>
           <Pressable
-            accessibilityLabel={translate('deep_space.menu')}
+            accessibilityLabel={translate("deep_space.menu")}
             accessibilityRole="button"
             onPress={onClose}
             style={styles.drawerBack}
@@ -2624,21 +3188,54 @@ function ReferenceDrawer({ onClose, onOpen }: ReferenceDrawerProps) {
           >
             <CloseIcon />
           </Pressable>
-          <Text style={styles.drawerTitle}>{translate('deep_space.menu')}</Text>
+          <Text style={styles.drawerTitle}>{translate("deep_space.menu")}</Text>
         </View>
-        <ReferenceDrawerRow icon={<GlossaryIcon />} label={translate('deep_space.drawer.glossary')} onPress={() => onOpen('glossary')} />
-        <ReferenceDrawerRow icon={<CalendarIcon />} label={translate('deep_space.calendar.title')} onPress={() => onOpen('calendar')} />
-        <ReferenceDrawerRow icon={<ObservationIcon />} label={translate('deep_space.drawer.tools')} onPress={() => onOpen('tools')} />
-        <ReferenceDrawerRow icon={<SettingsIcon />} label={translate('deep_space.drawer.settings')} onPress={() => onOpen('settings')} />
+        <ReferenceDrawerRow
+          icon={<GlossaryIcon />}
+          label={translate("deep_space.drawer.glossary")}
+          onPress={() => onOpen("glossary")}
+        />
+        <ReferenceDrawerRow
+          icon={<CalendarIcon />}
+          label={translate("deep_space.calendar.title")}
+          onPress={() => onOpen("calendar")}
+        />
+        <ReferenceDrawerRow
+          icon={<ObservationIcon />}
+          label={translate("deep_space.drawer.tools")}
+          onPress={() => onOpen("tools")}
+        />
+        <ReferenceDrawerRow
+          icon={<SettingsIcon />}
+          label={translate("deep_space.drawer.settings")}
+          onPress={() => onOpen("settings")}
+        />
         <View style={styles.drawerSectionDivider} />
-        <ReferenceDrawerRow icon={<HelpIcon />} label={translate('deep_space.drawer.help')} />
-        <ReferenceDrawerRow icon={<ExitIcon />} label={translate('deep_space.drawer.exit')} showChevron={false} />
+        <ReferenceDrawerRow
+          icon={<HelpIcon />}
+          label={translate("deep_space.drawer.help")}
+        />
+        <ReferenceDrawerRow
+          icon={<ExitIcon />}
+          label={translate("deep_space.drawer.exit")}
+          showChevron={false}
+        />
       </View>
     </View>
   );
 }
 
-function ReferenceDrawerRow({ icon, label, onPress, showChevron = true }: { icon: React.ReactNode; label: string; onPress?: () => void; showChevron?: boolean }) {
+function ReferenceDrawerRow({
+  icon,
+  label,
+  onPress,
+  showChevron = true,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onPress?: () => void;
+  showChevron?: boolean;
+}) {
   const content = (
     <>
       <View style={styles.drawerRowIcon}>{icon}</View>
@@ -2646,10 +3243,14 @@ function ReferenceDrawerRow({ icon, label, onPress, showChevron = true }: { icon
       {showChevron && <Text style={styles.drawerChevron}>›</Text>}
     </>
   );
-  if (!onPress)
-    return <View style={styles.drawerRow}>{content}</View>;
+  if (!onPress) return <View style={styles.drawerRow}>{content}</View>;
   return (
-    <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={onPress} style={styles.drawerRow}>
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={styles.drawerRow}
+    >
       {content}
     </Pressable>
   );
@@ -2666,8 +3267,12 @@ function GlossaryHero({
   isUsing: boolean;
   onSelect: (id: string, target?: string | null) => void;
 }) {
-  const displayName = chinese ? (culture.titleZh ?? culture.title) : culture.title;
-  const regionName = chinese ? (REGION_LABELS[culture.region] ?? culture.region) : culture.region;
+  const displayName = chinese
+    ? (culture.titleZh ?? culture.title)
+    : culture.title;
+  const regionName = chinese
+    ? (REGION_LABELS[culture.region] ?? culture.region)
+    : culture.region;
 
   return (
     <View style={styles.glossaryDetailHero}>
@@ -2676,15 +3281,29 @@ function GlossaryHero({
         <Text style={styles.glossaryDetailRegion}>{regionName}</Text>
       </View>
       <Pressable
-        accessibilityLabel={isUsing ? translate('deep_space.culture.in_use') : translate('deep_space.culture.use_this')}
+        accessibilityLabel={
+          isUsing
+            ? translate("deep_space.culture.in_use")
+            : translate("deep_space.culture.use_this")
+        }
         accessibilityRole="button"
         disabled={isUsing}
         onPress={() => onSelect(culture.id, culture.highlight)}
-        style={[styles.glossaryUseButton, isUsing && styles.glossaryUseButtonDisabled]}
+        style={[
+          styles.glossaryUseButton,
+          isUsing && styles.glossaryUseButtonDisabled,
+        ]}
         testID="deep-space-glossary-use-button"
       >
-        <Text style={[styles.glossaryUseButtonText, isUsing && styles.glossaryUseButtonTextDisabled]}>
-          {isUsing ? translate('deep_space.culture.used') : translate('deep_space.culture.use')}
+        <Text
+          style={[
+            styles.glossaryUseButtonText,
+            isUsing && styles.glossaryUseButtonTextDisabled,
+          ]}
+        >
+          {isUsing
+            ? translate("deep_space.culture.used")
+            : translate("deep_space.culture.use")}
         </Text>
       </Pressable>
     </View>
@@ -2696,19 +3315,27 @@ function GlossarySections({
   sections,
 }: {
   chinese: boolean;
-  sections: (typeof SKY_CULTURES_DATA.cultures)[number]['sections'];
+  sections: (typeof SKY_CULTURES_DATA.cultures)[number]["sections"];
 }) {
   return (
     <View style={styles.detailSections}>
       {sections.map((section) => {
-        const heading = chinese ? (section.headingZh || section.heading) : section.heading;
-        const sKey = `sec-${section.heading || 'lead'}`;
+        const heading = chinese
+          ? section.headingZh || section.heading
+          : section.heading;
+        const sKey = `sec-${section.heading || "lead"}`;
         return (
           <View key={sKey} style={styles.sectionBlock}>
-            {heading ? <Text style={styles.sectionHeading}>{heading}</Text> : null}
+            {heading ? (
+              <Text style={styles.sectionHeading}>{heading}</Text>
+            ) : null}
             {section.blocks.map((block) => {
-              if (block.type === 'paragraph' && 'text' in block && typeof block.text === 'string') {
-                const text = chinese ? (block.textZh || block.text) : block.text;
+              if (
+                block.type === "paragraph" &&
+                "text" in block &&
+                typeof block.text === "string"
+              ) {
+                const text = chinese ? block.textZh || block.text : block.text;
                 const pKey = `p-${sKey}-${block.text.length}-${block.text.slice(0, 8)}`;
                 return (
                   <Text key={pKey} style={styles.sectionParagraph}>
@@ -2716,19 +3343,26 @@ function GlossarySections({
                   </Text>
                 );
               }
-              if (block.type === 'image' && 'image' in block && typeof block.image === 'string') {
-                const caption = chinese ? (block.captionZh || block.caption) : block.caption;
+              if (
+                block.type === "image" &&
+                "image" in block &&
+                typeof block.image === "string"
+              ) {
+                const caption = chinese
+                  ? block.captionZh || block.caption
+                  : block.caption;
                 const imgKey = `img-${sKey}-${block.image}`;
                 return (
                   <View key={imgKey} style={styles.imageBlock}>
                     <View style={styles.imageContainer}>
                       <Text style={styles.imagePlaceholderText}>
-                        {translate('deep_space.glossary.image_placeholder')}
-                        {block.image}
-                        ]
+                        {translate("deep_space.glossary.image_placeholder")}
+                        {block.image}]
                       </Text>
                     </View>
-                    {caption ? <Text style={styles.imageCaption}>{caption}</Text> : null}
+                    {caption ? (
+                      <Text style={styles.imageCaption}>{caption}</Text>
+                    ) : null}
                   </View>
                 );
               }
@@ -2741,9 +3375,10 @@ function GlossarySections({
   );
 }
 
-function cultureThumbnailUri(culture: (typeof SKY_CULTURES_DATA.cultures)[number]): string | undefined {
-  if (!culture.thumbnail || Platform.OS !== 'android')
-    return undefined;
+function cultureThumbnailUri(
+  culture: (typeof SKY_CULTURES_DATA.cultures)[number],
+): string | undefined {
+  if (!culture.thumbnail || Platform.OS !== "android") return undefined;
   return `asset:/stellar/data/skycultures/${culture.id}/${culture.thumbnail}`;
 }
 
@@ -2760,14 +3395,17 @@ function GlossaryDetail({
   onClose: () => void;
   onSelect: (id: string, target?: string | null) => void;
 }) {
-  const chinese = (getLanguage() || 'zh').startsWith('zh');
+  const chinese = (getLanguage() || "zh").startsWith("zh");
   const isUsing = culture.id === currentCulture;
-
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.glossaryDetailScreen} testID={`deep-space-glossary-detail-${culture.id}`}>
-      <View style={styles.glossaryDetailHeader}>
+    <View
+      style={[styles.glossaryDetailScreen, { paddingTop: insets.top }]}
+      testID={`deep-space-glossary-detail-${culture.id}`}
+    >
+      <View style={[styles.glossaryDetailHeader, { top: insets.top }]}>
         <Pressable
-          accessibilityLabel={translate('deep_space.culture.back_to_list')}
+          accessibilityLabel={translate("deep_space.culture.back_to_list")}
           accessibilityRole="button"
           onPress={onBack}
           style={styles.glossaryDetailHeaderButton}
@@ -2775,9 +3413,11 @@ function GlossaryDetail({
         >
           <Text style={styles.glossaryDetailBack}>‹</Text>
         </Pressable>
-        <Text style={styles.glossaryDetailHeaderTitle}>{translate('deep_space.drawer.glossary')}</Text>
+        <Text style={styles.glossaryDetailHeaderTitle}>
+          {translate("deep_space.drawer.glossary")}
+        </Text>
         <Pressable
-          accessibilityLabel={translate('deep_space.back')}
+          accessibilityLabel={translate("deep_space.back")}
           accessibilityRole="button"
           onPress={onClose}
           style={styles.glossaryDetailHeaderButton}
@@ -2787,7 +3427,10 @@ function GlossaryDetail({
       </View>
       <View style={styles.glossaryDetailPanel}>
         <View style={styles.glossaryDetailHandle} />
-        <ScrollView bounces={false} contentContainerStyle={styles.glossaryDetailScroll}>
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={styles.glossaryDetailScroll}
+        >
           <GlossaryHero
             chinese={chinese}
             culture={culture}
@@ -2822,7 +3465,10 @@ function GlossaryCultureCard({
       accessibilityLabel={title}
       accessibilityRole="button"
       onPress={onPress}
-      style={[styles.glossaryReferenceCard, current && styles.glossaryReferenceCardActive]}
+      style={[
+        styles.glossaryReferenceCard,
+        current && styles.glossaryReferenceCardActive,
+      ]}
       testID={`deep-space-glossary-item-${culture.id}`}
     >
       {thumbnail && showImage && (
@@ -2836,7 +3482,9 @@ function GlossaryCultureCard({
       )}
       <View style={styles.glossaryReferenceCardText}>
         <Text style={styles.glossaryReferenceTitle}>{title}</Text>
-        <Text numberOfLines={3} style={styles.glossaryReferenceIntro}>{intro}</Text>
+        <Text numberOfLines={3} style={styles.glossaryReferenceIntro}>
+          {intro}
+        </Text>
       </View>
     </Pressable>
   );
@@ -2853,10 +3501,12 @@ function GlossaryPanel({
   onPreviewCulture: (id: string) => void;
   onSelect: (id: string, target?: string | null) => void;
 }) {
-  const chinese = (getLanguage() || 'zh').startsWith('zh');
+  const chinese = (getLanguage() || "zh").startsWith("zh");
   const [detailId, setDetailId] = React.useState<string | null>(null);
-  const detailCulture = detailId ? SKY_CULTURES_DATA.cultures.find(culture => culture.id === detailId) : null;
-
+  const detailCulture = detailId
+    ? SKY_CULTURES_DATA.cultures.find((culture) => culture.id === detailId)
+    : null;
+  const insets = useSafeAreaInsets();
   const openDetail = (id: string) => {
     setDetailId(id);
     // Browsing previews the culture but deliberately keeps the current view.
@@ -2879,10 +3529,13 @@ function GlossaryPanel({
 
   return (
     <Modal animationType="none" onRequestClose={onClose} transparent visible>
-      <View style={styles.glossaryScreen} testID="deep-space-glossary-panel">
+      <View
+        style={[styles.glossaryScreen, { paddingTop: insets.top }]}
+        testID="deep-space-glossary-panel"
+      >
         <View style={styles.glossaryHeader}>
           <Pressable
-            accessibilityLabel={translate('deep_space.back')}
+            accessibilityLabel={translate("deep_space.back")}
             accessibilityRole="button"
             onPress={onClose}
             style={styles.glossaryHeaderButton}
@@ -2890,11 +3543,16 @@ function GlossaryPanel({
           >
             <Text style={styles.glossaryHeaderBack}>‹</Text>
           </Pressable>
-          <Text style={styles.glossaryHeaderTitle}>{translate('deep_space.drawer.glossary')}</Text>
+          <Text style={styles.glossaryHeaderTitle}>
+            {translate("deep_space.drawer.glossary")}
+          </Text>
           <View style={styles.glossaryHeaderButton} />
         </View>
-        <ScrollView bounces={false} contentContainerStyle={styles.glossaryListContent}>
-          {SKY_CULTURES_DATA.cultures.map(culture => (
+        <ScrollView
+          bounces={false}
+          contentContainerStyle={styles.glossaryListContent}
+        >
+          {SKY_CULTURES_DATA.cultures.map((culture) => (
             <GlossaryCultureCard
               chinese={chinese}
               culture={culture}
@@ -2922,23 +3580,40 @@ function ToolsPanel({
   onClose: () => void;
   onGoto: (raHours: number, decDeg: number) => void;
 }) {
-  const [activeTool, setActiveTool] = React.useState<'home' | 'telescope' | 'fov'>('home');
+  const [activeTool, setActiveTool] = React.useState<
+    "home" | "telescope" | "fov"
+  >("home");
   const backButton = (
-    <Pressable accessibilityLabel={translate('deep_space.tools.back')} accessibilityRole="button" onPress={() => setActiveTool('home')} style={featureSheetStyles.featureClose}>
+    <Pressable
+      accessibilityLabel={translate("deep_space.tools.back")}
+      accessibilityRole="button"
+      onPress={() => setActiveTool("home")}
+      style={featureSheetStyles.featureClose}
+    >
       <Text style={styles.toolBack}>‹</Text>
     </Pressable>
   );
 
-  if (activeTool === 'telescope') {
+  if (activeTool === "telescope") {
     return (
-      <FeatureSheet headerLeft={backButton} onClose={onClose} testID="deep-space-telescope-panel" title={translate('deep_space.tools.telescope')}>
+      <FeatureSheet
+        headerLeft={backButton}
+        onClose={onClose}
+        testID="deep-space-telescope-panel"
+        title={translate("deep_space.tools.telescope")}
+      >
         <TelescopeControlPanel onGoto={onGoto} />
       </FeatureSheet>
     );
   }
-  if (activeTool === 'fov') {
+  if (activeTool === "fov") {
     return (
-      <FeatureSheet headerLeft={backButton} onClose={onClose} testID="deep-space-fov-panel" title={translate('deep_space.tools.fov')}>
+      <FeatureSheet
+        headerLeft={backButton}
+        onClose={onClose}
+        testID="deep-space-fov-panel"
+        title={translate("deep_space.tools.fov")}
+      >
         <FieldOfViewPanel
           onApply={(input) => {
             onApplyFieldOfView(input);
@@ -2949,24 +3624,56 @@ function ToolsPanel({
     );
   }
   return (
-    <FeatureSheet onClose={onClose} testID="deep-space-tools-panel" title={translate('deep_space.drawer.tools')}>
-      <Pressable accessibilityLabel={translate('deep_space.tools.telescope')} accessibilityRole="button" onPress={() => setActiveTool('telescope')} style={featureSheetStyles.featureRow} testID="deep-space-tools-telescope">
+    <FeatureSheet
+      onClose={onClose}
+      testID="deep-space-tools-panel"
+      title={translate("deep_space.drawer.tools")}
+    >
+      <Pressable
+        accessibilityLabel={translate("deep_space.tools.telescope")}
+        accessibilityRole="button"
+        onPress={() => setActiveTool("telescope")}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-tools-telescope"
+      >
         <View style={featureSheetStyles.featureRowText}>
-          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.tools.telescope')}</Text>
-          <Text style={featureSheetStyles.featureRowHint}>{translate('deep_space.tools.telescope_hint')}</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>
+            {translate("deep_space.tools.telescope")}
+          </Text>
+          <Text style={featureSheetStyles.featureRowHint}>
+            {translate("deep_space.tools.telescope_hint")}
+          </Text>
         </View>
         <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
-      <Pressable accessibilityLabel={translate('deep_space.tools.fov')} accessibilityRole="button" onPress={() => setActiveTool('fov')} style={featureSheetStyles.featureRow} testID="deep-space-tools-fov">
+      <Pressable
+        accessibilityLabel={translate("deep_space.tools.fov")}
+        accessibilityRole="button"
+        onPress={() => setActiveTool("fov")}
+        style={featureSheetStyles.featureRow}
+        testID="deep-space-tools-fov"
+      >
         <View style={featureSheetStyles.featureRowText}>
-          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.tools.fov')}</Text>
-          <Text style={featureSheetStyles.featureRowHint}>{translate('deep_space.tools.fov_hint')}</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>
+            {translate("deep_space.tools.fov")}
+          </Text>
+          <Text style={featureSheetStyles.featureRowHint}>
+            {translate("deep_space.tools.fov_hint")}
+          </Text>
         </View>
         <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
       {fieldOfViewActive && (
-        <Pressable accessibilityLabel={translate('deep_space.tools.fov_clear')} accessibilityRole="button" onPress={onClearFieldOfView} style={featureSheetStyles.featureRow} testID="deep-space-tools-fov-clear">
-          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.tools.fov_clear')}</Text>
+        <Pressable
+          accessibilityLabel={translate("deep_space.tools.fov_clear")}
+          accessibilityRole="button"
+          onPress={onClearFieldOfView}
+          style={featureSheetStyles.featureRow}
+          testID="deep-space-tools-fov-clear"
+        >
+          <Text style={featureSheetStyles.featureRowLabel}>
+            {translate("deep_space.tools.fov_clear")}
+          </Text>
           <Text style={featureSheetStyles.featureSelected}>×</Text>
         </Pressable>
       )}
@@ -2982,7 +3689,7 @@ function LocationCoordinateRows({
   onOpenLongitude,
 }: {
   disabled?: boolean;
-  observer: ReturnType<typeof useObserverLocation>['observer'];
+  observer: ReturnType<typeof useObserverLocation>["observer"];
   onOpenCityPicker: () => void;
   onOpenLatitude: () => void;
   onOpenLongitude: () => void;
@@ -2990,51 +3697,81 @@ function LocationCoordinateRows({
   return (
     <>
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.latitude')}
+        accessibilityLabel={translate("deep_space.settings.latitude")}
         accessibilityRole="button"
         disabled={disabled}
         onPress={onOpenLatitude}
-        style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
+        style={[
+          featureSheetStyles.featureRow,
+          disabled && styles.locationRowDisabled,
+        ]}
         testID="deep-space-settings-latitude-btn"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.latitude')}</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.latitude")}
+        </Text>
         <View style={styles.locationValueRow}>
-          <Text style={featureSheetStyles.featureRowHint}>{formatLatitudeDMS(observer.latitudeDeg)}</Text>
+          <Text style={featureSheetStyles.featureRowHint}>
+            {formatLatitudeDMS(observer.latitudeDeg)}
+          </Text>
           <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </Pressable>
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.longitude')}
+        accessibilityLabel={translate("deep_space.settings.longitude")}
         accessibilityRole="button"
         disabled={disabled}
         onPress={onOpenLongitude}
-        style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
+        style={[
+          featureSheetStyles.featureRow,
+          disabled && styles.locationRowDisabled,
+        ]}
         testID="deep-space-settings-longitude-btn"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.longitude')}</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.longitude")}
+        </Text>
         <View style={styles.locationValueRow}>
-          <Text style={featureSheetStyles.featureRowHint}>{formatLongitudeDMS(observer.longitudeDeg)}</Text>
+          <Text style={featureSheetStyles.featureRowHint}>
+            {formatLongitudeDMS(observer.longitudeDeg)}
+          </Text>
           <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </Pressable>
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.city')}
+        accessibilityLabel={translate("deep_space.settings.city")}
         accessibilityRole="button"
         disabled={disabled}
         onPress={onOpenCityPicker}
-        style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}
+        style={[
+          featureSheetStyles.featureRow,
+          disabled && styles.locationRowDisabled,
+        ]}
         testID="deep-space-settings-city-btn"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.city_colon')}</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.city_colon")}
+        </Text>
         <View style={styles.locationValueRow}>
-          <Text style={featureSheetStyles.featureRowHint}>{cityLabel(observer.name)}</Text>
+          <Text style={featureSheetStyles.featureRowHint}>
+            {cityLabel(observer.name)}
+          </Text>
           <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </Pressable>
-      <View style={[featureSheetStyles.featureRow, disabled && styles.locationRowDisabled]}>
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.utc_offset')}</Text>
+      <View
+        style={[
+          featureSheetStyles.featureRow,
+          disabled && styles.locationRowDisabled,
+        ]}
+      >
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.utc_offset")}
+        </Text>
         <View style={styles.locationValueRow}>
-          <Text style={featureSheetStyles.featureRowHint}>{formatUtcOffsetHours(new Date().getTimezoneOffset())}</Text>
+          <Text style={featureSheetStyles.featureRowHint}>
+            {formatUtcOffsetHours(new Date().getTimezoneOffset())}
+          </Text>
           <Text style={featureSheetStyles.featureSelected}>›</Text>
         </View>
       </View>
@@ -3053,63 +3790,86 @@ function SettingsLocationSheet({
   onToggleAutomaticLocation,
 }: {
   automaticLocation: boolean;
-  observer: ReturnType<typeof useObserverLocation>['observer'];
+  observer: ReturnType<typeof useObserverLocation>["observer"];
   onBack: () => void;
   onClose: () => void;
   onEnableAutomaticLocation: () => Promise<void>;
   onManualCoordinateChange: (lat: number, lon: number, name?: string) => void;
-  onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
+  onSelect: (city: (typeof OBSERVER_CITIES)[number]) => void;
   onToggleAutomaticLocation?: () => Promise<void>;
 }) {
-  const [editingCoordinate, setEditingCoordinate] = React.useState<'latitude' | 'longitude' | null>(null);
+  const [editingCoordinate, setEditingCoordinate] = React.useState<
+    "latitude" | "longitude" | null
+  >(null);
   const [cityPickerOpen, setCityPickerOpen] = React.useState(false);
   const handleToggle = onToggleAutomaticLocation ?? onEnableAutomaticLocation;
 
   return (
     <>
       <FeatureSheet
-        headerLeft={(
-          <Pressable accessibilityLabel={translate('deep_space.settings.back')} accessibilityRole="button" onPress={onBack} style={featureSheetStyles.featureClose}>
+        headerLeft={
+          <Pressable
+            accessibilityLabel={translate("deep_space.settings.back")}
+            accessibilityRole="button"
+            onPress={onBack}
+            style={featureSheetStyles.featureClose}
+          >
             <BackIcon />
           </Pressable>
-        )}
+        }
         onClose={onClose}
         placement="top"
         scrollable={false}
         showCloseButton={false}
         testID="deep-space-settings-panel"
-        title={translate('deep_space.settings.location')}
+        title={translate("deep_space.settings.location")}
       >
         <Pressable
-          accessibilityLabel={translate('deep_space.settings.auto_locate')}
+          accessibilityLabel={translate("deep_space.settings.auto_locate")}
           accessibilityRole="switch"
           accessibilityState={{ checked: automaticLocation }}
           onPress={handleToggle}
           style={featureSheetStyles.featureRow}
           testID="deep-space-settings-auto-location-toggle"
         >
-          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.auto_locate')}</Text>
-          <View style={[styles.settingsSwitchTrack, automaticLocation && styles.settingsSwitchTrackOn]}>
-            <View style={[styles.settingsSwitchThumb, automaticLocation && styles.settingsSwitchThumbOn]} />
+          <Text style={featureSheetStyles.featureRowLabel}>
+            {translate("deep_space.settings.auto_locate")}
+          </Text>
+          <View
+            style={[
+              styles.settingsSwitchTrack,
+              automaticLocation && styles.settingsSwitchTrackOn,
+            ]}
+          >
+            <View
+              style={[
+                styles.settingsSwitchThumb,
+                automaticLocation && styles.settingsSwitchThumbOn,
+              ]}
+            />
           </View>
         </Pressable>
         <LocationCoordinateRows
           disabled={automaticLocation}
           observer={observer}
           onOpenCityPicker={() => setCityPickerOpen(true)}
-          onOpenLatitude={() => setEditingCoordinate('latitude')}
-          onOpenLongitude={() => setEditingCoordinate('longitude')}
+          onOpenLatitude={() => setEditingCoordinate("latitude")}
+          onOpenLongitude={() => setEditingCoordinate("longitude")}
         />
         <LocationWorldMap
           enabled={!automaticLocation}
           latitudeDeg={observer.latitudeDeg}
           longitudeDeg={observer.longitudeDeg}
           onSelectCoordinate={(lat, lon) => {
-            onManualCoordinateChange(lat, lon, translate('deep_space.settings.custom_location'));
+            onManualCoordinateChange(
+              lat,
+              lon,
+              translate("deep_space.settings.custom_location"),
+            );
           }}
         />
         <View style={styles.hiddenPresetTriggers}>
-          {OBSERVER_CITIES.map(city => (
+          {OBSERVER_CITIES.map((city) => (
             <Pressable
               accessibilityLabel={cityLabel(city.name)}
               accessibilityRole="button"
@@ -3121,14 +3881,17 @@ function SettingsLocationSheet({
         </View>
       </FeatureSheet>
       <CoordinateInputDialog
-        initialValue={editingCoordinate === 'latitude' ? observer.latitudeDeg : observer.longitudeDeg}
-        kind={editingCoordinate ?? 'latitude'}
+        initialValue={
+          editingCoordinate === "latitude"
+            ? observer.latitudeDeg
+            : observer.longitudeDeg
+        }
+        kind={editingCoordinate ?? "latitude"}
         onCancel={() => setEditingCoordinate(null)}
         onConfirm={(val) => {
-          if (editingCoordinate === 'latitude') {
+          if (editingCoordinate === "latitude") {
             onManualCoordinateChange(val, observer.longitudeDeg);
-          }
-          else if (editingCoordinate === 'longitude') {
+          } else if (editingCoordinate === "longitude") {
             onManualCoordinateChange(observer.latitudeDeg, val);
           }
           setEditingCoordinate(null);
@@ -3159,45 +3922,72 @@ function AdvancedStartTimeRow({
   return (
     <>
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.start_time')}
+        accessibilityLabel={translate("deep_space.settings.start_time")}
         accessibilityRole="button"
-        onPress={() => setOpen(v => !v)}
+        onPress={() => setOpen((v) => !v)}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-start-time"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.start_time')}</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.start_time")}
+        </Text>
         <View style={styles.advancedTimePicker}>
-          <Text style={styles.advancedTimePickerText}>{policy === 'now' ? translate('deep_space.settings.start_now') : translate('deep_space.settings.start_last_view')}</Text>
-          <Text style={styles.advancedTimePickerArrow}>{open ? '▲' : '▼'}</Text>
+          <Text style={styles.advancedTimePickerText}>
+            {policy === "now"
+              ? translate("deep_space.settings.start_now")
+              : translate("deep_space.settings.start_last_view")}
+          </Text>
+          <Text style={styles.advancedTimePickerArrow}>{open ? "▲" : "▼"}</Text>
         </View>
       </Pressable>
       {open && (
         <View style={styles.advancedTimePickerDropdown}>
           <Pressable
-            accessibilityLabel={translate('deep_space.settings.start_now')}
+            accessibilityLabel={translate("deep_space.settings.start_now")}
             accessibilityRole="button"
             onPress={() => {
-              onSelectPolicy('now');
+              onSelectPolicy("now");
               setOpen(false);
             }}
             style={styles.advancedTimePickerOption}
             testID="deep-space-settings-start-time-now"
           >
-            <Text style={[styles.advancedTimePickerOptionText, policy === 'now' && styles.advancedTimePickerOptionSelected]}>{translate('deep_space.settings.start_now')}</Text>
-            {policy === 'now' && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
+            <Text
+              style={[
+                styles.advancedTimePickerOptionText,
+                policy === "now" && styles.advancedTimePickerOptionSelected,
+              ]}
+            >
+              {translate("deep_space.settings.start_now")}
+            </Text>
+            {policy === "now" && (
+              <Text style={featureSheetStyles.featureSelected}>✓</Text>
+            )}
           </Pressable>
           <Pressable
-            accessibilityLabel={translate('deep_space.settings.start_last_view')}
+            accessibilityLabel={translate(
+              "deep_space.settings.start_last_view",
+            )}
             accessibilityRole="button"
             onPress={() => {
-              onSelectPolicy('last_view');
+              onSelectPolicy("last_view");
               setOpen(false);
             }}
             style={styles.advancedTimePickerOption}
             testID="deep-space-settings-start-time-last"
           >
-            <Text style={[styles.advancedTimePickerOptionText, policy === 'last_view' && styles.advancedTimePickerOptionSelected]}>{translate('deep_space.settings.start_last_view')}</Text>
-            {policy === 'last_view' && <Text style={featureSheetStyles.featureSelected}>✓</Text>}
+            <Text
+              style={[
+                styles.advancedTimePickerOptionText,
+                policy === "last_view" &&
+                  styles.advancedTimePickerOptionSelected,
+              ]}
+            >
+              {translate("deep_space.settings.start_last_view")}
+            </Text>
+            {policy === "last_view" && (
+              <Text style={featureSheetStyles.featureSelected}>✓</Text>
+            )}
           </Pressable>
         </View>
       )}
@@ -3219,18 +4009,34 @@ function AdvancedLimitMagBlock({
   return (
     <View style={styles.advancedSliderBlock}>
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.limit_mag')}
+        accessibilityLabel={translate("deep_space.settings.limit_mag")}
         accessibilityRole="switch"
         accessibilityState={{ checked: enabled }}
         onPress={onToggle}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-limitmag-toggle"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.limit_mag')}</Text>
-        <View style={{ alignItems: 'center', flexDirection: 'row', gap: 12 }}>
-          {enabled && <Text style={styles.advancedBrightnessValue}>{value.toFixed(1)}</Text>}
-          <View style={[styles.settingsSwitchTrack, enabled && styles.settingsSwitchTrackOn]}>
-            <View style={[styles.settingsSwitchThumb, enabled && styles.settingsSwitchThumbOn]} />
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.limit_mag")}
+        </Text>
+        <View style={{ alignItems: "center", flexDirection: "row", gap: 12 }}>
+          {enabled && (
+            <Text style={styles.advancedBrightnessValue}>
+              {value.toFixed(1)}
+            </Text>
+          )}
+          <View
+            style={[
+              styles.settingsSwitchTrack,
+              enabled && styles.settingsSwitchTrackOn,
+            ]}
+          >
+            <View
+              style={[
+                styles.settingsSwitchThumb,
+                enabled && styles.settingsSwitchThumbOn,
+              ]}
+            />
           </View>
         </View>
       </Pressable>
@@ -3258,9 +4064,9 @@ function SettingsAdvancedSheet({
 }) {
   return (
     <FeatureSheet
-      headerLeft={(
+      headerLeft={
         <Pressable
-          accessibilityLabel={translate('deep_space.settings.back')}
+          accessibilityLabel={translate("deep_space.settings.back")}
           accessibilityRole="button"
           onPress={onBack}
           style={featureSheetStyles.featureClose}
@@ -3268,36 +4074,55 @@ function SettingsAdvancedSheet({
         >
           <BackIcon />
         </Pressable>
-      )}
+      }
       onClose={onClose}
       placement="top"
       testID="deep-space-settings-advanced-panel"
-      title={translate('deep_space.settings.advanced')}
+      title={translate("deep_space.settings.advanced")}
     >
-      <AdvancedStartTimeRow onSelectPolicy={settings.setStartTimePolicy} policy={settings.startTimePolicy} />
+      <AdvancedStartTimeRow
+        onSelectPolicy={settings.setStartTimePolicy}
+        policy={settings.startTimePolicy}
+      />
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.fullscreen')}
+        accessibilityLabel={translate("deep_space.settings.fullscreen")}
         accessibilityRole="switch"
         accessibilityState={{ checked: settings.fullscreen }}
-        onPress={() => settings.setFullscreen(v => !v)}
+        onPress={() => settings.setFullscreen((v) => !v)}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-fullscreen-toggle"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.fullscreen')}</Text>
-        <View style={[styles.settingsSwitchTrack, settings.fullscreen && styles.settingsSwitchTrackOn]}>
-          <View style={[styles.settingsSwitchThumb, settings.fullscreen && styles.settingsSwitchThumbOn]} />
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.fullscreen")}
+        </Text>
+        <View
+          style={[
+            styles.settingsSwitchTrack,
+            settings.fullscreen && styles.settingsSwitchTrackOn,
+          ]}
+        >
+          <View
+            style={[
+              styles.settingsSwitchThumb,
+              settings.fullscreen && styles.settingsSwitchThumbOn,
+            ]}
+          />
         </View>
       </Pressable>
       <AdvancedLimitMagBlock
         enabled={settings.limitMagEnabled}
         onChangeValue={settings.setLimitMagValue}
-        onToggle={() => settings.setLimitMagEnabled(v => !v)}
+        onToggle={() => settings.setLimitMagEnabled((v) => !v)}
         value={settings.limitMagValue}
       />
       <View style={styles.advancedSliderBlock}>
         <View style={featureSheetStyles.featureRow}>
-          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.brightness')}</Text>
-          <Text style={styles.advancedBrightnessValue}>{settings.brightness.toFixed(1)}</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>
+            {translate("deep_space.settings.brightness")}
+          </Text>
+          <Text style={styles.advancedBrightnessValue}>
+            {settings.brightness.toFixed(1)}
+          </Text>
         </View>
         <AdvancedSlider
           max={5.0}
@@ -3322,17 +4147,43 @@ function SettingsResetDialog({
   visible: boolean;
 }) {
   return (
-    <Modal animationType="fade" onRequestClose={onCancel} transparent visible={visible}>
+    <Modal
+      animationType="fade"
+      onRequestClose={onCancel}
+      transparent
+      visible={visible}
+    >
       <View style={styles.modalOverlay}>
-        <View style={styles.dialogCard} testID="deep-space-settings-reset-dialog">
-          <Text style={styles.dialogTitle}>{translate('deep_space.settings.reset')}</Text>
-          <Text style={styles.dialogMessage}>{translate('deep_space.settings.reset_confirm')}</Text>
+        <View
+          style={styles.dialogCard}
+          testID="deep-space-settings-reset-dialog"
+        >
+          <Text style={styles.dialogTitle}>
+            {translate("deep_space.settings.reset")}
+          </Text>
+          <Text style={styles.dialogMessage}>
+            {translate("deep_space.settings.reset_confirm")}
+          </Text>
           <View style={styles.dialogButtons}>
-            <Pressable accessibilityLabel={translate('deep_space.dialog.cancel')} accessibilityRole="button" onPress={onCancel} style={styles.dialogButton}>
-              <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.dialog.cancel')}</Text>
+            <Pressable
+              accessibilityLabel={translate("deep_space.dialog.cancel")}
+              accessibilityRole="button"
+              onPress={onCancel}
+              style={styles.dialogButton}
+            >
+              <Text style={styles.dialogButtonTextCancel}>
+                {translate("deep_space.dialog.cancel")}
+              </Text>
             </Pressable>
-            <Pressable accessibilityLabel={translate('deep_space.dialog.confirm')} accessibilityRole="button" onPress={onConfirm} style={[styles.dialogButton, styles.dialogButtonPrimary]}>
-              <Text style={styles.dialogButtonTextPrimary}>{translate('deep_space.dialog.confirm')}</Text>
+            <Pressable
+              accessibilityLabel={translate("deep_space.dialog.confirm")}
+              accessibilityRole="button"
+              onPress={onConfirm}
+              style={[styles.dialogButton, styles.dialogButtonPrimary]}
+            >
+              <Text style={styles.dialogButtonTextPrimary}>
+                {translate("deep_space.dialog.confirm")}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -3357,9 +4208,14 @@ function SettingsRootSheet({
   onToggleCompassFollowing: () => void;
 }) {
   return (
-    <FeatureSheet onClose={onClose} placement="top" testID="deep-space-settings-panel" title={translate('deep_space.drawer.settings')}>
+    <FeatureSheet
+      onClose={onClose}
+      placement="top"
+      testID="deep-space-settings-panel"
+      title={translate("deep_space.drawer.settings")}
+    >
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.sensor')}
+        accessibilityLabel={translate("deep_space.settings.sensor")}
         accessibilityRole="switch"
         accessibilityState={{ checked: compassFollowing }}
         onPress={onToggleCompassFollowing}
@@ -3367,42 +4223,62 @@ function SettingsRootSheet({
         testID="deep-space-settings-sensor-toggle"
       >
         <View style={featureSheetStyles.featureRowText}>
-          <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.sensor')}</Text>
-          <Text style={featureSheetStyles.featureRowHint}>{translate('deep_space.settings.auto')}</Text>
+          <Text style={featureSheetStyles.featureRowLabel}>
+            {translate("deep_space.settings.sensor")}
+          </Text>
+          <Text style={featureSheetStyles.featureRowHint}>
+            {translate("deep_space.settings.auto")}
+          </Text>
         </View>
-        <View style={[styles.settingsSwitchTrack, compassFollowing && styles.settingsSwitchTrackOn]}>
-          <View style={[styles.settingsSwitchThumb, compassFollowing && styles.settingsSwitchThumbOn]} />
+        <View
+          style={[
+            styles.settingsSwitchTrack,
+            compassFollowing && styles.settingsSwitchTrackOn,
+          ]}
+        >
+          <View
+            style={[
+              styles.settingsSwitchThumb,
+              compassFollowing && styles.settingsSwitchThumbOn,
+            ]}
+          />
         </View>
       </Pressable>
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.location')}
+        accessibilityLabel={translate("deep_space.settings.location")}
         accessibilityRole="button"
         onPress={onOpenLocation}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-location-entry"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.location')}</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.location")}
+        </Text>
         <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.advanced')}
+        accessibilityLabel={translate("deep_space.settings.advanced")}
         accessibilityRole="button"
         onPress={onOpenAdvanced}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-advanced-entry"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.advanced')}</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.advanced")}
+        </Text>
         <Text style={featureSheetStyles.featureSelected}>›</Text>
       </Pressable>
       <View style={styles.settingsSectionDivider} />
       <Pressable
-        accessibilityLabel={translate('deep_space.settings.reset')}
+        accessibilityLabel={translate("deep_space.settings.reset")}
         accessibilityRole="button"
         onPress={onRequestReset}
         style={featureSheetStyles.featureRow}
         testID="deep-space-settings-reset-entry"
       >
-        <Text style={featureSheetStyles.featureRowLabel}>{translate('deep_space.settings.reset')}</Text>
+        <Text style={featureSheetStyles.featureRowLabel}>
+          {translate("deep_space.settings.reset")}
+        </Text>
       </Pressable>
     </FeatureSheet>
   );
@@ -3423,25 +4299,27 @@ function SettingsPanel({
 }: {
   automaticLocation: boolean;
   compassFollowing: boolean;
-  observer: ReturnType<typeof useObserverLocation>['observer'];
+  observer: ReturnType<typeof useObserverLocation>["observer"];
   onClose: () => void;
   onEnableAutomaticLocation: () => Promise<void>;
   onManualCoordinateChange: (lat: number, lon: number, name?: string) => void;
   onResetAll?: () => void;
-  onSelect: (city: typeof OBSERVER_CITIES[number]) => void;
+  onSelect: (city: (typeof OBSERVER_CITIES)[number]) => void;
   onToggleAutomaticLocation?: () => Promise<void>;
   onToggleCompassFollowing: () => void;
   settings: ReturnType<typeof useStellariumSettings>;
 }) {
-  const [section, setSection] = React.useState<'root' | 'location' | 'advanced'>('root');
+  const [section, setSection] = React.useState<
+    "root" | "location" | "advanced"
+  >("root");
   const [resetDialogOpen, setResetDialogOpen] = React.useState(false);
 
-  if (section === 'location') {
+  if (section === "location") {
     return (
       <SettingsLocationSheet
         automaticLocation={automaticLocation}
         observer={observer}
-        onBack={() => setSection('root')}
+        onBack={() => setSection("root")}
         onClose={onClose}
         onEnableAutomaticLocation={onEnableAutomaticLocation}
         onManualCoordinateChange={onManualCoordinateChange}
@@ -3451,10 +4329,10 @@ function SettingsPanel({
     );
   }
 
-  if (section === 'advanced') {
+  if (section === "advanced") {
     return (
       <SettingsAdvancedSheet
-        onBack={() => setSection('root')}
+        onBack={() => setSection("root")}
         onClose={onClose}
         settings={settings}
       />
@@ -3466,8 +4344,8 @@ function SettingsPanel({
       <SettingsRootSheet
         compassFollowing={compassFollowing}
         onClose={onClose}
-        onOpenAdvanced={() => setSection('advanced')}
-        onOpenLocation={() => setSection('location')}
+        onOpenAdvanced={() => setSection("advanced")}
+        onOpenLocation={() => setSection("location")}
         onRequestReset={() => setResetDialogOpen(true)}
         onToggleCompassFollowing={onToggleCompassFollowing}
       />
@@ -3477,7 +4355,10 @@ function SettingsPanel({
           setResetDialogOpen(false);
           onResetAll?.();
           settings.resetSettings();
-          showDeepSpaceFeedback({ message: translate('deep_space.settings.reset_done'), tone: 'success' });
+          showDeepSpaceFeedback({
+            message: translate("deep_space.settings.reset_done"),
+            tone: "success",
+          });
         }}
         visible={resetDialogOpen}
       />
@@ -3486,10 +4367,10 @@ function SettingsPanel({
 }
 
 const AZIMUTH_PRESETS = [
-  { deg: 0, labelKey: 'deep_space.compass_preset_north' as const },
-  { deg: 90, labelKey: 'deep_space.compass_preset_east' as const },
-  { deg: 180, labelKey: 'deep_space.compass_preset_south' as const },
-  { deg: 270, labelKey: 'deep_space.compass_preset_west' as const },
+  { deg: 0, labelKey: "deep_space.compass_preset_north" as const },
+  { deg: 90, labelKey: "deep_space.compass_preset_east" as const },
+  { deg: 180, labelKey: "deep_space.compass_preset_south" as const },
+  { deg: 270, labelKey: "deep_space.compass_preset_west" as const },
 ] as const;
 
 function AzimuthPresetPills({
@@ -3501,7 +4382,7 @@ function AzimuthPresetPills({
 }) {
   return (
     <View style={styles.azimuthPresetRow}>
-      {AZIMUTH_PRESETS.map(preset => (
+      {AZIMUTH_PRESETS.map((preset) => (
         <Pressable
           accessibilityLabel={translate(preset.labelKey)}
           accessibilityRole="button"
@@ -3509,14 +4390,16 @@ function AzimuthPresetPills({
           onPress={() => onSelect(preset.deg)}
           style={[
             styles.azimuthPresetPill,
-            Number(currentValue.trim()) === preset.deg && styles.azimuthPresetPillActive,
+            Number(currentValue.trim()) === preset.deg &&
+              styles.azimuthPresetPillActive,
           ]}
           testID={`deep-space-azimuth-preset-${preset.deg}`}
         >
           <Text
             style={[
               styles.azimuthPresetText,
-              Number(currentValue.trim()) === preset.deg && styles.azimuthPresetTextActive,
+              Number(currentValue.trim()) === preset.deg &&
+                styles.azimuthPresetTextActive,
             ]}
           >
             {translate(preset.labelKey)}
@@ -3536,7 +4419,9 @@ function AzimuthDialogCard({
   onApply: (azimuthDeg: number) => void;
   onClose: () => void;
 }) {
-  const [value, setValue] = React.useState(`${Math.round(((currentAzimuth % 360) + 360) % 360)}`);
+  const [value, setValue] = React.useState(
+    `${Math.round(((currentAzimuth % 360) + 360) % 360)}`,
+  );
   const [error, setError] = React.useState(false);
 
   const handleConfirm = () => {
@@ -3553,24 +4438,29 @@ function AzimuthDialogCard({
 
   return (
     <Pressable
-      accessibilityLabel={translate('deep_space.compass_custom_azimuth')}
-      onPress={e => e.stopPropagation()}
+      accessibilityLabel={translate("deep_space.compass_custom_azimuth")}
+      onPress={(e) => e.stopPropagation()}
       style={styles.azimuthDialogCard}
       testID="deep-space-azimuth-input-dialog"
     >
-      <Text style={styles.dialogTitle}>{translate('deep_space.compass_custom_azimuth')}</Text>
-      <Text style={styles.dialogMessage}>{translate('deep_space.compass_azimuth_hint')}</Text>
+      <Text style={styles.dialogTitle}>
+        {translate("deep_space.compass_custom_azimuth")}
+      </Text>
+      <Text style={styles.dialogMessage}>
+        {translate("deep_space.compass_azimuth_hint")}
+      </Text>
 
       <View style={styles.azimuthInputRow}>
         <TextInput
-          accessibilityLabel={translate('deep_space.compass_azimuth_input_placeholder')}
+          accessibilityLabel={translate(
+            "deep_space.compass_azimuth_input_placeholder",
+          )}
           autoFocus
           keyboardType="numeric"
           maxLength={5}
           onChangeText={(text) => {
             setValue(text);
-            if (error)
-              setError(false);
+            if (error) setError(false);
           }}
           onSubmitEditing={handleConfirm}
           placeholder="0"
@@ -3586,7 +4476,7 @@ function AzimuthDialogCard({
 
       {error && (
         <Text style={styles.azimuthErrorText} testID="deep-space-azimuth-error">
-          {translate('deep_space.compass_azimuth_invalid')}
+          {translate("deep_space.compass_azimuth_invalid")}
         </Text>
       )}
 
@@ -3600,22 +4490,26 @@ function AzimuthDialogCard({
 
       <View style={styles.dialogButtons}>
         <Pressable
-          accessibilityLabel={translate('deep_space.dialog.cancel')}
+          accessibilityLabel={translate("deep_space.dialog.cancel")}
           accessibilityRole="button"
           onPress={onClose}
           style={styles.dialogButton}
           testID="deep-space-azimuth-cancel"
         >
-          <Text style={styles.dialogButtonTextCancel}>{translate('deep_space.dialog.cancel')}</Text>
+          <Text style={styles.dialogButtonTextCancel}>
+            {translate("deep_space.dialog.cancel")}
+          </Text>
         </Pressable>
         <Pressable
-          accessibilityLabel={translate('deep_space.compass_azimuth_apply')}
+          accessibilityLabel={translate("deep_space.compass_azimuth_apply")}
           accessibilityRole="button"
           onPress={handleConfirm}
           style={[styles.dialogButton, styles.dialogButtonPrimary]}
           testID="deep-space-azimuth-confirm"
         >
-          <Text style={styles.dialogButtonTextPrimary}>{translate('deep_space.compass_azimuth_apply')}</Text>
+          <Text style={styles.dialogButtonTextPrimary}>
+            {translate("deep_space.compass_azimuth_apply")}
+          </Text>
         </Pressable>
       </View>
     </Pressable>
@@ -3633,13 +4527,16 @@ function CompassAzimuthDialog({
   onClose: () => void;
   visible: boolean;
 }) {
-  if (!visible)
-    return null;
+  if (!visible) return null;
 
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible>
       <Pressable onPress={onClose} style={styles.modalOverlay}>
-        <AzimuthDialogCard currentAzimuth={currentAzimuth} onApply={onApply} onClose={onClose} />
+        <AzimuthDialogCard
+          currentAzimuth={currentAzimuth}
+          onApply={onApply}
+          onClose={onClose}
+        />
       </Pressable>
     </Modal>
   );
@@ -3655,13 +4552,25 @@ function Compass({
   const normalizedAzimuth = Math.round(((azimuthDeg % 360) + 360) % 360);
 
   return (
-    <View testID="deep-space-reference-compass" style={styles.compass} pointerEvents="box-none">
+    <View
+      testID="deep-space-reference-compass"
+      style={styles.compass}
+      pointerEvents="box-none"
+    >
       <View
         pointerEvents="none"
         testID="deep-space-reference-compass-rose"
-        style={[styles.compassRose, { transform: [{ rotate: `-${azimuthDeg}deg` }] }]}
+        style={[
+          styles.compassRose,
+          { transform: [{ rotate: `-${azimuthDeg}deg` }] },
+        ]}
       >
-        <Svg testID="deep-space-reference-compass-instrument" height={112} viewBox="0 0 120 120" width={112}>
+        <Svg
+          testID="deep-space-reference-compass-instrument"
+          height={112}
+          viewBox="0 0 120 120"
+          width={112}
+        >
           <Defs>
             <RadialGradient cx="50%" cy="34%" id="compassBezel" r="68%">
               <Stop offset="0" stopColor="#4B6176" stopOpacity={0.45} />
@@ -3684,12 +4593,49 @@ function Compass({
               <Stop offset="1" stopColor="#506A80" />
             </LinearGradient>
           </Defs>
-          <Circle cx={60} cy={60} fill="url(#compassBezel)" r={57} stroke="rgba(255,255,255,0.34)" strokeWidth={1.2} />
-          <Circle cx={60} cy={60} fill="none" r={53} stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
-          <Circle cx={60} cy={60} fill="url(#compassFace)" r={50} stroke="rgba(126,180,232,0.35)" strokeWidth={1.2} />
-          <Circle cx={60} cy={60} fill="none" opacity={0.35} r={41} stroke="rgba(255,255,255,0.16)" strokeDasharray="2 5" strokeWidth={1} />
-          <Circle cx={60} cy={60} fill="none" r={31} stroke="rgba(93,164,255,0.2)" strokeWidth={1} />
-          {COMPASS_MINOR_TICKS.map(angle => (
+          <Circle
+            cx={60}
+            cy={60}
+            fill="url(#compassBezel)"
+            r={57}
+            stroke="rgba(255,255,255,0.34)"
+            strokeWidth={1.2}
+          />
+          <Circle
+            cx={60}
+            cy={60}
+            fill="none"
+            r={53}
+            stroke="rgba(255,255,255,0.12)"
+            strokeWidth={1}
+          />
+          <Circle
+            cx={60}
+            cy={60}
+            fill="url(#compassFace)"
+            r={50}
+            stroke="rgba(126,180,232,0.35)"
+            strokeWidth={1.2}
+          />
+          <Circle
+            cx={60}
+            cy={60}
+            fill="none"
+            opacity={0.35}
+            r={41}
+            stroke="rgba(255,255,255,0.16)"
+            strokeDasharray="2 5"
+            strokeWidth={1}
+          />
+          <Circle
+            cx={60}
+            cy={60}
+            fill="none"
+            r={31}
+            stroke="rgba(93,164,255,0.2)"
+            strokeWidth={1}
+          />
+          {COMPASS_MINOR_TICKS.map((angle) => (
             <Line
               key={`minor-${angle}`}
               stroke="rgba(255,255,255,0.28)"
@@ -3702,10 +4648,14 @@ function Compass({
               y2={14}
             />
           ))}
-          {COMPASS_MAJOR_TICKS.map(angle => (
+          {COMPASS_MAJOR_TICKS.map((angle) => (
             <Line
               key={`major-${angle}`}
-              stroke={angle % 90 === 0 ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.56)'}
+              stroke={
+                angle % 90 === 0
+                  ? "rgba(255,255,255,0.9)"
+                  : "rgba(255,255,255,0.56)"
+              }
               strokeLinecap="round"
               strokeWidth={angle % 90 === 0 ? 2.2 : 1.4}
               transform={`rotate(${angle} 60 60)`}
@@ -3715,35 +4665,138 @@ function Compass({
               y2={angle % 90 === 0 ? 18 : 16}
             />
           ))}
-          <Line opacity={0.16} stroke="#FFFFFF" strokeWidth={1} x1={60} x2={60} y1={24} y2={96} />
-          <Line opacity={0.16} stroke="#FFFFFF" strokeWidth={1} x1={24} x2={96} y1={60} y2={60} />
-          <SvgText fill="#FFFFFF" fontSize={12} fontWeight="700" textAnchor="middle" x={60} y={29}>{translate('deep_space.compass_dir.n')}</SvgText>
-          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={94} y={64}>{translate('deep_space.compass_dir.e')}</SvgText>
-          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={60} y={103}>{translate('deep_space.compass_dir.s')}</SvgText>
-          <SvgText fill="rgba(255,255,255,0.72)" fontSize={11} fontWeight="600" textAnchor="middle" x={26} y={64}>{translate('deep_space.compass_dir.w')}</SvgText>
-          <Polygon fill="url(#compassNorthNeedle)" points="60,18 66,60 60,70 54,60" stroke="rgba(255,255,255,0.38)" strokeWidth={0.8} />
-          <Polygon fill="url(#compassSouthNeedle)" points="60,102 66,60 60,50 54,60" stroke="rgba(5,10,16,0.42)" strokeWidth={0.8} />
-          <Circle cx={60} cy={60} fill="rgba(10, 17, 24, 0.65)" r={8.5} stroke="rgba(255,255,255,0.72)" strokeWidth={1.4} />
+          <Line
+            opacity={0.16}
+            stroke="#FFFFFF"
+            strokeWidth={1}
+            x1={60}
+            x2={60}
+            y1={24}
+            y2={96}
+          />
+          <Line
+            opacity={0.16}
+            stroke="#FFFFFF"
+            strokeWidth={1}
+            x1={24}
+            x2={96}
+            y1={60}
+            y2={60}
+          />
+          <SvgText
+            fill="#FFFFFF"
+            fontSize={12}
+            fontWeight="700"
+            textAnchor="middle"
+            x={60}
+            y={29}
+          >
+            {translate("deep_space.compass_dir.n")}
+          </SvgText>
+          <SvgText
+            fill="rgba(255,255,255,0.72)"
+            fontSize={11}
+            fontWeight="600"
+            textAnchor="middle"
+            x={94}
+            y={64}
+          >
+            {translate("deep_space.compass_dir.e")}
+          </SvgText>
+          <SvgText
+            fill="rgba(255,255,255,0.72)"
+            fontSize={11}
+            fontWeight="600"
+            textAnchor="middle"
+            x={60}
+            y={103}
+          >
+            {translate("deep_space.compass_dir.s")}
+          </SvgText>
+          <SvgText
+            fill="rgba(255,255,255,0.72)"
+            fontSize={11}
+            fontWeight="600"
+            textAnchor="middle"
+            x={26}
+            y={64}
+          >
+            {translate("deep_space.compass_dir.w")}
+          </SvgText>
+          <Polygon
+            fill="url(#compassNorthNeedle)"
+            points="60,18 66,60 60,70 54,60"
+            stroke="rgba(255,255,255,0.38)"
+            strokeWidth={0.8}
+          />
+          <Polygon
+            fill="url(#compassSouthNeedle)"
+            points="60,102 66,60 60,50 54,60"
+            stroke="rgba(5,10,16,0.42)"
+            strokeWidth={0.8}
+          />
+          <Circle
+            cx={60}
+            cy={60}
+            fill="rgba(10, 17, 24, 0.65)"
+            r={8.5}
+            stroke="rgba(255,255,255,0.72)"
+            strokeWidth={1.4}
+          />
           <Circle cx={60} cy={60} fill="#D9F0FF" r={2.6} />
         </Svg>
       </View>
-      <Svg height={112} pointerEvents="none" style={styles.compassFixedOverlay} viewBox="0 0 120 120" width={112}>
-        <Path d="M60 3 L68 16 H52 Z" fill="#F6FAFF" stroke="rgba(17,24,32,0.55)" strokeWidth={1} />
-        <Line stroke="rgba(255,255,255,0.82)" strokeLinecap="round" strokeWidth={1.4} x1={60} x2={60} y1={16} y2={22} />
-        <Path d="M28 38 C40 22, 67 17, 89 30" fill="none" stroke="rgba(255,255,255,0.24)" strokeLinecap="round" strokeWidth={3} />
+      <Svg
+        height={112}
+        pointerEvents="none"
+        style={styles.compassFixedOverlay}
+        viewBox="0 0 120 120"
+        width={112}
+      >
+        <Path
+          d="M60 3 L68 16 H52 Z"
+          fill="#F6FAFF"
+          stroke="rgba(17,24,32,0.55)"
+          strokeWidth={1}
+        />
+        <Line
+          stroke="rgba(255,255,255,0.82)"
+          strokeLinecap="round"
+          strokeWidth={1.4}
+          x1={60}
+          x2={60}
+          y1={16}
+          y2={22}
+        />
+        <Path
+          d="M28 38 C40 22, 67 17, 89 30"
+          fill="none"
+          stroke="rgba(255,255,255,0.24)"
+          strokeLinecap="round"
+          strokeWidth={3}
+        />
       </Svg>
       <Pressable
-        accessibilityHint={translate('deep_space.time_panel.custom_azimuth_hint')}
-        accessibilityLabel={translate('deep_space.time_panel.current_azimuth', { azimuth: normalizedAzimuth })}
+        accessibilityHint={translate(
+          "deep_space.time_panel.custom_azimuth_hint",
+        )}
+        accessibilityLabel={translate("deep_space.time_panel.current_azimuth", {
+          azimuth: normalizedAzimuth,
+        })}
         accessibilityRole="button"
         hitSlop={8}
         onPress={onOpenInput}
-        style={({ pressed }) => [styles.compassReadout, pressed && styles.compassReadoutPressed]}
+        style={({ pressed }) => [
+          styles.compassReadout,
+          pressed && styles.compassReadoutPressed,
+        ]}
         testID="deep-space-reference-compass-azimuth-btn"
       >
-        <Text testID="deep-space-reference-compass-azimuth" style={styles.compassAzimuthText}>
-          {normalizedAzimuth}
-          °
+        <Text
+          testID="deep-space-reference-compass-azimuth"
+          style={styles.compassAzimuthText}
+        >
+          {normalizedAzimuth}°
         </Text>
       </Pressable>
     </View>
@@ -3761,30 +4814,39 @@ function TimeControl({
   onPress?: () => void;
   onReturnToNow: () => void;
 }) {
-  const hours = `${clock.getHours()}`.padStart(2, '0');
-  const minutes = `${clock.getMinutes()}`.padStart(2, '0');
+  const hours = `${clock.getHours()}`.padStart(2, "0");
+  const minutes = `${clock.getMinutes()}`.padStart(2, "0");
   const formattedTime = `${hours}:${minutes}`;
 
   return (
-    <View style={[styles.timeControl, isCustomTime && styles.timeControlCustom]}>
+    <View
+      style={[styles.timeControl, isCustomTime && styles.timeControlCustom]}
+    >
       <Pressable
-        accessibilityLabel={translate('deep_space.return_to_now')}
+        accessibilityLabel={translate("deep_space.return_to_now")}
         accessibilityRole="button"
         hitSlop={6}
         onPress={onReturnToNow}
-        style={[styles.historyButton, isCustomTime && styles.historyButtonActive]}
+        style={[
+          styles.historyButton,
+          isCustomTime && styles.historyButtonActive,
+        ]}
       >
         <HistoryIcon active={isCustomTime} />
       </Pressable>
       <Pressable
-        accessibilityHint={translate('deep_space.time_panel.open_slider_hint')}
-        accessibilityLabel={translate('deep_space.time_panel.current_time', { time: formattedTime })}
+        accessibilityHint={translate("deep_space.time_panel.open_slider_hint")}
+        accessibilityLabel={translate("deep_space.time_panel.current_time", {
+          time: formattedTime,
+        })}
         accessibilityRole="button"
         hitSlop={6}
         onPress={onPress}
         testID="deep-space-reference-time"
       >
-        <Text style={[styles.timeText, isCustomTime && styles.timeTextCustom]}>{formattedTime}</Text>
+        <Text style={[styles.timeText, isCustomTime && styles.timeTextCustom]}>
+          {formattedTime}
+        </Text>
       </Pressable>
     </View>
   );
@@ -3811,22 +4873,26 @@ function TimeSliderTrack({
 
   return (
     <View
-      onLayout={e => setWidth(e.nativeEvent.layout.width)}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       onMoveShouldSetResponder={() => true}
-      onResponderGrant={e => updateFromX(e.nativeEvent.locationX)}
-      onResponderMove={e => updateFromX(e.nativeEvent.locationX)}
+      onResponderGrant={(e) => updateFromX(e.nativeEvent.locationX)}
+      onResponderMove={(e) => updateFromX(e.nativeEvent.locationX)}
       onStartShouldSetResponder={() => true}
       style={styles.timeSliderTrackContainer}
       testID="deep-space-time-slider"
     >
       <View style={styles.timeSliderRail}>
-        <View style={[styles.timeSliderFill, { width: `${progressRatio * 100}%` }]} />
+        <View
+          style={[styles.timeSliderFill, { width: `${progressRatio * 100}%` }]}
+        />
       </View>
       <View
         pointerEvents="none"
         style={[
           styles.timeSliderThumb,
-          { left: Math.max(0, Math.min(width - 22, progressRatio * width - 11)) },
+          {
+            left: Math.max(0, Math.min(width - 22, progressRatio * width - 11)),
+          },
         ]}
       >
         <View style={styles.timeSliderThumbInner} />
@@ -3851,14 +4917,14 @@ function TimeSliderHeader({
   const year = clock.getFullYear();
   const month = clock.getMonth() + 1;
   const date = clock.getDate();
-  const hours = `${clock.getHours()}`.padStart(2, '0');
-  const minutes = `${clock.getMinutes()}`.padStart(2, '0');
+  const hours = `${clock.getHours()}`.padStart(2, "0");
+  const minutes = `${clock.getMinutes()}`.padStart(2, "0");
 
   return (
     <View style={styles.timeSliderHeader}>
       <View style={styles.timeDateStepper}>
         <Pressable
-          accessibilityLabel={translate('deep_space.time_panel.prev_day')}
+          accessibilityLabel={translate("deep_space.time_panel.prev_day")}
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => onStepDate(-1)}
@@ -3868,10 +4934,10 @@ function TimeSliderHeader({
           <Text style={styles.timeStepBtnText}>‹</Text>
         </Pressable>
         <Text style={styles.timeDateValue} testID="deep-space-time-date-value">
-          {translate('deep_space.time_panel.date', { date, month, year })}
+          {translate("deep_space.time_panel.date", { date, month, year })}
         </Text>
         <Pressable
-          accessibilityLabel={translate('deep_space.time_panel.next_day')}
+          accessibilityLabel={translate("deep_space.time_panel.next_day")}
           accessibilityRole="button"
           hitSlop={8}
           onPress={() => onStepDate(1)}
@@ -3883,27 +4949,40 @@ function TimeSliderHeader({
       </View>
 
       <View style={styles.timeClockBlock}>
-        <Text style={styles.timeClockValue} testID="deep-space-time-clock-value">
+        <Text
+          style={styles.timeClockValue}
+          testID="deep-space-time-clock-value"
+        >
           {`${hours}:${minutes}`}
         </Text>
       </View>
 
       <View style={styles.timeHeaderActions}>
         <Pressable
-          accessibilityLabel={translate('deep_space.return_to_now')}
+          accessibilityLabel={translate("deep_space.return_to_now")}
           accessibilityRole="button"
           hitSlop={6}
           onPress={onReturnToNow}
-          style={[styles.timeNowButton, isCustomTime && styles.timeNowButtonActive]}
+          style={[
+            styles.timeNowButton,
+            isCustomTime && styles.timeNowButtonActive,
+          ]}
           testID="deep-space-time-now-button"
         >
-          <Text style={[styles.timeNowButtonText, isCustomTime && styles.timeNowButtonTextActive]}>
-            {isCustomTime ? translate('deep_space.time_panel.return_to_now') : translate('deep_space.time_panel.live')}
+          <Text
+            style={[
+              styles.timeNowButtonText,
+              isCustomTime && styles.timeNowButtonTextActive,
+            ]}
+          >
+            {isCustomTime
+              ? translate("deep_space.time_panel.return_to_now")
+              : translate("deep_space.time_panel.live")}
           </Text>
         </Pressable>
 
         <Pressable
-          accessibilityLabel={translate('deep_space.time_panel.close_slider')}
+          accessibilityLabel={translate("deep_space.time_panel.close_slider")}
           accessibilityRole="button"
           hitSlop={8}
           onPress={onClose}
@@ -3931,59 +5010,98 @@ function TimePlaybackControls({
   playbackSpeed,
 }: TimePlaybackProps) {
   return (
-    <View style={styles.timePlaybackRow} testID="deep-space-time-playback-controls">
+    <View
+      style={styles.timePlaybackRow}
+      testID="deep-space-time-playback-controls"
+    >
       <Pressable
-        accessibilityLabel={isPlaying ? translate('deep_space.time_panel.pause') : translate('deep_space.time_panel.play')}
+        accessibilityLabel={
+          isPlaying
+            ? translate("deep_space.time_panel.pause")
+            : translate("deep_space.time_panel.play")
+        }
         accessibilityRole="button"
         accessibilityState={{ selected: isPlaying }}
         onPress={onTogglePlayback}
-        style={[styles.timePlaybackButton, isPlaying && styles.timePlaybackButtonActive]}
+        style={[
+          styles.timePlaybackButton,
+          isPlaying && styles.timePlaybackButtonActive,
+        ]}
         testID="deep-space-time-playback-toggle"
       >
-        <Text style={[styles.timePlaybackButtonText, isPlaying && styles.timePlaybackButtonTextActive]}>
-          {isPlaying ? translate('deep_space.time_panel.pause_short') : translate('deep_space.time_panel.play_short')}
+        <Text
+          style={[
+            styles.timePlaybackButtonText,
+            isPlaying && styles.timePlaybackButtonTextActive,
+          ]}
+        >
+          {isPlaying
+            ? translate("deep_space.time_panel.pause_short")
+            : translate("deep_space.time_panel.play_short")}
         </Text>
       </Pressable>
-      {TIME_PLAYBACK_SPEEDS.map(speed => (
+      {TIME_PLAYBACK_SPEEDS.map((speed) => (
         <Pressable
-          accessibilityLabel={translate('deep_space.time_panel.speed', { speed })}
+          accessibilityLabel={translate("deep_space.time_panel.speed", {
+            speed,
+          })}
           accessibilityRole="button"
           accessibilityState={{ selected: speed === playbackSpeed }}
           key={speed}
           onPress={() => onSelectSpeed(speed)}
-          style={[styles.timeSpeedButton, speed === playbackSpeed && styles.timeSpeedButtonActive]}
+          style={[
+            styles.timeSpeedButton,
+            speed === playbackSpeed && styles.timeSpeedButtonActive,
+          ]}
           testID={`deep-space-time-speed-${speed}`}
         >
-          <Text style={[styles.timeSpeedButtonText, speed === playbackSpeed && styles.timeSpeedButtonTextActive]}>{`${speed}×`}</Text>
+          <Text
+            style={[
+              styles.timeSpeedButtonText,
+              speed === playbackSpeed && styles.timeSpeedButtonTextActive,
+            ]}
+          >
+            {`${speed}×`}
+          </Text>
         </Pressable>
       ))}
     </View>
   );
 }
 
-function TimeHourControls({ onStepHour }: { onStepHour: (deltaHours: number) => void }) {
+function TimeHourControls({
+  onStepHour,
+}: {
+  onStepHour: (deltaHours: number) => void;
+}) {
   return (
     <View style={styles.timeHourRow}>
       <Pressable
-        accessibilityLabel={translate('deep_space.time_panel.rewind')}
+        accessibilityLabel={translate("deep_space.time_panel.rewind")}
         accessibilityRole="button"
         hitSlop={6}
         onPress={() => onStepHour(-1)}
         style={styles.timeHourBtn}
         testID="deep-space-time-hour-prev"
       >
-        <Text style={styles.timeHourBtnText}>{translate('deep_space.time_panel.rewind_short')}</Text>
+        <Text style={styles.timeHourBtnText}>
+          {translate("deep_space.time_panel.rewind_short")}
+        </Text>
       </Pressable>
-      <Text style={styles.timeSliderHint}>{translate('deep_space.time_panel.drag_hint')}</Text>
+      <Text style={styles.timeSliderHint}>
+        {translate("deep_space.time_panel.drag_hint")}
+      </Text>
       <Pressable
-        accessibilityLabel={translate('deep_space.time_panel.forward')}
+        accessibilityLabel={translate("deep_space.time_panel.forward")}
         accessibilityRole="button"
         hitSlop={6}
         onPress={() => onStepHour(1)}
         style={styles.timeHourBtn}
         testID="deep-space-time-hour-next"
       >
-        <Text style={styles.timeHourBtnText}>{translate('deep_space.time_panel.forward_short')}</Text>
+        <Text style={styles.timeHourBtnText}>
+          {translate("deep_space.time_panel.forward_short")}
+        </Text>
       </Pressable>
     </View>
   );
@@ -4027,8 +5145,16 @@ function TimeSliderSheet({
   };
 
   return (
-    <View pointerEvents="box-none" style={[styles.timeSliderOverlay, { paddingBottom: insetsBottom + 20 }]}>
-      <Pressable accessibilityLabel={translate('deep_space.time_panel.close_settings')} accessibilityRole="button" onPress={onClose} style={styles.timeSliderScrim} />
+    <View
+      pointerEvents="box-none"
+      style={[styles.timeSliderOverlay, { paddingBottom: insetsBottom + 20 }]}
+    >
+      <Pressable
+        accessibilityLabel={translate("deep_space.time_panel.close_settings")}
+        accessibilityRole="button"
+        onPress={onClose}
+        style={styles.timeSliderScrim}
+      />
       <View style={styles.timeSliderCard} testID="deep-space-time-slider-sheet">
         <TimeSliderHeader
           clock={clock}
@@ -4042,7 +5168,10 @@ function TimeSliderSheet({
 
         <TimePlaybackControls {...playback} />
 
-        <TimeSliderTrack minutesOfDay={minutesOfDay} onMinutesChange={handleMinuteChange} />
+        <TimeSliderTrack
+          minutesOfDay={minutesOfDay}
+          onMinutesChange={handleMinuteChange}
+        />
 
         <View style={styles.timeTicksRow}>
           <Text style={styles.timeTickText}>00:00</Text>
@@ -4059,18 +5188,63 @@ function TimeSliderSheet({
 function MenuIcon() {
   return (
     <Svg height={31} viewBox="0 0 32 32" width={31}>
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={2.5} x1={6} x2={26} y1={9} y2={9} />
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={2.5} x1={6} x2={26} y1={16} y2={16} />
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={2.5} x1={6} x2={26} y1={23} y2={23} />
+      <Line
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={2.5}
+        x1={6}
+        x2={26}
+        y1={9}
+        y2={9}
+      />
+      <Line
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={2.5}
+        x1={6}
+        x2={26}
+        y1={16}
+        y2={16}
+      />
+      <Line
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={2.5}
+        x1={6}
+        x2={26}
+        y1={23}
+        y2={23}
+      />
     </Svg>
   );
 }
 
-function SearchIcon({ color = OVERLAY.text, size = 31 }: { color?: string; size?: number }) {
+function SearchIcon({
+  color = OVERLAY.text,
+  size = 31,
+}: {
+  color?: string;
+  size?: number;
+}) {
   return (
     <Svg height={size} viewBox="0 0 32 32" width={size}>
-      <Circle cx={14} cy={14} fill="none" r={8} stroke={color} strokeWidth={2.5} />
-      <Line stroke={color} strokeLinecap="round" strokeWidth={2.5} x1={20} x2={27} y1={20} y2={27} />
+      <Circle
+        cx={14}
+        cy={14}
+        fill="none"
+        r={8}
+        stroke={color}
+        strokeWidth={2.5}
+      />
+      <Line
+        stroke={color}
+        strokeLinecap="round"
+        strokeWidth={2.5}
+        x1={20}
+        x2={27}
+        y1={20}
+        y2={27}
+      />
     </Svg>
   );
 }
@@ -4079,33 +5253,106 @@ function GridIcon() {
   return (
     <Svg height={22} viewBox="0 0 24 24" width={22}>
       <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={4} y={4} />
-      <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={10.2} y={4} />
-      <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={16.4} y={4} />
-      <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={4} y={10.2} />
-      <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={10.2} y={10.2} />
-      <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={16.4} y={10.2} />
-      <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={4} y={16.4} />
-      <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={10.2} y={16.4} />
-      <Rect fill={OVERLAY.text} height={3.6} rx={0.9} width={3.6} x={16.4} y={16.4} />
+      <Rect
+        fill={OVERLAY.text}
+        height={3.6}
+        rx={0.9}
+        width={3.6}
+        x={10.2}
+        y={4}
+      />
+      <Rect
+        fill={OVERLAY.text}
+        height={3.6}
+        rx={0.9}
+        width={3.6}
+        x={16.4}
+        y={4}
+      />
+      <Rect
+        fill={OVERLAY.text}
+        height={3.6}
+        rx={0.9}
+        width={3.6}
+        x={4}
+        y={10.2}
+      />
+      <Rect
+        fill={OVERLAY.text}
+        height={3.6}
+        rx={0.9}
+        width={3.6}
+        x={10.2}
+        y={10.2}
+      />
+      <Rect
+        fill={OVERLAY.text}
+        height={3.6}
+        rx={0.9}
+        width={3.6}
+        x={16.4}
+        y={10.2}
+      />
+      <Rect
+        fill={OVERLAY.text}
+        height={3.6}
+        rx={0.9}
+        width={3.6}
+        x={4}
+        y={16.4}
+      />
+      <Rect
+        fill={OVERLAY.text}
+        height={3.6}
+        rx={0.9}
+        width={3.6}
+        x={10.2}
+        y={16.4}
+      />
+      <Rect
+        fill={OVERLAY.text}
+        height={3.6}
+        rx={0.9}
+        width={3.6}
+        x={16.4}
+        y={16.4}
+      />
     </Svg>
   );
 }
 
 function GridLinesIcon({ active }: { active: boolean }) {
-  const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
+  const color = active ? "#FFFFFF" : "rgba(255,255,255,0.44)";
   return (
     <Svg height={38} viewBox="0 0 48 48" width={38}>
-      <Circle cx={24} cy={24} fill="none" r={17} stroke={color} strokeWidth={2.4} />
+      <Circle
+        cx={24}
+        cy={24}
+        fill="none"
+        r={17}
+        stroke={color}
+        strokeWidth={2.4}
+      />
       <Line stroke={color} strokeWidth={2.4} x1={7} x2={41} y1={24} y2={24} />
       <Line stroke={color} strokeWidth={2.4} x1={24} x2={24} y1={7} y2={41} />
-      <Path d="M24 7 C 14 13, 14 35, 24 41 M24 7 C 34 13, 34 35, 24 41" fill="none" stroke={color} strokeWidth={2.2} />
-      <Path d="M9.5 16 C 16 20, 32 20, 38.5 16 M9.5 32 C 16 28, 32 28, 38.5 32" fill="none" stroke={color} strokeWidth={2.0} />
+      <Path
+        d="M24 7 C 14 13, 14 35, 24 41 M24 7 C 34 13, 34 35, 24 41"
+        fill="none"
+        stroke={color}
+        strokeWidth={2.2}
+      />
+      <Path
+        d="M9.5 16 C 16 20, 32 20, 38.5 16 M9.5 32 C 16 28, 32 28, 38.5 32"
+        fill="none"
+        stroke={color}
+        strokeWidth={2.0}
+      />
     </Svg>
   );
 }
 
 function ConstellationIcon({ active }: { active: boolean }) {
-  const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
+  const color = active ? "#FFFFFF" : "rgba(255,255,255,0.44)";
   return (
     <Svg height={38} viewBox="0 0 48 48" width={38}>
       <Path
@@ -4116,15 +5363,24 @@ function ConstellationIcon({ active }: { active: boolean }) {
         strokeLinejoin="round"
         strokeWidth={2.6}
       />
-      <Polygon fill={color} points="24,6 26,9.5 29.5,11 26,12.5 24,16 22,12.5 18.5,11 22,9.5" />
-      <Polygon fill={color} points="13,30 15,33.5 18.5,35 15,36.5 13,40 11,36.5 7.5,35 11,33.5" />
-      <Polygon fill={color} points="35,28 37,31.5 40.5,33 37,34.5 35,38 33,34.5 29.5,33 33,31.5" />
+      <Polygon
+        fill={color}
+        points="24,6 26,9.5 29.5,11 26,12.5 24,16 22,12.5 18.5,11 22,9.5"
+      />
+      <Polygon
+        fill={color}
+        points="13,30 15,33.5 18.5,35 15,36.5 13,40 11,36.5 7.5,35 11,33.5"
+      />
+      <Polygon
+        fill={color}
+        points="35,28 37,31.5 40.5,33 37,34.5 35,38 33,34.5 29.5,33 33,31.5"
+      />
     </Svg>
   );
 }
 
 function LandscapeIcon({ active }: { active: boolean }) {
-  const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
+  const color = active ? "#FFFFFF" : "rgba(255,255,255,0.44)";
   return (
     <Svg height={38} viewBox="0 0 48 48" width={38}>
       <Circle cx={18} cy={16} fill={color} r={6.5} />
@@ -4136,10 +5392,13 @@ function LandscapeIcon({ active }: { active: boolean }) {
 }
 
 function AtmosphereIcon({ active }: { active: boolean }) {
-  const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
+  const color = active ? "#FFFFFF" : "rgba(255,255,255,0.44)";
   return (
     <Svg height={38} viewBox="0 0 48 48" width={38}>
-      <Polygon fill={color} points="34,6 36,11 41,12 37,15 38,20 33,18 29,21 31,16 27,13 32,12" />
+      <Polygon
+        fill={color}
+        points="34,6 36,11 41,12 37,15 38,20 33,18 29,21 31,16 27,13 32,12"
+      />
       <Path
         d="M13 38 L36 38 C 40 38, 42 35, 41 31 C 40 27, 36 26, 33 26 C 32 20, 24 19, 21 24 C 18 23, 13 25, 13 29 C 10 30, 9 34, 13 38 Z"
         fill={color}
@@ -4149,8 +5408,8 @@ function AtmosphereIcon({ active }: { active: boolean }) {
 }
 
 function LabelsIcon({ active }: { active: boolean }) {
-  const color = active ? '#FFFFFF' : 'rgba(255,255,255,0.44)';
-  const textColor = active ? '#14181F' : '#14181F';
+  const color = active ? "#FFFFFF" : "rgba(255,255,255,0.44)";
+  const textColor = active ? "#14181F" : "#14181F";
   return (
     <Svg height={38} viewBox="0 0 48 48" width={38}>
       <Rect fill={color} height={20} rx={4} width={36} x={6} y={11} />
@@ -4170,7 +5429,7 @@ function LabelsIcon({ active }: { active: boolean }) {
 }
 
 function NightModeIcon({ active }: { active: boolean }) {
-  const color = active ? '#FF5C5C' : 'rgba(255,255,255,0.44)';
+  const color = active ? "#FF5C5C" : "rgba(255,255,255,0.44)";
   return (
     <Svg height={38} viewBox="0 0 48 48" width={38}>
       <Path
@@ -4181,25 +5440,44 @@ function NightModeIcon({ active }: { active: boolean }) {
         strokeLinejoin="round"
         strokeWidth={2.8}
       />
-      <Circle cx={24} cy={24} fill="none" r={6.8} stroke={color} strokeWidth={2.4} />
+      <Circle
+        cx={24}
+        cy={24}
+        fill="none"
+        r={6.8}
+        stroke={color}
+        strokeWidth={2.4}
+      />
       <Circle cx={24} cy={24} fill={color} r={3.2} />
     </Svg>
   );
 }
 
-function QuickControlIcon({ active, kind }: { active: boolean; kind: 'grid-lines' | 'constellation' | 'landscape' | 'atmosphere' | 'labels' | 'night' }) {
+function QuickControlIcon({
+  active,
+  kind,
+}: {
+  active: boolean;
+  kind:
+    | "grid-lines"
+    | "constellation"
+    | "landscape"
+    | "atmosphere"
+    | "labels"
+    | "night";
+}) {
   switch (kind) {
-    case 'grid-lines':
+    case "grid-lines":
       return <GridLinesIcon active={active} />;
-    case 'constellation':
+    case "constellation":
       return <ConstellationIcon active={active} />;
-    case 'landscape':
+    case "landscape":
       return <LandscapeIcon active={active} />;
-    case 'atmosphere':
+    case "atmosphere":
       return <AtmosphereIcon active={active} />;
-    case 'labels':
+    case "labels":
       return <LabelsIcon active={active} />;
-    case 'night':
+    case "night":
       return <NightModeIcon active={active} />;
   }
 }
@@ -4207,9 +5485,21 @@ function QuickControlIcon({ active, kind }: { active: boolean; kind: 'grid-lines
 function GlossaryIcon() {
   return (
     <Svg height={26} viewBox="0 0 26 26" width={26}>
-      <Path d="M4 20 20 4" fill="none" stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={1.8} />
+      <Path
+        d="M4 20 20 4"
+        fill="none"
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={1.8}
+      />
       <Polygon fill={OVERLAY.text} points="20,4 21,10 15,9" />
-      <Path d="M6 6.5 7.6 8.1M9 4l0 3M4.5 9l3 0" fill="none" stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={1.6} />
+      <Path
+        d="M6 6.5 7.6 8.1M9 4l0 3M4.5 9l3 0"
+        fill="none"
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={1.6}
+      />
     </Svg>
   );
 }
@@ -4217,9 +5507,31 @@ function GlossaryIcon() {
 function CalendarIcon() {
   return (
     <Svg height={26} viewBox="0 0 26 26" width={26}>
-      <Path d="M4.5 6.5h17v15h-17z" fill="none" stroke={OVERLAY.text} strokeLinejoin="round" strokeWidth={1.8} />
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={1.8} x1={8} x2={8} y1={3.5} y2={7.5} />
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={1.8} x1={18} x2={18} y1={3.5} y2={7.5} />
+      <Path
+        d="M4.5 6.5h17v15h-17z"
+        fill="none"
+        stroke={OVERLAY.text}
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+      />
+      <Line
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={1.8}
+        x1={8}
+        x2={8}
+        y1={3.5}
+        y2={7.5}
+      />
+      <Line
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={1.8}
+        x1={18}
+        x2={18}
+        y1={3.5}
+        y2={7.5}
+      />
       <Circle cx={13} cy={15} fill={OVERLAY.text} r={2.6} />
     </Svg>
   );
@@ -4228,8 +5540,22 @@ function CalendarIcon() {
 function ObservationIcon() {
   return (
     <Svg height={26} viewBox="0 0 26 26" width={26}>
-      <Path d="M4 8V4h4M22 8V4h-4M4 18v4h4M22 18v4h-4" fill="none" stroke={OVERLAY.text} strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} />
-      <Circle cx={13} cy={13} fill="none" r={4.6} stroke={OVERLAY.text} strokeWidth={1.8} />
+      <Path
+        d="M4 8V4h4M22 8V4h-4M4 18v4h4M22 18v4h-4"
+        fill="none"
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={1.8}
+      />
+      <Circle
+        cx={13}
+        cy={13}
+        fill="none"
+        r={4.6}
+        stroke={OVERLAY.text}
+        strokeWidth={1.8}
+      />
       <Circle cx={13} cy={13} fill={OVERLAY.text} r={1.8} />
     </Svg>
   );
@@ -4238,8 +5564,21 @@ function ObservationIcon() {
 function SettingsIcon() {
   return (
     <Svg height={26} viewBox="0 0 26 26" width={26}>
-      <Circle cx={13} cy={13} fill="none" r={3.4} stroke={OVERLAY.text} strokeWidth={1.8} />
-      <Path d="M13 3v3M13 20v3M3 13h3M20 13h3M6 6l2.1 2.1M17.9 17.9 20 20M20 6l-2.1 2.1M8.1 17.9 6 20" fill="none" stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={1.8} />
+      <Circle
+        cx={13}
+        cy={13}
+        fill="none"
+        r={3.4}
+        stroke={OVERLAY.text}
+        strokeWidth={1.8}
+      />
+      <Path
+        d="M13 3v3M13 20v3M3 13h3M20 13h3M6 6l2.1 2.1M17.9 17.9 20 20M20 6l-2.1 2.1M8.1 17.9 6 20"
+        fill="none"
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={1.8}
+      />
     </Svg>
   );
 }
@@ -4247,7 +5586,14 @@ function SettingsIcon() {
 function BackIcon() {
   return (
     <Svg height={28} viewBox="0 0 28 28" width={28}>
-      <Path d="M18 5 9 14l9 9M10 14h11" fill="none" stroke={OVERLAY.text} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.4} />
+      <Path
+        d="M18 5 9 14l9 9M10 14h11"
+        fill="none"
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2.4}
+      />
     </Svg>
   );
 }
@@ -4255,8 +5601,21 @@ function BackIcon() {
 function HelpIcon() {
   return (
     <Svg height={26} viewBox="0 0 26 26" width={26}>
-      <Circle cx={13} cy={13} fill="none" r={10} stroke={OVERLAY.text} strokeWidth={1.8} />
-      <Path d="M10.2 10.3a3 3 0 1 1 5.3 1.9c-1.3 1.2-2.5 1.8-2.5 3.5" fill="none" stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={1.8} />
+      <Circle
+        cx={13}
+        cy={13}
+        fill="none"
+        r={10}
+        stroke={OVERLAY.text}
+        strokeWidth={1.8}
+      />
+      <Path
+        d="M10.2 10.3a3 3 0 1 1 5.3 1.9c-1.3 1.2-2.5 1.8-2.5 3.5"
+        fill="none"
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={1.8}
+      />
       <Circle cx={13} cy={18.7} fill={OVERLAY.text} r={1.1} />
     </Svg>
   );
@@ -4265,17 +5624,40 @@ function HelpIcon() {
 function ExitIcon() {
   return (
     <Svg height={26} viewBox="0 0 26 26" width={26}>
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={2} x1={5} x2={21} y1={5} y2={21} />
-      <Line stroke={OVERLAY.text} strokeLinecap="round" strokeWidth={2} x1={21} x2={5} y1={5} y2={21} />
+      <Line
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={2}
+        x1={5}
+        x2={21}
+        y1={5}
+        y2={21}
+      />
+      <Line
+        stroke={OVERLAY.text}
+        strokeLinecap="round"
+        strokeWidth={2}
+        x1={21}
+        x2={5}
+        y1={5}
+        y2={21}
+      />
     </Svg>
   );
 }
 
 function HistoryIcon({ active = false }: { active?: boolean }) {
-  const color = active ? '#93C5FD' : OVERLAY.text;
+  const color = active ? "#93C5FD" : OVERLAY.text;
   return (
     <Svg height={29} viewBox="0 0 32 32" width={29}>
-      <Path d="M9 12V6l-5 5 5 5v-4a9 9 0 1 1-1 12" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.4} />
+      <Path
+        d="M9 12V6l-5 5 5 5v-4a9 9 0 1 1-1 12"
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2.4}
+      />
     </Svg>
   );
 }
@@ -4287,124 +5669,124 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     padding: 22,
-    width: '84%',
+    width: "84%",
     maxWidth: 340,
   },
   azimuthInputRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'center',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
     marginBottom: 10,
     marginTop: 6,
   },
   azimuthInput: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.2)",
     borderRadius: 12,
     borderWidth: 1,
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 26,
-    fontWeight: '700',
+    fontWeight: "700",
     height: 52,
     minWidth: 120,
     paddingHorizontal: 16,
-    textAlign: 'center',
+    textAlign: "center",
   },
   azimuthInputError: {
-    borderColor: '#EF4444',
+    borderColor: "#EF4444",
   },
   azimuthUnit: {
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: "rgba(255, 255, 255, 0.7)",
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 8,
   },
   azimuthErrorText: {
-    color: '#F87171',
+    color: "#F87171",
     fontSize: 12,
     marginBottom: 10,
-    textAlign: 'center',
+    textAlign: "center",
   },
   azimuthPresetRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 8,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginBottom: 18,
     marginTop: 4,
   },
   azimuthPresetPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   azimuthPresetPillActive: {
-    backgroundColor: 'rgba(74, 144, 226, 0.32)',
-    borderColor: '#60A5FA',
+    backgroundColor: "rgba(74, 144, 226, 0.32)",
+    borderColor: "#60A5FA",
   },
   azimuthPresetText: {
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: "rgba(255, 255, 255, 0.65)",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   azimuthPresetTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   timePlaybackButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 12,
     borderWidth: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     minWidth: 68,
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
   timePlaybackButtonActive: {
-    backgroundColor: 'rgba(74, 144, 226, 0.32)',
-    borderColor: '#60A5FA',
+    backgroundColor: "rgba(74, 144, 226, 0.32)",
+    borderColor: "#60A5FA",
   },
   timePlaybackButtonText: {
-    color: 'rgba(255, 255, 255, 0.68)',
+    color: "rgba(255, 255, 255, 0.68)",
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   timePlaybackButtonTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   timePlaybackRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 6,
     marginBottom: 6,
   },
   timeSpeedButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.045)',
-    borderColor: 'rgba(255, 255, 255, 0.10)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.045)",
+    borderColor: "rgba(255, 255, 255, 0.10)",
     borderRadius: 10,
     borderWidth: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     minWidth: 36,
     paddingHorizontal: 6,
     paddingVertical: 6,
   },
   timeSpeedButtonActive: {
-    backgroundColor: 'rgba(74, 144, 226, 0.24)',
-    borderColor: '#60A5FA',
+    backgroundColor: "rgba(74, 144, 226, 0.24)",
+    borderColor: "#60A5FA",
   },
   timeSpeedButtonText: {
-    color: 'rgba(255, 255, 255, 0.62)',
+    color: "rgba(255, 255, 255, 0.62)",
     fontSize: 11,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '600',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "600",
   },
   timeSpeedButtonTextActive: {
-    color: '#BFDBFE',
+    color: "#BFDBFE",
   },
   searchRecentList: {
     borderTopColor: OVERLAY.hairline,
@@ -4417,20 +5799,20 @@ const styles = StyleSheet.create({
     color: OVERLAY.text,
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   searchRecentRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     minHeight: 42,
   },
   searchRecentTitle: {
     color: OVERLAY.muted,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 0.8,
     marginBottom: 4,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   searchRecentType: {
     color: OVERLAY.muted,
@@ -4439,227 +5821,227 @@ const styles = StyleSheet.create({
   },
 
   root: {
-    backgroundColor: '#05070B',
+    backgroundColor: "#05070B",
     flex: 1,
   },
   webView: {
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
     flex: 1,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
     paddingHorizontal: 18,
   },
   topControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   iconButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.18)",
     borderRadius: 24,
     borderWidth: 1,
     elevation: 4,
     height: 48,
-    justifyContent: 'center',
-    shadowColor: '#000000',
+    justifyContent: "center",
+    shadowColor: "#000000",
     shadowOffset: { height: 2, width: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     width: 48,
   },
   iconButtonPressed: {
-    backgroundColor: 'rgba(255, 255, 255, 0.22)',
-    borderColor: 'rgba(255, 255, 255, 0.35)',
+    backgroundColor: "rgba(255, 255, 255, 0.22)",
+    borderColor: "rgba(255, 255, 255, 0.35)",
     transform: [{ scale: 0.94 }],
   },
   horizonBearing: {
     bottom: 142,
     left: 44,
-    position: 'absolute',
+    position: "absolute",
   },
   horizonBearingText: {
-    color: '#FF5449',
+    color: "#FF5449",
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 0.5,
-    textShadowColor: 'rgba(0, 0, 0, 0.9)',
+    textShadowColor: "rgba(0, 0, 0, 0.9)",
     textShadowOffset: { height: 1, width: 0 },
     textShadowRadius: 4,
   },
   bottomControls: {
-    alignItems: 'flex-end',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "flex-end",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   compassCenterWrapper: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 146,
     left: 0,
-    position: 'absolute',
+    position: "absolute",
     right: 0,
   },
   timeControlWrapper: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
   leftQuickBar: {
-    alignItems: 'flex-end',
-    flexDirection: 'row',
+    alignItems: "flex-end",
+    flexDirection: "row",
     gap: 8,
   },
   gridQuickBar: {
-    alignItems: 'flex-start',
-    position: 'relative',
+    alignItems: "flex-start",
+    position: "relative",
   },
   gridQuickButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.18)",
     borderRadius: 24,
     borderWidth: 1,
     elevation: 4,
     height: 48,
-    justifyContent: 'center',
-    shadowColor: '#000000',
+    justifyContent: "center",
+    shadowColor: "#000000",
     shadowOffset: { height: 2, width: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     width: 48,
   },
   gridQuickButtonActive: {
-    backgroundColor: 'rgba(59, 130, 246, 0.45)',
-    borderColor: 'rgba(191, 219, 254, 0.75)',
-    shadowColor: '#3B82F6',
+    backgroundColor: "rgba(59, 130, 246, 0.45)",
+    borderColor: "rgba(191, 219, 254, 0.75)",
+    shadowColor: "#3B82F6",
     shadowOpacity: 0.5,
     shadowRadius: 10,
   },
   gridQuickMenu: {
-    backgroundColor: 'rgba(20, 28, 42, 0.38)',
-    borderColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: "rgba(20, 28, 42, 0.38)",
+    borderColor: "rgba(255, 255, 255, 0.2)",
     borderRadius: 24,
     borderWidth: 1,
     bottom: 58,
     elevation: 12,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     left: 0,
-    overflow: 'hidden',
+    overflow: "hidden",
     paddingHorizontal: 8,
     paddingVertical: 10,
-    position: 'absolute',
-    shadowColor: '#000000',
+    position: "absolute",
+    shadowColor: "#000000",
     shadowOffset: { height: 6, width: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
     width: 292,
   },
   gridQuickMenuHighlight: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: "rgba(255, 255, 255, 0.3)",
     height: 1,
     left: 16,
-    position: 'absolute',
+    position: "absolute",
     right: 16,
     top: 0,
   },
   quickControlButton: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 76,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 2,
     paddingVertical: 4,
-    width: '33.33%',
+    width: "33.33%",
   },
   quickControlButtonPressed: {
     opacity: 0.82,
     transform: [{ scale: 0.94 }],
   },
   quickControlCell: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 16,
-    height: '100%',
-    justifyContent: 'center',
+    height: "100%",
+    justifyContent: "center",
     paddingVertical: 4,
-    width: '100%',
+    width: "100%",
   },
   quickIconWrapper: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 42,
-    justifyContent: 'center',
-    position: 'relative',
+    justifyContent: "center",
+    position: "relative",
     width: 42,
   },
   progressRingWrapper: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   progressRingSvg: {
-    transform: [{ rotate: '-90deg' }],
+    transform: [{ rotate: "-90deg" }],
   },
   quickControlCellActive: {
-    backgroundColor: 'rgba(59, 130, 246, 0.18)',
-    borderColor: 'rgba(147, 197, 253, 0.35)',
+    backgroundColor: "rgba(59, 130, 246, 0.18)",
+    borderColor: "rgba(147, 197, 253, 0.35)",
     borderWidth: 1,
   },
   quickControlCellNightActive: {
-    backgroundColor: 'rgba(239, 68, 68, 0.18)',
-    borderColor: 'rgba(252, 165, 165, 0.4)',
+    backgroundColor: "rgba(239, 68, 68, 0.18)",
+    borderColor: "rgba(252, 165, 165, 0.4)",
     borderWidth: 1,
   },
   quickControlLabel: {
-    color: 'rgba(255, 255, 255, 0.72)',
+    color: "rgba(255, 255, 255, 0.72)",
     fontSize: 11.5,
-    fontWeight: '500',
+    fontWeight: "500",
     marginTop: 4,
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.8)',
+    textAlign: "center",
+    textShadowColor: "rgba(0, 0, 0, 0.8)",
     textShadowOffset: { height: 1, width: 0 },
     textShadowRadius: 3,
   },
   quickControlLabelActive: {
-    color: '#BAE6FD',
-    fontWeight: '600',
-    textShadowColor: 'rgba(56, 189, 248, 0.5)',
+    color: "#BAE6FD",
+    fontWeight: "600",
+    textShadowColor: "rgba(56, 189, 248, 0.5)",
     textShadowOffset: { height: 1, width: 0 },
     textShadowRadius: 4,
   },
   quickControlLabelNightActive: {
-    color: '#FECACA',
-    fontWeight: '600',
+    color: "#FECACA",
+    fontWeight: "600",
   },
   quickDetailOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    alignItems: "center",
+    justifyContent: "flex-end",
     paddingHorizontal: 16,
     zIndex: 99,
   },
   quickDetailScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   quickDetailCard: {
-    backgroundColor: 'rgba(18, 26, 40, 0.68)',
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: "rgba(18, 26, 40, 0.68)",
+    borderColor: "rgba(255, 255, 255, 0.18)",
     borderRadius: 26,
-    borderTopColor: 'rgba(255, 255, 255, 0.3)',
+    borderTopColor: "rgba(255, 255, 255, 0.3)",
     borderWidth: 1,
     elevation: 18,
     maxWidth: 440,
-    overflow: 'hidden',
+    overflow: "hidden",
     paddingBottom: 8,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { height: 8, width: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 20,
-    width: '100%',
+    width: "100%",
   },
   quickDetailHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingBottom: 12,
     paddingHorizontal: 18,
     paddingTop: 16,
@@ -4669,28 +6051,28 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
   quickDetailTitle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 0.2,
   },
   quickDetailSubtitle: {
-    color: 'rgba(255, 255, 255, 0.52)',
+    color: "rgba(255, 255, 255, 0.52)",
     fontSize: 11.5,
     marginTop: 2.5,
   },
   quickDetailClose: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 16,
     borderWidth: 1,
     height: 32,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 32,
   },
   quickDetailDivider: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     height: 1,
     marginHorizontal: 16,
   },
@@ -4699,113 +6081,113 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   quickDetailRow: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 14,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     minHeight: 48,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
   quickStepper: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+    borderColor: "rgba(255, 255, 255, 0.1)",
     borderRadius: 16,
     borderWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 2,
   },
   quickStepperArrow: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 30,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 30,
   },
   quickStepperArrowText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 20,
-    fontWeight: '500',
+    fontWeight: "500",
     lineHeight: 24,
   },
   quickStepperValue: {
-    color: '#E0F2FE',
+    color: "#E0F2FE",
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     minWidth: 64,
-    textAlign: 'center',
+    textAlign: "center",
   },
   quickDetailRowText: {
     flex: 1,
     paddingRight: 14,
   },
   quickDetailRowLabel: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
   quickDetailRowHint: {
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: "rgba(255, 255, 255, 0.5)",
     fontSize: 11.5,
     marginTop: 2,
   },
   quickDetailSwitch: {
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: "rgba(255, 255, 255, 0.14)",
+    borderColor: "rgba(255, 255, 255, 0.16)",
     borderRadius: 13,
     borderWidth: 1,
     height: 24,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 2,
     width: 44,
   },
   quickDetailSwitchActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#60A5FA',
+    backgroundColor: "#3B82F6",
+    borderColor: "#60A5FA",
   },
   quickDetailKnob: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 9,
     elevation: 3,
     height: 18,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { height: 2, width: 0 },
     shadowOpacity: 0.35,
     shadowRadius: 3,
     width: 18,
   },
   quickDetailKnobActive: {
-    alignSelf: 'flex-end',
+    alignSelf: "flex-end",
   },
   quickDetailFooter: {
-    alignItems: 'center',
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: "center",
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
     borderTopWidth: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginTop: 6,
     paddingBottom: 6,
     paddingTop: 8,
   },
   quickDetailResetButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 14,
     borderWidth: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 18,
     paddingVertical: 7,
   },
   quickDetailResetButtonText: {
-    color: '#93C5FD',
+    color: "#93C5FD",
     fontSize: 12.5,
-    fontWeight: '600',
+    fontWeight: "600",
     letterSpacing: 0.2,
   },
   nightModeOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(145, 0, 0, 0.48)',
+    backgroundColor: "rgba(145, 0, 0, 0.48)",
   },
   compass: {
     height: 146,
@@ -4814,20 +6196,20 @@ const styles = StyleSheet.create({
   compassRose: {
     height: 112,
     left: 0,
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     width: 112,
   },
   compassFixedOverlay: {
     left: 0,
-    position: 'absolute',
+    position: "absolute",
     top: 0,
   },
   compassReadout: {
-    alignItems: 'center',
-    alignSelf: 'center',
-    backgroundColor: 'rgba(18, 26, 40, 0.45)',
-    borderColor: 'rgba(126, 180, 232, 0.42)',
+    alignItems: "center",
+    alignSelf: "center",
+    backgroundColor: "rgba(18, 26, 40, 0.45)",
+    borderColor: "rgba(126, 180, 232, 0.42)",
     borderRadius: 14,
     borderWidth: 1,
     bottom: 0,
@@ -4835,227 +6217,227 @@ const styles = StyleSheet.create({
     minWidth: 58,
     paddingHorizontal: 10,
     paddingVertical: 3.5,
-    position: 'absolute',
-    shadowColor: '#000000',
+    position: "absolute",
+    shadowColor: "#000000",
     shadowOffset: { height: 2, width: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
   compassReadoutPressed: {
-    backgroundColor: 'rgba(45, 105, 210, 0.4)',
-    borderColor: 'rgba(140, 200, 255, 0.85)',
+    backgroundColor: "rgba(45, 105, 210, 0.4)",
+    borderColor: "rgba(140, 200, 255, 0.85)",
     transform: [{ scale: 0.96 }],
   },
   compassAzimuthText: {
-    color: '#E0F2FE',
+    color: "#E0F2FE",
     fontSize: 12,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '700',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "700",
     letterSpacing: 0.8,
   },
   timeControl: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     minWidth: 80,
   },
   timeControlCustom: {
     opacity: 0.98,
   },
   historyButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.18)",
     borderRadius: 24,
     borderWidth: 1,
     elevation: 4,
     height: 48,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginBottom: 8,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { height: 2, width: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
     width: 48,
   },
   historyButtonActive: {
-    backgroundColor: 'rgba(59, 130, 246, 0.45)',
-    borderColor: 'rgba(191, 219, 254, 0.75)',
-    shadowColor: '#3B82F6',
+    backgroundColor: "rgba(59, 130, 246, 0.45)",
+    borderColor: "rgba(191, 219, 254, 0.75)",
+    shadowColor: "#3B82F6",
     shadowOpacity: 0.5,
     shadowRadius: 10,
   },
   timeText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 26,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '300',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "300",
     letterSpacing: 0.6,
-    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowColor: "rgba(0, 0, 0, 0.85)",
     textShadowOffset: { height: 2, width: 0 },
     textShadowRadius: 6,
   },
   timeTextCustom: {
-    color: '#93C5FD',
-    fontWeight: '600',
-    textShadowColor: 'rgba(59, 130, 246, 0.55)',
+    color: "#93C5FD",
+    fontWeight: "600",
+    textShadowColor: "rgba(59, 130, 246, 0.55)",
     textShadowOffset: { height: 2, width: 0 },
     textShadowRadius: 8,
   },
   timeSliderOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    alignItems: "center",
+    justifyContent: "flex-end",
     paddingHorizontal: 16,
     zIndex: 98,
   },
   timeSliderScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
+    backgroundColor: "transparent",
   },
   timeSliderCard: {
-    backgroundColor: 'rgba(18, 26, 40, 0.68)',
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: "rgba(18, 26, 40, 0.68)",
+    borderColor: "rgba(255, 255, 255, 0.18)",
     borderRadius: 24,
-    borderTopColor: 'rgba(255, 255, 255, 0.3)',
+    borderTopColor: "rgba(255, 255, 255, 0.3)",
     borderWidth: 1,
     elevation: 18,
     maxWidth: 440,
-    overflow: 'hidden',
+    overflow: "hidden",
     paddingBottom: 14,
     paddingHorizontal: 18,
     paddingTop: 14,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { height: 8, width: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 20,
-    width: '100%',
+    width: "100%",
   },
   timeSliderHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 8,
   },
   timeDateStepper: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 14,
-    flexDirection: 'row',
+    flexDirection: "row",
     paddingHorizontal: 6,
     paddingVertical: 4,
   },
   timeStepBtn: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 28,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 24,
   },
   timeStepBtnText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 18,
-    fontWeight: '400',
+    fontWeight: "400",
   },
   timeDateValue: {
-    color: '#E0E8F2',
+    color: "#E0E8F2",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     paddingHorizontal: 4,
   },
   timeClockBlock: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
   timeClockValue: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 20,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '700',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "700",
     letterSpacing: 0.5,
   },
   timeHeaderActions: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 8,
   },
   timeNowButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.09)',
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: "rgba(255, 255, 255, 0.09)",
+    borderColor: "rgba(255, 255, 255, 0.16)",
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
   timeNowButtonActive: {
-    backgroundColor: 'rgba(43, 130, 246, 0.85)',
-    borderColor: 'rgba(167, 206, 255, 0.75)',
+    backgroundColor: "rgba(43, 130, 246, 0.85)",
+    borderColor: "rgba(167, 206, 255, 0.75)",
   },
   timeNowButtonText: {
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: "rgba(255, 255, 255, 0.65)",
     fontSize: 11.5,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   timeNowButtonTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   timeCloseButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 16,
     height: 30,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 30,
   },
   timeHourRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 10,
     marginTop: 2,
   },
   timeHourBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
   timeHourBtnText: {
-    color: '#93C5FD',
+    color: "#93C5FD",
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   timeSliderHint: {
-    color: 'rgba(255, 255, 255, 0.40)',
+    color: "rgba(255, 255, 255, 0.40)",
     fontSize: 10.5,
   },
   timeSliderTrackContainer: {
     height: 32,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginVertical: 2,
-    position: 'relative',
-    width: '100%',
+    position: "relative",
+    width: "100%",
   },
   timeSliderRail: {
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 4,
     height: 6,
-    overflow: 'hidden',
-    width: '100%',
+    overflow: "hidden",
+    width: "100%",
   },
   timeSliderFill: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
     borderRadius: 4,
-    height: '100%',
+    height: "100%",
   },
   timeSliderThumb: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderColor: '#3B82F6',
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderColor: "#3B82F6",
     borderRadius: 11,
     borderWidth: 2,
     elevation: 4,
     height: 22,
-    justifyContent: 'center',
-    position: 'absolute',
-    shadowColor: '#000000',
+    justifyContent: "center",
+    position: "absolute",
+    shadowColor: "#000000",
     shadowOffset: { height: 2, width: 0 },
     shadowOpacity: 0.4,
     shadowRadius: 4,
@@ -5063,34 +6445,34 @@ const styles = StyleSheet.create({
     width: 22,
   },
   timeSliderThumbInner: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: "#3B82F6",
     borderRadius: 3.5,
     height: 7,
     width: 7,
   },
   timeTicksRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginTop: 4,
     paddingHorizontal: 2,
   },
   timeTickText: {
-    color: 'rgba(255, 255, 255, 0.42)',
+    color: "rgba(255, 255, 255, 0.42)",
     fontSize: 10,
-    fontVariant: ['tabular-nums'],
+    fontVariant: ["tabular-nums"],
   },
   restoreCultureFab: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(38, 40, 44, 0.88)',
+    alignItems: "center",
+    backgroundColor: "rgba(38, 40, 44, 0.88)",
     borderColor: OVERLAY.accent,
     borderRadius: 24,
     borderWidth: 1.5,
     elevation: 6,
     height: 48,
-    justifyContent: 'center',
-    position: 'absolute',
+    justifyContent: "center",
+    position: "absolute",
     right: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.35,
     shadowRadius: 4,
@@ -5098,9 +6480,9 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
-    justifyContent: 'center',
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    justifyContent: "center",
     padding: 24,
   },
   dialogCard: {
@@ -5109,12 +6491,12 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     padding: 22,
-    width: '85%',
+    width: "85%",
   },
   dialogTitle: {
     color: OVERLAY.text,
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 8,
   },
   dialogMessage: {
@@ -5124,8 +6506,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   dialogButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
   dialogButton: {
     borderRadius: 8,
@@ -5139,37 +6521,37 @@ const styles = StyleSheet.create({
   dialogButtonTextCancel: {
     color: OVERLAY.muted,
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   dialogButtonTextPrimary: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   drawerOverlay: {
     ...StyleSheet.absoluteFillObject,
-    flexDirection: 'row',
+    flexDirection: "row",
   },
   drawerScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
   },
   drawer: {
     backgroundColor: OVERLAY.drawer,
-    height: '100%',
-    width: '54%',
+    height: "100%",
+    width: "54%",
   },
   drawerHeader: {
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: OVERLAY.drawerHeader,
-    flexDirection: 'row',
+    flexDirection: "row",
     height: 106,
     paddingHorizontal: 14,
   },
   drawerBack: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 48,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 48,
   },
   drawerSectionDivider: {
@@ -5181,11 +6563,11 @@ const styles = StyleSheet.create({
     height: StyleSheet.hairlineWidth,
   },
   settingsSwitchThumb: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     height: 24,
     left: 2,
-    position: 'absolute',
+    position: "absolute",
     top: 2,
     width: 24,
   },
@@ -5193,13 +6575,13 @@ const styles = StyleSheet.create({
     left: 26,
   },
   settingsSwitchTrack: {
-    backgroundColor: '#51565D',
+    backgroundColor: "#51565D",
     borderRadius: 20,
     height: 28,
     width: 52,
   },
   settingsSwitchTrackOn: {
-    backgroundColor: '#7BAAF7',
+    backgroundColor: "#7BAAF7",
   },
   locationRowDisabled: {
     opacity: 0.55,
@@ -5207,14 +6589,14 @@ const styles = StyleSheet.create({
   hiddenPresetTriggers: {
     height: 0,
     opacity: 0,
-    overflow: 'hidden',
-    position: 'absolute',
+    overflow: "hidden",
+    position: "absolute",
     width: 0,
   },
   advancedBrightnessValue: {
-    color: '#83B4FF',
+    color: "#83B4FF",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   advancedSliderBlock: {
     borderBottomColor: OVERLAY.hairline,
@@ -5222,34 +6604,34 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   advancedSliderFill: {
-    backgroundColor: '#64A6FF',
+    backgroundColor: "#64A6FF",
     borderRadius: 3,
-    height: '100%',
+    height: "100%",
   },
   advancedSliderRow: {
     paddingHorizontal: 20,
     paddingTop: 8,
   },
   advancedSliderThumb: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 10,
     height: 20,
     marginLeft: -10,
     marginTop: -7,
-    position: 'absolute',
-    top: '50%',
+    position: "absolute",
+    top: "50%",
     width: 20,
   },
   advancedSliderTrack: {
-    backgroundColor: '#353941',
+    backgroundColor: "#353941",
     borderRadius: 3,
     height: 6,
-    position: 'relative',
-    width: '100%',
+    position: "relative",
+    width: "100%",
   },
   advancedTimePicker: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 6,
   },
   advancedTimePickerArrow: {
@@ -5261,43 +6643,43 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   locationValueRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 6,
   },
   advancedTimePickerDropdown: {
-    backgroundColor: '#26292E',
+    backgroundColor: OVERLAY.drawer,
     borderBottomColor: OVERLAY.hairline,
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 20,
     paddingVertical: 4,
   },
   advancedTimePickerOption: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingVertical: 10,
   },
   advancedTimePickerOptionSelected: {
-    color: '#83B4FF',
-    fontWeight: '600',
+    color: "#83B4FF",
+    fontWeight: "600",
   },
   advancedTimePickerOptionText: {
     color: OVERLAY.text,
     fontSize: 15,
   },
   exitFullscreenButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(14, 18, 26, 0.82)',
-    borderColor: 'rgba(255, 255, 255, 0.22)',
+    alignItems: "center",
+    backgroundColor: "rgba(14, 18, 26, 0.82)",
+    borderColor: "rgba(255, 255, 255, 0.22)",
     borderRadius: 22,
-    borderTopColor: 'rgba(255, 255, 255, 0.35)',
+    borderTopColor: "rgba(255, 255, 255, 0.35)",
     borderWidth: 1,
     elevation: 10,
     height: 44,
-    justifyContent: 'center',
-    position: 'absolute',
-    shadowColor: '#000000',
+    justifyContent: "center",
+    position: "absolute",
+    shadowColor: "#000000",
     shadowOffset: { height: 4, width: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 10,
@@ -5306,20 +6688,20 @@ const styles = StyleSheet.create({
   },
   fullscreenCornerTouchTarget: {
     height: 64,
-    position: 'absolute',
+    position: "absolute",
     width: 64,
     zIndex: 5,
   },
   exitFullscreenText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     lineHeight: 20,
-    textAlign: 'center',
+    textAlign: "center",
   },
   drawerRowIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 16,
     width: 26,
   },
@@ -5327,16 +6709,16 @@ const styles = StyleSheet.create({
     color: OVERLAY.text,
     flex: 1,
     fontSize: 23,
-    fontWeight: '500',
+    fontWeight: "500",
     marginRight: 48,
-    textAlign: 'center',
+    textAlign: "center",
   },
   drawerRow: {
-    alignItems: 'center',
+    alignItems: "center",
     borderBottomColor: OVERLAY.hairline,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     minHeight: 64,
     paddingHorizontal: 22,
   },
@@ -5358,11 +6740,11 @@ const styles = StyleSheet.create({
     fontSize: 22,
     paddingBottom: 8,
     paddingTop: 22,
-    textAlign: 'center',
+    textAlign: "center",
   },
   glossaryCard: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderColor: 'transparent',
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderColor: "transparent",
     borderRadius: 12,
     borderWidth: 1.5,
     marginHorizontal: 16,
@@ -5373,27 +6755,27 @@ const styles = StyleSheet.create({
     borderColor: OVERLAY.accent,
   },
   glossaryCardContent: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   glossaryCardText: {
     flex: 1,
     paddingRight: 8,
   },
   glossaryThumbWrapper: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 56,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginLeft: 8,
     width: 56,
   },
   glossaryThumbPlaceholder: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 8,
     height: 52,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 52,
   },
   glossaryThumbText: {
@@ -5403,7 +6785,7 @@ const styles = StyleSheet.create({
   glossaryTitle: {
     color: OVERLAY.text,
     fontSize: 19,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 6,
   },
   glossaryIntro: {
@@ -5413,22 +6795,22 @@ const styles = StyleSheet.create({
   },
   // 详情页样式
   detailBackBtn: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 38,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 38,
   },
   detailBackArrow: {
     color: OVERLAY.text,
     fontSize: 26,
-    fontWeight: '300',
+    fontWeight: "300",
   },
   detailHero: {
-    alignItems: 'center',
+    alignItems: "center",
     borderBottomColor: OVERLAY.hairline,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
@@ -5439,31 +6821,31 @@ const styles = StyleSheet.create({
   detailTitle: {
     color: OVERLAY.text,
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 4,
   },
   detailRegion: {
     color: OVERLAY.purple,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   detailActions: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
   },
   detailNavBtn: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderRadius: 18,
     height: 36,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginRight: 8,
     width: 36,
   },
   detailNavText: {
     color: OVERLAY.text,
     fontSize: 20,
-    fontWeight: '400',
+    fontWeight: "400",
   },
   applyButton: {
     backgroundColor: OVERLAY.accent,
@@ -5472,134 +6854,134 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   applyButtonDisabled: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
   applyButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   applyButtonTextDisabled: {
     color: OVERLAY.muted,
   },
   glossaryScreen: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#202326',
+    backgroundColor: OVERLAY.drawer,
     zIndex: 20,
   },
   glossaryHeader: {
-    alignItems: 'center',
-    backgroundColor: '#303337',
-    flexDirection: 'row',
+    alignItems: "center",
+    backgroundColor: OVERLAY.drawerHeader,
+    flexDirection: "row",
     height: 72,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
     paddingHorizontal: 12,
   },
   glossaryHeaderButton: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 48,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 48,
   },
   glossaryHeaderBack: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 42,
-    fontWeight: '200',
+    fontWeight: "200",
     lineHeight: 44,
   },
   glossaryHeaderTitle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 23,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   glossaryListContent: {
     paddingBottom: 28,
     paddingTop: 8,
   },
   glossaryReferenceCard: {
-    backgroundColor: '#2D3033',
-    borderColor: 'transparent',
+    backgroundColor: OVERLAY.card,
+    borderColor: "transparent",
     borderRadius: 18,
     borderWidth: 1.5,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginHorizontal: 12,
     marginVertical: 7,
     minHeight: 130,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   glossaryReferenceCardActive: {
-    backgroundColor: '#30353A',
-    borderColor: '#82B2FF',
+    backgroundColor: OVERLAY.card,
+    borderColor: "#82B2FF",
   },
   glossaryReferenceImage: {
     bottom: 0,
     opacity: 0.32,
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     top: 0,
-    width: '48%',
+    width: "48%",
   },
   glossaryReferenceCardText: {
     paddingHorizontal: 18,
     paddingVertical: 16,
-    width: '78%',
+    width: "78%",
   },
   glossaryReferenceTitle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 23,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 7,
   },
   glossaryReferenceIntro: {
-    color: 'rgba(255,255,255,0.74)',
+    color: "rgba(255,255,255,0.74)",
     fontSize: 15,
     lineHeight: 22,
   },
   glossaryDetailScreen: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
     zIndex: 21,
   },
   glossaryDetailHeader: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(14, 16, 18, 0.94)',
-    flexDirection: 'row',
+    alignItems: "center",
+    backgroundColor: OVERLAY.drawer,
+    flexDirection: "row",
     height: 72,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
     left: 0,
     paddingHorizontal: 12,
-    position: 'absolute',
+    position: "absolute",
     right: 0,
     top: 0,
   },
   glossaryDetailHeaderButton: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 48,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 48,
   },
   glossaryDetailHeaderTitle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 21,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   glossaryDetailBack: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 42,
-    fontWeight: '200',
+    fontWeight: "200",
     lineHeight: 44,
   },
   glossaryDetailPanel: {
-    backgroundColor: '#2A2D30',
+    backgroundColor: OVERLAY.drawer,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '60%',
-    minHeight: '42%',
-    overflow: 'hidden',
+    maxHeight: "60%",
+    minHeight: "42%",
+    overflow: "hidden",
   },
   glossaryDetailHandle: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.42)',
+    alignSelf: "center",
+    backgroundColor: "rgba(255,255,255,0.42)",
     borderRadius: 2,
     height: 4,
     marginBottom: 5,
@@ -5610,11 +6992,11 @@ const styles = StyleSheet.create({
     paddingBottom: 34,
   },
   glossaryDetailHero: {
-    alignItems: 'center',
-    borderBottomColor: 'rgba(255,255,255,0.12)',
+    alignItems: "center",
+    borderBottomColor: "rgba(255,255,255,0.12)",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 16,
   },
@@ -5623,34 +7005,34 @@ const styles = StyleSheet.create({
     paddingRight: 14,
   },
   glossaryDetailTitle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 23,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   glossaryDetailRegion: {
-    color: '#83B4FF',
+    color: "#83B4FF",
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
     marginTop: 5,
   },
   glossaryUseButton: {
-    backgroundColor: '#4F94E8',
+    backgroundColor: "#4F94E8",
     borderRadius: 20,
     minWidth: 70,
     paddingHorizontal: 18,
     paddingVertical: 9,
   },
   glossaryUseButtonDisabled: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
   glossaryUseButtonText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 15,
-    fontWeight: '700',
-    textAlign: 'center',
+    fontWeight: "700",
+    textAlign: "center",
   },
   glossaryUseButtonTextDisabled: {
-    color: 'rgba(255,255,255,0.52)',
+    color: "rgba(255,255,255,0.52)",
   },
   detailSections: {
     paddingHorizontal: 20,
@@ -5662,7 +7044,7 @@ const styles = StyleSheet.create({
   sectionHeading: {
     color: OVERLAY.text,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: "700",
     marginBottom: 8,
     marginTop: 12,
   },
@@ -5673,18 +7055,18 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   imageBlock: {
-    alignItems: 'center',
+    alignItems: "center",
     marginVertical: 12,
   },
   imageContainer: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderColor: OVERLAY.hairline,
     borderRadius: 8,
     borderWidth: 1,
     height: 140,
-    justifyContent: 'center',
-    width: '100%',
+    justifyContent: "center",
+    width: "100%",
   },
   imagePlaceholderText: {
     color: OVERLAY.muted,
@@ -5693,27 +7075,27 @@ const styles = StyleSheet.create({
   imageCaption: {
     color: OVERLAY.muted,
     fontSize: 12,
-    fontStyle: 'italic',
+    fontStyle: "italic",
     marginTop: 6,
-    textAlign: 'center',
+    textAlign: "center",
   },
   featureValue: {
     color: OVERLAY.text,
     fontSize: 18,
     paddingHorizontal: 20,
     paddingTop: 16,
-    textAlign: 'center',
+    textAlign: "center",
   },
   toolBack: {
     color: OVERLAY.text,
     fontSize: 30,
-    fontWeight: '300',
+    fontWeight: "300",
     lineHeight: 32,
   },
   toolSectionTitle: {
     color: OVERLAY.muted,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     paddingHorizontal: 20,
     paddingTop: 18,
   },
@@ -5721,45 +7103,45 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   labelSliderRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     minHeight: 46,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   labelSliderText: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
     width: 76,
   },
   labelSliderTrackWrapper: {
     flex: 1,
     height: 36,
-    justifyContent: 'center',
-    position: 'relative',
+    justifyContent: "center",
+    position: "relative",
   },
   labelSliderTrackBg: {
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
     borderRadius: 3,
     height: 6,
-    overflow: 'hidden',
-    width: '100%',
+    overflow: "hidden",
+    width: "100%",
   },
   labelSliderTrackActive: {
-    backgroundColor: '#88B0F5',
+    backgroundColor: "#88B0F5",
     borderRadius: 3,
-    height: '100%',
+    height: "100%",
   },
   labelSliderThumb: {
-    backgroundColor: '#FFFFFF',
-    borderColor: 'rgba(0, 0, 0, 0.15)',
+    backgroundColor: "#FFFFFF",
+    borderColor: "rgba(0, 0, 0, 0.15)",
     borderRadius: 11,
     borderWidth: 0.5,
     elevation: 4,
     height: 22,
-    position: 'absolute',
-    shadowColor: '#000000',
+    position: "absolute",
+    shadowColor: "#000000",
     shadowOffset: { height: 2, width: 0 },
     shadowOpacity: 0.35,
     shadowRadius: 4,
@@ -5767,37 +7149,37 @@ const styles = StyleSheet.create({
     width: 22,
   },
   searchSheet: {
-    backgroundColor: '#11141A',
-    borderBottomColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: "#11141A",
+    borderBottomColor: "rgba(255, 255, 255, 0.12)",
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     borderBottomWidth: 1,
     elevation: 20,
-    maxHeight: '86%',
+    maxHeight: "86%",
     paddingBottom: 14,
     paddingHorizontal: 16,
     paddingTop: 16,
-    shadowColor: '#000000',
+    shadowColor: "#000000",
     shadowOffset: { height: 10, width: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 20,
     zIndex: 10000,
   },
   searchBar: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     minHeight: 52,
   },
   searchBack: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 44,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 36,
   },
   searchBackText: {
     color: OVERLAY.text,
     fontSize: 34,
-    fontWeight: '300',
+    fontWeight: "300",
     lineHeight: 36,
   },
   searchInput: {
@@ -5807,23 +7189,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   searchClearBtn: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 12,
     height: 24,
-    justifyContent: 'center',
+    justifyContent: "center",
     marginRight: 6,
     width: 24,
   },
   searchClearBtnText: {
-    color: 'rgba(255, 255, 255, 0.75)',
+    color: "rgba(255, 255, 255, 0.75)",
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: "bold",
   },
   searchSubmit: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 44,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 40,
   },
   searchError: {
@@ -5840,25 +7222,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   searchCategoryPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 16,
     borderWidth: 1,
     paddingHorizontal: 13,
     paddingVertical: 6,
   },
   searchCategoryPillActive: {
-    backgroundColor: '#2563EB',
-    borderColor: '#3B82F6',
+    backgroundColor: "#2563EB",
+    borderColor: "#3B82F6",
   },
   searchCategoryText: {
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: "rgba(255, 255, 255, 0.65)",
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   searchCategoryTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   searchResultsContainer: {
     maxHeight: 380,
@@ -5867,28 +7249,28 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   searchResultsCount: {
-    color: 'rgba(255, 255, 255, 0.45)',
+    color: "rgba(255, 255, 255, 0.45)",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     marginBottom: 8,
     marginTop: 4,
     paddingHorizontal: 4,
   },
   searchResultRow: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderColor: 'rgba(255, 255, 255, 0.07)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderColor: "rgba(255, 255, 255, 0.07)",
     borderRadius: 12,
     borderWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   searchCategoryBadge: {
-    alignItems: 'center',
+    alignItems: "center",
     borderRadius: 6,
-    flexDirection: 'row',
+    flexDirection: "row",
     marginRight: 10,
     paddingHorizontal: 6,
     paddingVertical: 3,
@@ -5901,63 +7283,63 @@ const styles = StyleSheet.create({
   },
   searchCategoryBadgeText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   searchResultMain: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   searchResultTitleRow: {
-    alignItems: 'baseline',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: "baseline",
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 6,
   },
   searchResultPrimary: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   searchResultSecondary: {
-    color: 'rgba(255, 255, 255, 0.55)',
+    color: "rgba(255, 255, 255, 0.55)",
     fontSize: 13,
   },
   searchResultSubRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     gap: 8,
     marginTop: 2,
   },
   searchResultDesignation: {
-    color: 'rgba(255, 255, 255, 0.4)',
+    color: "rgba(255, 255, 255, 0.4)",
     fontSize: 11,
   },
   searchResultConstellation: {
-    color: '#93C5FD',
+    color: "#93C5FD",
     fontSize: 11,
   },
   searchResultMag: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
+    alignItems: "flex-end",
+    justifyContent: "center",
     marginLeft: 8,
   },
   searchResultMagText: {
-    color: '#FCD34D',
+    color: "#FCD34D",
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   searchNoResultBox: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 24,
   },
   searchNoResultText: {
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: "rgba(255, 255, 255, 0.5)",
     fontSize: 14,
-    textAlign: 'center',
+    textAlign: "center",
   },
   searchDirectSubmitBtn: {
-    backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    borderColor: '#3B82F6',
+    backgroundColor: "rgba(59, 130, 246, 0.2)",
+    borderColor: "#3B82F6",
     borderRadius: 8,
     borderWidth: 1,
     marginTop: 14,
@@ -5965,95 +7347,95 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   searchDirectSubmitText: {
-    color: '#93C5FD',
+    color: "#93C5FD",
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   searchRecentSection: {
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
     borderTopWidth: 1,
     paddingTop: 10,
   },
   searchSectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
     marginBottom: 8,
     paddingHorizontal: 2,
   },
   searchSectionTitle: {
-    color: 'rgba(255, 255, 255, 0.45)',
+    color: "rgba(255, 255, 255, 0.45)",
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
     letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   searchClearHistoryBtn: {
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
   searchClearHistoryText: {
-    color: '#93C5FD',
+    color: "#93C5FD",
     fontSize: 12,
   },
   searchRecentChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
   },
   searchRecentChip: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.07)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
     borderRadius: 14,
     borderWidth: 1,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   searchRecentChipName: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   searchRecentChipType: {
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: "rgba(255, 255, 255, 0.5)",
     fontSize: 11,
   },
   searchPopularSection: {
     marginTop: 14,
   },
   searchPopularGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     marginTop: 8,
   },
   searchPopularCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.08)",
     borderRadius: 10,
     borderWidth: 1,
-    flexBasis: '31%',
+    flexBasis: "31%",
     flexGrow: 1,
     padding: 8,
   },
   searchPopularBadge: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     borderRadius: 4,
-    flexDirection: 'row',
+    flexDirection: "row",
     marginBottom: 4,
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
   searchPopularCardTitle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: "700",
   },
   searchPopularCardSub: {
-    color: 'rgba(255, 255, 255, 0.45)',
+    color: "rgba(255, 255, 255, 0.45)",
     fontSize: 11,
     marginTop: 2,
   },

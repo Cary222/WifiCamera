@@ -66,11 +66,22 @@ export function getPreviewSurfaceHeightForRoi(
   return Math.min(height, width * roi.width / roi.height);
 }
 
-/**
- * Legacy ratio-only helper retained for callers/tests that do not own a sensor
- * ROI. Planet capture uses getPreviewSurfaceHeightForRoi so preview and output
- * are driven by the same effective window.
- */
+/** Select the viewport from decoded video, not the requested sensor ROI. */
+export function getRenderedAspectRatio(
+  width: number,
+  height: number,
+  requestedRatio: AspectRatio,
+): AspectRatio {
+  if (width <= 0 || height <= 0)
+    return requestedRatio;
+  const longSide = Math.max(width, height);
+  const shortSide = Math.min(width, height);
+  return Math.abs(longSide / shortSide - 4 / 3) < Math.abs(longSide / shortSide - 16 / 9)
+    ? '4:3'
+    : '16:9';
+}
+
+/** Legacy ratio-only helper retained for callers/tests. */
 export function getPreviewSurfaceHeight(
   aspectRatio: AspectRatio,
   width: number,

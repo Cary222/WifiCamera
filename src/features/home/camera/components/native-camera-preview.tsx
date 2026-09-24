@@ -306,6 +306,7 @@ export type PreviewSurfaceProps = {
   rotation?: number;
   scale?: number;
   pinchZoomable?: boolean;
+  onVideoDimensionsChange?: (dimensions: { width: number; height: number }) => void;
 };
 
 /**
@@ -408,6 +409,7 @@ export const PreviewSurface = memo(
     rotation = 0,
     scale = 1,
     pinchZoomable = true,
+    onVideoDimensionsChange,
   }: PreviewSurfaceProps) => {
     const pinchScale = useSharedValue(1);
     const savedScale = useSharedValue(1);
@@ -517,6 +519,11 @@ export const PreviewSurface = memo(
             objectFit={objectFit}
             mirror={false}
             style={{ width, height }}
+            onDimensionsChange={(event: { nativeEvent: { width: number; height: number } }) => {
+              const { width: videoWidth, height: videoHeight } = event.nativeEvent;
+              if (videoWidth > 0 && videoHeight > 0)
+                onVideoDimensionsChange?.({ width: videoWidth, height: videoHeight });
+            }}
           />
         );
       }

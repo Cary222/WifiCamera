@@ -6,11 +6,13 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable, useWindowDimensions, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUniwind } from 'uniwind';
 import { SegmentedControl, Text } from '@/components/ui';
 import { translate } from '@/lib/i18n';
 import { useCameraStore } from '../camera-store';
+import { useAspectRatioAnimation } from '../components/aspect-ratio-switcher';
 import { CameraModeSwitcher } from '../components/camera-mode-switcher';
 import { CameraTopBar } from '../components/camera-top-bar';
 import {
@@ -30,7 +32,7 @@ import { SHUTTER_VALUES } from '../shutter-values';
 import {
   createCustomRoiPreset,
   getEffectiveSensorRoi,
-  getPreviewSurfaceHeightForRoi,
+  getRenderedAspectRatio,
   QUICK_CUSTOM_ROI_SIZES,
 } from './preview-layout';
 import { PLANET_ROI_PRESETS, usePlanetCapture } from './use-planet-capture';
@@ -117,7 +119,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   const pillGroupBg = isDark ? PILL_GROUP_BG : 'rgba(0, 0, 0, 0.05)';
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { width, height } = useWindowDimensions();
+  const { width: screenWidth } = useWindowDimensions();
 
   const connectionStatus = useCameraStore.use.connectionStatus();
   const newestCameraJpgUrl = useCameraStore.use.newestCameraJpgUrl();
@@ -126,6 +128,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
   // Top capsule arrow direction: 'down' (图二) <-> 'up' (图三)
   const [arrowDirection, setArrowDirection] = useState<ArrowDirection>('down');
   // Bottom panel open/closed state
+  const [videoDimensions, setVideoDimensions] = useState<{ streamURL: string; width: number; height: number } | null>(null);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
 
   // Fig 2 state (Param Controls)
@@ -266,36 +269,37 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
 
   const settingsDisabled
     = isRecording || isCapturing || isApplyingRoi || countdownRemaining > 0;
-  const isPortrait = height >= width;
-  const previewWidth = width;
-  const previewHeight = useMemo(
-    () =>
-      isPortrait
-        ? getPreviewSurfaceHeightForRoi(effectiveRoi, width, height)
-        : Math.min(
-            height,
-            Math.round((width * effectiveRoi.height) / effectiveRoi.width),
-          ),
-    [effectiveRoi, height, isPortrait, width],
+  // Match Landscape/Nebula viewport geometry while retaining the hardware ROI
+  // for capture and stream reconnection.
+  const {
+    previewStyle,
+    topBarStyle,
+    surfaceWidth,
+    surfaceHeight,
+    rotation,
+    scale,
+  } = useAspectRatioAnimation(
+    videoDimensions && videoDimensions.streamURL === stream?.toURL()
+      ? getRenderedAspectRatio(videoDimensions.width, videoDimensions.height, aspectRatio)
+      : aspectRatio,
+    220,
+    12,
   );
-  const surfaceWidth = isPortrait ? previewHeight : width;
-  const surfaceHeight = isPortrait ? previewWidth : previewHeight;
-  const rotation = isPortrait ? 90 : 0;
-
+  const shutterSize = Math.round(screenWidth * 0.1890547263681592);
+  const shutterBorder = Math.max(3, Math.round(shutterSize * 0.043478260869565216));
+  const shutterInner = shutterSize - 2 * shutterBorder - 2;
   return (
     <View
       className="flex-1"
       style={{ backgroundColor: isDark ? '#000' : '#F9FAFB' }}
     >
       {/* 1. Camera Viewport */}
-      <View
-        className="absolute left-0 items-center justify-center overflow-hidden"
-        style={{
-          top: insets.top,
-          width: previewWidth,
-          height: previewHeight,
-          backgroundColor: isDark ? '#000' : '#F9FAFB',
-        }}
+      <Animated.View
+        className="absolute items-center justify-center overflow-hidden"
+        style={[
+          previewStyle as any,
+          { backgroundColor: isDark ? '#000' : '#F9FAFB' },
+        ]}
       >
         <PreviewSurface
           key={`planet-preview-${aspectRatio}-${effectiveRoi.width}x${effectiveRoi.height}-${surfaceWidth}x${surfaceHeight}`}
@@ -304,10 +308,19 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
           width={surfaceWidth}
           height={surfaceHeight}
           rotation={rotation}
-          scale={1}
+          scale={scale}
           objectFit="contain"
+          onVideoDimensionsChange={({ width, height }) => {
+            const streamURL = stream?.toURL();
+            if (streamURL) {
+              setVideoDimensions(previous =>
+                previous?.streamURL === streamURL && previous.width === width && previous.height === height
+                  ? previous
+                  : { streamURL, width, height });
+            }
+          }}
         />
-      </View>
+      </Animated.View>
 
       <CameraTopBar
         title={translate('planet.mode_title')}
@@ -317,7 +330,7 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
         expanded={arrowDirection === 'down'}
         disabled={settingsDisabled}
         isDark={isDark}
-        style={{ top: insets.top + 10 }}
+        style={topBarStyle as any}
         rightContent={(
           <Pressable
             onPress={() => setRoiSheetOpen(true)}
@@ -360,6 +373,41 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
         </View>
       )}
 
+      {!isPanelOpen && (
+        <View
+          className="absolute inset-x-0 items-center"
+          style={{ bottom: insets.bottom + 110 }}
+        >
+          <Pressable
+            onPress={handleShutter}
+            disabled={!isConnected || isCapturing || isApplyingRoi || previewState !== 'live'}
+            className="items-center justify-center rounded-full active:opacity-80"
+            style={{
+              width: shutterSize,
+              height: shutterSize,
+              borderRadius: shutterSize / 2,
+              borderColor: BRAND,
+              borderWidth: shutterBorder,
+            }}
+          >
+            <View
+              className="items-center justify-center"
+              style={{
+                width: isVideoRecording ? shutterInner * 0.46 : shutterInner,
+                height: isVideoRecording ? shutterInner * 0.46 : shutterInner,
+                borderRadius: isVideoRecording ? 8 : shutterInner / 2,
+                backgroundColor: isVideoRecording ? '#FF3B30' : '#FFFFFF',
+              }}
+            >
+              {countdownRemaining > 0 && (
+                <Text className="text-[26px] font-bold text-black">
+                  {countdownRemaining}
+                </Text>
+              )}
+            </View>
+          </Pressable>
+        </View>
+      )}
       {/* 5. Bottom Control Container */}
       <View
         className={`absolute inset-x-0 bottom-0 ${isDark ? 'bg-[#0A0A0A]' : 'border-t border-neutral-200 bg-white'} px-4 pt-3`}
@@ -642,46 +690,6 @@ export function PlanetCameraScreen({ onBack }: { onBack: () => void }) {
                 </Text>
               </Pressable>
             </View>
-          </View>
-        )}
-
-        {!isPanelOpen && (
-          /* ─── 常规快门态 (Panel Closed State) ─── */
-          <View className="items-center justify-center py-5">
-            <Pressable
-              onPress={handleShutter}
-              disabled={
-                !isConnected
-                || isCapturing
-                || isApplyingRoi
-                || previewState !== 'live'
-              }
-              className="items-center justify-center rounded-full active:opacity-80"
-              style={{
-                width: 76,
-                height: 76,
-                borderRadius: 38,
-                borderColor: BRAND,
-                borderWidth: 3.5,
-                backgroundColor: 'transparent',
-              }}
-            >
-              <View
-                className="items-center justify-center"
-                style={{
-                  width: isVideoRecording ? 28 : 62,
-                  height: isVideoRecording ? 28 : 62,
-                  borderRadius: isVideoRecording ? 6 : 31,
-                  backgroundColor: isVideoRecording ? '#FF3B30' : '#FFFFFF',
-                }}
-              >
-                {countdownRemaining > 0 && (
-                  <Text className="text-[26px] font-bold text-black">
-                    {countdownRemaining}
-                  </Text>
-                )}
-              </View>
-            </Pressable>
           </View>
         )}
 

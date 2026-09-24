@@ -1,72 +1,88 @@
-import type { SatellitePass, SatellitePhotometry } from './satellite-pass-service';
-import type { SkyEvent, TonightReport } from '@/features/stellarium/stellarium-service';
-import type { StellariumViewHandle } from '@/features/stellarium/stellarium-view';
-import * as React from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import Svg, { Circle, Line, Path } from 'react-native-svg';
+import type {
+  SatellitePass,
+  SatellitePhotometry,
+} from "./satellite-pass-service";
+import type {
+  SkyEvent,
+  TonightReport,
+} from "@/features/stellarium/stellarium-service";
+import type { StellariumViewHandle } from "@/features/stellarium/stellarium-view";
+import * as React from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle, Line, Path } from "react-native-svg";
+import { Text } from "@/components/ui";
+import { translate } from "@/lib/i18n";
+import { storage } from "@/lib/storage";
 
-import { Text } from '@/components/ui';
-import { translate } from '@/lib/i18n';
-import { storage } from '@/lib/storage';
+import { OVERLAY, useDeepSpaceOverlayTheme } from "../ui/deep-space-theme";
+import { cityLabel } from "../ui/location-format";
+import { SatellitePassList } from "./satellite-pass-list";
+import { loadVisualOmm, predictVisiblePasses } from "./satellite-pass-service";
+import photometryJson from "./satellite-photometry.json";
+import { SolarSystemChart } from "./solar-system-chart";
 
-import { useDeepSpaceOverlayTheme } from '../ui/deep-space-theme';
-import { cityLabel } from '../ui/location-format';
-import { SatellitePassList } from './satellite-pass-list';
-import { loadVisualOmm, predictVisiblePasses } from './satellite-pass-service';
-import photometryJson from './satellite-photometry.json';
-import { SolarSystemChart } from './solar-system-chart';
+export type ObserverCity = {
+  latitudeDeg: number;
+  longitudeDeg: number;
+  name: string;
+};
 
-export type ObserverCity = { latitudeDeg: number; longitudeDeg: number; name: string };
+type CalendarResult =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "ready"; tonight: TonightReport; events: SkyEvent[] };
 
-type CalendarResult
-  = | { status: 'loading' }
-    | { status: 'failed' }
-    | { status: 'ready'; tonight: TonightReport; events: SkyEvent[] };
-
-type SatelliteResult
-  = | { status: 'loading' }
-    | { status: 'failed' }
-    | { status: 'ready'; passes: SatellitePass[] };
+type SatelliteResult =
+  | { status: "loading" }
+  | { status: "failed" }
+  | { status: "ready"; passes: SatellitePass[] };
 
 const MONTH_KEYS = [
-  'deep_space.month.m1',
-  'deep_space.month.m2',
-  'deep_space.month.m3',
-  'deep_space.month.m4',
-  'deep_space.month.m5',
-  'deep_space.month.m6',
-  'deep_space.month.m7',
-  'deep_space.month.m8',
-  'deep_space.month.m9',
-  'deep_space.month.m10',
-  'deep_space.month.m11',
-  'deep_space.month.m12',
+  "deep_space.month.m1",
+  "deep_space.month.m2",
+  "deep_space.month.m3",
+  "deep_space.month.m4",
+  "deep_space.month.m5",
+  "deep_space.month.m6",
+  "deep_space.month.m7",
+  "deep_space.month.m8",
+  "deep_space.month.m9",
+  "deep_space.month.m10",
+  "deep_space.month.m11",
+  "deep_space.month.m12",
 ] as const;
 const PLANET_KEYS = {
-  jupiter: 'deep_space.jupiter',
-  mars: 'deep_space.mars',
-  mercury: 'deep_space.mercury',
-  neptune: 'deep_space.neptune',
-  saturn: 'deep_space.saturn',
-  uranus: 'deep_space.uranus',
-  venus: 'deep_space.venus',
+  jupiter: "deep_space.jupiter",
+  mars: "deep_space.mars",
+  mercury: "deep_space.mercury",
+  neptune: "deep_space.neptune",
+  saturn: "deep_space.saturn",
+  uranus: "deep_space.uranus",
+  venus: "deep_space.venus",
 } as const;
 const EVENT_KEYS = {
-  conjunction: 'deep_space.conjunction',
-  first_quarter: 'deep_space.first_quarter',
-  full_moon: 'deep_space.full_moon',
-  last_quarter: 'deep_space.last_quarter',
-  meteor_shower: 'deep_space.meteor_shower',
-  new_moon: 'deep_space.new_moon',
-  opposition: 'deep_space.opposition',
+  conjunction: "deep_space.conjunction",
+  first_quarter: "deep_space.first_quarter",
+  full_moon: "deep_space.full_moon",
+  last_quarter: "deep_space.last_quarter",
+  meteor_shower: "deep_space.meteor_shower",
+  new_moon: "deep_space.new_moon",
+  opposition: "deep_space.opposition",
 } as const;
 const PHOTOMETRY = photometryJson as SatellitePhotometry;
 
 function formatClockTime(iso: string | null): string {
-  if (!iso)
-    return '--:--';
+  if (!iso) return "--:--";
   const date = new Date(iso);
-  return `${`${date.getHours()}`.padStart(2, '0')}:${`${date.getMinutes()}`.padStart(2, '0')}`;
+  return `${`${date.getHours()}`.padStart(2, "0")}:${`${date.getMinutes()}`.padStart(2, "0")}`;
 }
 
 function useCalendarData(
@@ -77,75 +93,97 @@ function useCalendarData(
   const [attempt, setAttempt] = React.useState(0);
   const day = clock.toDateString();
   const requestKey = `${day}|${city.latitudeDeg}|${city.longitudeDeg}|${attempt}`;
-  const [state, setState] = React.useState<{ requestKey: string; result: CalendarResult }>({
+  const [state, setState] = React.useState<{
+    requestKey: string;
+    result: CalendarResult;
+  }>({
     requestKey,
-    result: { status: 'loading' },
+    result: { status: "loading" },
   });
 
   React.useEffect(() => {
     let cancelled = false;
     const bridge = stellaRef.current;
-    if (!bridge)
-      return;
-    const observer = { latitudeDeg: city.latitudeDeg, longitudeDeg: city.longitudeDeg };
+    if (!bridge) return;
+    const observer = {
+      latitudeDeg: city.latitudeDeg,
+      longitudeDeg: city.longitudeDeg,
+    };
     Promise.all([
       bridge.computeTonight(new Date(day), observer),
       bridge.computeEvents(new Date(day), 60, observer),
     ])
       .then(([tonight, events]) => {
-        if (!cancelled)
-          setState({ requestKey, result: { events, status: 'ready', tonight } });
+        if (!cancelled) {
+          setState({
+            requestKey,
+            result: { events, status: "ready", tonight },
+          });
+        }
       })
       .catch(() => {
-        if (!cancelled)
-          setState({ requestKey, result: { status: 'failed' } });
+        if (!cancelled) setState({ requestKey, result: { status: "failed" } });
       });
     return () => {
       cancelled = true;
     };
   }, [city.latitudeDeg, city.longitudeDeg, day, requestKey, stellaRef]);
 
-  const result = state.requestKey === requestKey ? state.result : { status: 'loading' as const };
-  return { result, retry: () => setAttempt(value => value + 1) };
+  const result =
+    state.requestKey === requestKey
+      ? state.result
+      : { status: "loading" as const };
+  return { result, retry: () => setAttempt((value) => value + 1) };
 }
 
 function useSatellitePasses(tonight: TonightReport | null, city: ObserverCity) {
   const [attempt, setAttempt] = React.useState(0);
   const sunset = tonight?.sunset;
   const sunrise = tonight?.sunrise;
-  const requestKey = `${sunset ?? 'none'}|${sunrise ?? 'none'}|${city.latitudeDeg}|${city.longitudeDeg}|${attempt}`;
-  const [state, setState] = React.useState<{ requestKey: string; result: SatelliteResult }>({
+  const requestKey = `${sunset ?? "none"}|${sunrise ?? "none"}|${city.latitudeDeg}|${city.longitudeDeg}|${attempt}`;
+  const [state, setState] = React.useState<{
+    requestKey: string;
+    result: SatelliteResult;
+  }>({
     requestKey,
-    result: { status: 'loading' },
+    result: { status: "loading" },
   });
 
   React.useEffect(() => {
     let cancelled = false;
-    const task = !sunset || !sunrise
-      ? Promise.resolve([])
-      : loadVisualOmm({ storage }).then(records => predictVisiblePasses({
-          end: new Date(sunrise),
-          observer: { latitudeDeg: city.latitudeDeg, longitudeDeg: city.longitudeDeg },
-          photometry: PHOTOMETRY,
-          records,
-          start: new Date(sunset),
-        }));
+    const task =
+      !sunset || !sunrise
+        ? Promise.resolve([])
+        : loadVisualOmm({ storage }).then((records) =>
+            predictVisiblePasses({
+              end: new Date(sunrise),
+              observer: {
+                latitudeDeg: city.latitudeDeg,
+                longitudeDeg: city.longitudeDeg,
+              },
+              photometry: PHOTOMETRY,
+              records,
+              start: new Date(sunset),
+            }),
+          );
     task
       .then((passes) => {
         if (!cancelled)
-          setState({ requestKey, result: { passes, status: 'ready' } });
+          setState({ requestKey, result: { passes, status: "ready" } });
       })
       .catch(() => {
-        if (!cancelled)
-          setState({ requestKey, result: { status: 'failed' } });
+        if (!cancelled) setState({ requestKey, result: { status: "failed" } });
       });
     return () => {
       cancelled = true;
     };
   }, [city.latitudeDeg, city.longitudeDeg, requestKey, sunrise, sunset]);
 
-  const result = state.requestKey === requestKey ? state.result : { status: 'loading' as const };
-  return { result, retry: () => setAttempt(value => value + 1) };
+  const result =
+    state.requestKey === requestKey
+      ? state.result
+      : { status: "loading" as const };
+  return { result, retry: () => setAttempt((value) => value + 1) };
 }
 
 export function CalendarPanel({
@@ -160,19 +198,38 @@ export function CalendarPanel({
   stellaRef: React.RefObject<StellariumViewHandle | null>;
 }) {
   const { isDark, overlay } = useDeepSpaceOverlayTheme();
-  const [tab, setTab] = React.useState<'events' | 'tonight'>('tonight');
+  const insets = useSafeAreaInsets();
+  const [tab, setTab] = React.useState<"events" | "tonight">("tonight");
   const calendar = useCalendarData(stellaRef, clock, city);
-  const tonight = calendar.result.status === 'ready' ? calendar.result.tonight : null;
+  const tonight =
+    calendar.result.status === "ready" ? calendar.result.tonight : null;
   const satellites = useSatellitePasses(tonight, city);
   const nextDay = new Date(clock.getTime() + 86_400_000);
-  const heading = translate('deep_space.calendar.range', { city: cityLabel(city.name), from: clock.getDate(), month: clock.getMonth() + 1, to: nextDay.getDate() });
+  const heading = translate("deep_space.calendar.range", {
+    city: cityLabel(city.name),
+    from: clock.getDate(),
+    month: clock.getMonth() + 1,
+    to: nextDay.getDate(),
+  });
 
   return (
     <Modal animationType="none" onRequestClose={onClose} transparent visible>
-      <View style={[styles.screen, !isDark && { backgroundColor: 'rgba(255, 255, 255, 0.98)' }]} testID="deep-space-calendar-panel">
-        <View style={[styles.header, !isDark && { backgroundColor: overlay.drawerHeader }]}>
+      <View
+        style={[
+          styles.screen,
+          { paddingTop: insets.top },
+          !isDark && { backgroundColor: overlay.drawer },
+        ]}
+        testID="deep-space-calendar-panel"
+      >
+        <View
+          style={[
+            styles.header,
+            !isDark && { backgroundColor: overlay.drawerHeader },
+          ]}
+        >
           <Pressable
-            accessibilityLabel={translate('deep_space.back')}
+            accessibilityLabel={translate("deep_space.back")}
             accessibilityRole="button"
             onPress={onClose}
             style={styles.headerButton}
@@ -180,40 +237,67 @@ export function CalendarPanel({
           >
             <BackIcon color={overlay.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, !isDark && { color: overlay.text }]}>{translate('deep_space.calendar.title')}</Text>
+          <Text
+            style={[styles.headerTitle, !isDark && { color: overlay.text }]}
+          >
+            {translate("deep_space.calendar.title")}
+          </Text>
           <View style={styles.headerButton} />
         </View>
         <View style={styles.tabs}>
-          <CalendarTab active={tab === 'tonight'} label={translate('deep_space.calendar_tonight')} onPress={() => setTab('tonight')} testID="deep-space-calendar-tab-tonight" />
-          <CalendarTab active={tab === 'events'} label={translate('deep_space.calendar_events')} onPress={() => setTab('events')} testID="deep-space-calendar-tab-events" />
+          <CalendarTab
+            active={tab === "tonight"}
+            label={translate("deep_space.calendar_tonight")}
+            onPress={() => setTab("tonight")}
+            testID="deep-space-calendar-tab-tonight"
+          />
+          <CalendarTab
+            active={tab === "events"}
+            label={translate("deep_space.calendar_events")}
+            onPress={() => setTab("events")}
+            testID="deep-space-calendar-tab-events"
+          />
         </View>
 
-        {calendar.result.status === 'loading' && (
+        {calendar.result.status === "loading" && (
           <View style={styles.status} testID="deep-space-calendar-loading">
             <ActivityIndicator color="#5DA4FF" />
-            <Text style={styles.statusText}>{translate('deep_space.calendar_loading')}</Text>
+            <Text style={styles.statusText}>
+              {translate("deep_space.calendar_loading")}
+            </Text>
           </View>
         )}
-        {calendar.result.status === 'failed' && (
+        {calendar.result.status === "failed" && (
           <View style={styles.status} testID="deep-space-calendar-error">
-            <Text style={styles.statusText}>{translate('deep_space.calendar_error')}</Text>
-            <Pressable accessibilityRole="button" onPress={calendar.retry} testID="deep-space-calendar-retry">
-              <Text style={styles.retry}>{translate('deep_space.calendar_retry')}</Text>
+            <Text style={styles.statusText}>
+              {translate("deep_space.calendar_error")}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={calendar.retry}
+              testID="deep-space-calendar-retry"
+            >
+              <Text style={styles.retry}>
+                {translate("deep_space.calendar_retry")}
+              </Text>
             </Pressable>
           </View>
         )}
-        {calendar.result.status === 'ready' && (
-          <ScrollView bounces={false} contentContainerStyle={styles.scrollContent}>
-            {tab === 'tonight'
-              ? (
-                  <TonightTab
-                    heading={heading}
-                    report={calendar.result.tonight}
-                    satelliteResult={satellites.result}
-                    satelliteRetry={satellites.retry}
-                  />
-                )
-              : <EventsTab events={calendar.result.events} />}
+        {calendar.result.status === "ready" && (
+          <ScrollView
+            bounces={false}
+            contentContainerStyle={styles.scrollContent}
+          >
+            {tab === "tonight" ? (
+              <TonightTab
+                heading={heading}
+                report={calendar.result.tonight}
+                satelliteResult={satellites.result}
+                satelliteRetry={satellites.retry}
+              />
+            ) : (
+              <EventsTab events={calendar.result.events} />
+            )}
           </ScrollView>
         )}
       </View>
@@ -221,7 +305,17 @@ export function CalendarPanel({
   );
 }
 
-function CalendarTab({ active, label, onPress, testID }: { active: boolean; label: string; onPress: () => void; testID: string }) {
+function CalendarTab({
+  active,
+  label,
+  onPress,
+  testID,
+}: {
+  active: boolean;
+  label: string;
+  onPress: () => void;
+  testID: string;
+}) {
   const { isDark, overlay } = useDeepSpaceOverlayTheme();
   return (
     <Pressable
@@ -231,7 +325,15 @@ function CalendarTab({ active, label, onPress, testID }: { active: boolean; labe
       style={[styles.tab, active && styles.tabActive]}
       testID={testID}
     >
-      <Text style={[styles.tabLabel, !isDark && { color: active ? overlay.text : overlay.muted }, active && styles.tabLabelActive]}>{label}</Text>
+      <Text
+        style={[
+          styles.tabLabel,
+          !isDark && { color: active ? overlay.text : overlay.muted },
+          active && styles.tabLabelActive,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -248,40 +350,66 @@ function TonightTab({
   satelliteRetry: () => void;
 }) {
   const { isDark, overlay } = useDeepSpaceOverlayTheme();
-  const state = satelliteResult.status === 'failed'
-    ? { retry: satelliteRetry, status: 'failed' as const }
-    : satelliteResult;
+  const state =
+    satelliteResult.status === "failed"
+      ? { retry: satelliteRetry, status: "failed" as const }
+      : satelliteResult;
   return (
     <View testID="deep-space-calendar-tonight">
-      <Text style={[styles.dateHeading, !isDark && { color: overlay.text }]}>{heading}</Text>
+      <Text style={[styles.dateHeading, !isDark && { color: overlay.text }]}>
+        {heading}
+      </Text>
       <View style={styles.sunRow}>
-        <SunStat isDark={isDark} label={translate('deep_space.sunset')} value={formatClockTime(report.sunset)} />
-        <SunStat isDark={isDark} label={translate('deep_space.sunrise')} value={formatClockTime(report.sunrise)} />
+        <SunStat
+          isDark={isDark}
+          label={translate("deep_space.sunset")}
+          value={formatClockTime(report.sunset)}
+        />
+        <SunStat
+          isDark={isDark}
+          label={translate("deep_space.sunrise")}
+          value={formatClockTime(report.sunrise)}
+        />
       </View>
-      <Text style={[styles.sectionTitle, !isDark && { color: overlay.text }]}>{translate('deep_space.solar_system')}</Text>
+      <Text style={[styles.sectionTitle, !isDark && { color: overlay.text }]}>
+        {translate("deep_space.solar_system")}
+      </Text>
       <SolarSystemChart report={report} />
       <SatellitePassList state={state} />
     </View>
   );
 }
 
-function SunStat({ isDark = true, label, value }: { isDark?: boolean; label: string; value: string }) {
+function SunStat({
+  isDark = true,
+  label,
+  value,
+}: {
+  isDark?: boolean;
+  label: string;
+  value: string;
+}) {
   const { overlay } = useDeepSpaceOverlayTheme();
   return (
-    <View style={[styles.sunStat, !isDark && { backgroundColor: overlay.card }]}>
-      <Text style={[styles.sunLabel, !isDark && { color: overlay.muted }]}>{label}</Text>
-      <Text style={[styles.sunValue, !isDark && { color: overlay.text }]}>{value}</Text>
+    <View
+      style={[styles.sunStat, !isDark && { backgroundColor: overlay.card }]}
+    >
+      <Text style={[styles.sunLabel, !isDark && { color: overlay.muted }]}>
+        {label}
+      </Text>
+      <Text style={[styles.sunValue, !isDark && { color: overlay.text }]}>
+        {value}
+      </Text>
     </View>
   );
 }
 
 function eventLabel(event: SkyEvent): string {
-  if (event.type === 'meteor_shower')
-    return `${event.name ?? ''} ${translate('deep_space.meteor_shower')}`.trim();
+  if (event.type === "meteor_shower")
+    return `${event.name ?? ""} ${translate("deep_space.meteor_shower")}`.trim();
   const eventKey = EVENT_KEYS[event.type as keyof typeof EVENT_KEYS];
   const type = eventKey ? translate(eventKey) : event.type;
-  if (!event.target)
-    return type;
+  if (!event.target) return type;
   const planetKey = PLANET_KEYS[event.target as keyof typeof PLANET_KEYS];
   const target = planetKey ? translate(planetKey) : event.target;
   return `${target}${type}`;
@@ -290,12 +418,11 @@ function eventLabel(event: SkyEvent): string {
 function eventTime(event: SkyEvent): string {
   const date = new Date(event.time);
   const day = `${translate(MONTH_KEYS[date.getMonth()])} ${date.getDate()}`;
-  if (event.type === 'meteor_shower')
-    return day;
+  if (event.type === "meteor_shower") return day;
   const offset = -date.getTimezoneOffset();
-  const sign = offset < 0 ? '-' : '+';
+  const sign = offset < 0 ? "-" : "+";
   const absolute = Math.abs(offset);
-  const zone = `GMT${sign}${`${Math.floor(absolute / 60)}`.padStart(2, '0')}:${`${absolute % 60}`.padStart(2, '0')}`;
+  const zone = `GMT${sign}${`${Math.floor(absolute / 60)}`.padStart(2, "0")}:${`${absolute % 60}`.padStart(2, "0")}`;
   return `${day}, ${formatClockTime(event.time)} ${zone}`;
 }
 
@@ -307,19 +434,37 @@ function EventsTab({ events }: { events: SkyEvent[] }) {
     const key = `${translate(MONTH_KEYS[date.getMonth()])} ${date.getFullYear()}`;
     groups.set(key, [...(groups.get(key) ?? []), event]);
   }
-  if (events.length === 0)
-    return <Text style={[styles.empty, !isDark && { color: overlay.muted }]}>{translate('deep_space.no_events')}</Text>;
+  if (events.length === 0) {
+    return (
+      <Text style={[styles.empty, !isDark && { color: overlay.muted }]}>
+        {translate("deep_space.no_events")}
+      </Text>
+    );
+  }
   return (
     <View testID="deep-space-calendar-events">
       {[...groups.entries()].map(([month, monthEvents]) => (
         <View key={month}>
-          <Text style={[styles.eventMonth, !isDark && { color: overlay.text }]}>{month}</Text>
-          {monthEvents.map(event => (
+          <Text style={[styles.eventMonth, !isDark && { color: overlay.text }]}>
+            {month}
+          </Text>
+          {monthEvents.map((event) => (
             <View key={`${event.type}-${event.time}`} style={styles.eventRow}>
               <EventIcon type={event.type} />
               <View style={styles.eventText}>
-                <Text style={[styles.eventName, !isDark && { color: overlay.text }]}>{eventLabel(event)}</Text>
-                <Text style={[styles.eventTime, !isDark && { color: overlay.muted }]}>{eventTime(event)}</Text>
+                <Text
+                  style={[styles.eventName, !isDark && { color: overlay.text }]}
+                >
+                  {eventLabel(event)}
+                </Text>
+                <Text
+                  style={[
+                    styles.eventTime,
+                    !isDark && { color: overlay.muted },
+                  ]}
+                >
+                  {eventTime(event)}
+                </Text>
               </View>
             </View>
           ))}
@@ -329,16 +474,23 @@ function EventsTab({ events }: { events: SkyEvent[] }) {
   );
 }
 
-function BackIcon({ color = '#FFFFFF' }: { color?: string } = {}) {
+function BackIcon({ color = "#FFFFFF" }: { color?: string } = {}) {
   return (
     <Svg height={34} viewBox="0 0 34 34" width={34}>
-      <Path d="M21 7 11 17l10 10" fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} />
+      <Path
+        d="M21 7 11 17l10 10"
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2.2}
+      />
     </Svg>
   );
 }
 
 function EventIcon({ type }: { type: string }) {
-  if (type === 'full_moon') {
+  if (type === "full_moon") {
     return (
       <Svg height={30} viewBox="0 0 30 30" width={30}>
         <Circle cx={15} cy={15} fill="#F3F3F3" r={9} />
@@ -356,29 +508,29 @@ function EventIcon({ type }: { type: string }) {
 
 const styles = StyleSheet.create({
   dateHeading: {
-    color: 'rgba(255,255,255,0.5)',
+    color: "rgba(255,255,255,0.5)",
     fontSize: 27,
     paddingHorizontal: 17,
     paddingTop: 30,
   },
   empty: {
-    color: 'rgba(255,255,255,0.55)',
+    color: "rgba(255,255,255,0.55)",
     fontSize: 14,
     padding: 17,
   },
   eventMonth: {
-    color: 'rgba(255,255,255,0.48)',
+    color: "rgba(255,255,255,0.48)",
     fontSize: 26,
     paddingHorizontal: 17,
     paddingTop: 30,
   },
   eventName: {
-    color: '#F8F8F8',
+    color: "#F8F8F8",
     fontSize: 16,
   },
   eventRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
+    alignItems: "center",
+    flexDirection: "row",
     paddingHorizontal: 17,
     paddingVertical: 13,
   },
@@ -387,98 +539,98 @@ const styles = StyleSheet.create({
     marginLeft: 14,
   },
   eventTime: {
-    color: 'rgba(255,255,255,0.52)',
+    color: "rgba(255,255,255,0.52)",
     fontSize: 12,
     marginTop: 3,
   },
   header: {
-    alignItems: 'center',
-    backgroundColor: '#2D3134',
-    flexDirection: 'row',
+    alignItems: "center",
+    backgroundColor: OVERLAY.drawerHeader,
+    flexDirection: "row",
     height: 48,
-    justifyContent: 'space-between',
+    justifyContent: "space-between",
     paddingHorizontal: 8,
   },
   headerButton: {
-    alignItems: 'center',
+    alignItems: "center",
     height: 48,
-    justifyContent: 'center',
+    justifyContent: "center",
     width: 48,
   },
   headerTitle: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 18,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   retry: {
-    color: '#5DA4FF',
+    color: "#5DA4FF",
     fontSize: 14,
     marginTop: 12,
   },
   screen: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#202326',
+    backgroundColor: OVERLAY.drawer,
   },
   scrollContent: {
     paddingBottom: 24,
   },
   sectionTitle: {
-    color: 'rgba(255,255,255,0.5)',
+    color: "rgba(255,255,255,0.5)",
     fontSize: 26,
     paddingHorizontal: 17,
     paddingTop: 30,
   },
   status: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 60,
   },
   statusText: {
-    color: 'rgba(255,255,255,0.58)',
+    color: "rgba(255,255,255,0.58)",
     fontSize: 14,
     marginTop: 10,
   },
   sunLabel: {
-    color: 'rgba(255,255,255,0.52)',
+    color: "rgba(255,255,255,0.52)",
     fontSize: 11,
   },
   sunRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
+    flexDirection: "row",
+    justifyContent: "flex-end",
     paddingHorizontal: 42,
     paddingTop: 26,
   },
   sunStat: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
     marginLeft: 59,
   },
   sunValue: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
     fontSize: 31,
-    fontVariant: ['tabular-nums'],
-    fontWeight: '300',
+    fontVariant: ["tabular-nums"],
+    fontWeight: "300",
   },
   tab: {
-    alignItems: 'center',
-    borderBottomColor: 'transparent',
+    alignItems: "center",
+    borderBottomColor: "transparent",
     borderBottomWidth: 2,
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   tabActive: {
-    borderBottomColor: '#5DA4FF',
+    borderBottomColor: "#5DA4FF",
   },
   tabLabel: {
-    color: 'rgba(255,255,255,0.66)',
+    color: "rgba(255,255,255,0.66)",
     fontSize: 15,
   },
   tabLabelActive: {
-    color: '#5DA4FF',
+    color: "#5DA4FF",
   },
   tabs: {
-    backgroundColor: '#2D3134',
-    borderBottomColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: OVERLAY.drawer,
+    borderBottomColor: "rgba(0,0,0,0.35)",
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: 'row',
+    flexDirection: "row",
     height: 48,
   },
 });

@@ -2,6 +2,7 @@ import {
   getEffectiveSensorRoi,
   getPreviewSurfaceHeight,
   getPreviewSurfaceHeightForRoi,
+  getRenderedAspectRatio,
   getSensorRoiCommandParams,
   isNativeSensorAspectRatio,
 } from './preview-layout';
@@ -60,6 +61,14 @@ describe('getEffectiveSensorRoi', () => {
     expect(isNativeSensorAspectRatio(fullHd, '16:9')).toBe(true);
     expect(isNativeSensorAspectRatio({ x: 560, y: 240, width: 800, height: 600 }, '16:9')).toBe(false);
     expect(isNativeSensorAspectRatio({ x: 640, y: 300, width: 640, height: 480 }, '4:3')).toBe(true);
+  });
+});
+
+describe('getRenderedAspectRatio', () => {
+  it('follows decoded 4:3 frames even when the requested ROI is still 16:9', () => {
+    expect(getRenderedAspectRatio(1440, 1080, '16:9')).toBe('4:3');
+    expect(getRenderedAspectRatio(1920, 1080, '4:3')).toBe('16:9');
+    expect(getRenderedAspectRatio(0, 0, '4:3')).toBe('4:3');
   });
 });
 
